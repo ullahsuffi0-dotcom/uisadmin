@@ -229,8 +229,8 @@ onValue(connRef, (snap) => {
 const DB={get(k){try{return JSON.parse(localStorage.getItem('sms7_'+k)||'null')}catch{return null}},set(k,v){localStorage.setItem('sms7_'+k,JSON.stringify(v))},del(k){localStorage.removeItem('sms7_'+k)}};
 const RL={superadmin:{en:'Super Admin',ar:'مدير النظام'},principal:{en:'Principal',ar:'مدير المدرسة'},vice_principal:{en:'Vice Principal',ar:'وكيل المدرسة'},academic_supervisor:{en:'Academic Supervisor',ar:'المشرف الأكاديمي'},student_advisor:{en:'Student Advisor',ar:'المرشد الطلابي'},activity_incharge:{en:'Activity Incharge',ar:'مسؤول الأنشطة'},quality_supervisor:{en:'Quality Supervisor',ar:'مشرف الجودة'},quality_incharge:{en:'Quality Incharge',ar:'مسؤول الجودة'},admin_assistant:{en:'Admin Assistant',ar:'المساعد الإداري'}};
 function rL(r){return RL[r]?.[_lang]||RL[r]?.en||r;}
-const TR={en:{dashboard:'Dashboard',activity_log:'Activity Log',students:'Students',accounts:'Staff Accounts',complaints:'Complaints',tasks:'Tasks',infractions:'Infractions',referrals:'Referrals',class_visits:'Class Visits',notebook_checks:'Notebook Checks',activities:'Activities',early_pickup:'Early Pickup',exam_absent:'Exam Absent List',announcements:'Announcements',settings:'Settings',infraction_forms:'Infraction Forms',visit_forms:'Visit Forms',behaviour:'Behaviour & Counseling',discipline_reports:'Discipline Reports',task_requests:'Task Requests',my_profile:'My Profile',export_data:'Export Data',academic_calendar:'Academic Calendar',parent_qr:'Parent QR Portal',activity_reports:'Activity Reports',teachers:'Teachers',teacher_reports:'View Reports by Teacher',daily_attendance:'Daily Attendance',student_health:'Student Health',remedial_plans:'Remedial Plans',vp_reports:'Reports to Principal',warning_letters:'Warning Letters',teacher_achievements:'Teacher Achievements',sign_in:'Sign In',sign_out:'Sign Out',save:'Save',cancel:'Cancel',edit:'Edit',delete:'Delete',view:'View',add:'Add',search:'Search',close:'Close',first_name:'First Name',last_name:'Last Name',nationality:'Nationality',father_phone:'Father Phone',mother_phone:'Mother Phone',serial_no:'Serial No.',class_sn:'Class SN',username:'Username',password:'Password',name:'Name',email:'Email',phone:'Phone',role:'Role',status:'Status',date:'Date',grade:'Grade',section:'Section',subject:'Subject',description:'Description',assigned_to:'Assigned To',assigned_by:'Assigned By',due_date:'Due Date',priority:'Priority',pending:'Pending',in_progress:'In Progress',completed:'Completed',open:'Open',resolved:'Resolved',closed:'Closed',active:'Active',inactive:'Inactive',select_student:'Search student by name or grade…',no_records:'No records found',acknowledge:'Acknowledge',export_excel:'Export Excel',export_pdf:'Export PDF',date_from:'From Date',date_to:'To Date',language:'Language',color_theme:'Color Theme',change_password:'Change Password',current_password:'Current Password',new_password:'New Password',confirm_password:'Confirm Password',save_profile:'Save Profile',remarks:'Remarks',action_taken:'Action Taken',infraction_type:'Infraction Type',degree:'Degree',teacher:'Teacher',period:'Period',observations:'Observations',strengths:'Strengths',improvements:'Areas for Improvement',follow_up:'Follow-up',rating:'Rating',academic_ack:'Academic Supervisor Ack',principal_ack:'Principal Ack',complaint_type:'Complaint Type',track_number:'Track No.',parent_name:'Parent Name',add_remark:'Add Remark',remark_history:'Remark History',reason:'Reason',note:'Note',live_feed:'Live Activity Feed',total_students:'Total Students',open_complaints:'Open Complaints',active_tasks:'Active Tasks',overview:'Overview',management:'Management',system:'System',academic:'Academic',my_work:'My Work',discipline:'Discipline',monitoring:'Monitoring',exam_subject:'Exam Subject',absent_date:'Absent Date',school_name:'School Name',academic_year:'Academic Year',upload_logo:'Upload Logo',logo_emoji:'Logo Emoji',live_mode:'Live Mode',event_name:'Event Name',event_date:'Event Date',days_left:'days left',upcoming_events:'Upcoming Events',add_event:'Add Event',guardian:'Guardian'},
-ar:{dashboard:'لوحة التحكم',activity_log:'سجل الأنشطة',students:'الطلاب',accounts:'حسابات الموظفين',complaints:'الشكاوى',tasks:'المهام',infractions:'المخالفات',referrals:'الإحالات',class_visits:'زيارات الفصول',notebook_checks:'فحص الكراسات',activities:'الأنشطة',early_pickup:'الانصراف المبكر',exam_absent:'غياب الاختبارات',announcements:'الإعلانات',settings:'الإعدادات',infraction_forms:'نماذج المخالفات',visit_forms:'نماذج الزيارات',behaviour:'المتابعة السلوكية',discipline_reports:'تقارير الانضباط',task_requests:'طلبات المهام',my_profile:'ملفي الشخصي',export_data:'تصدير البيانات',academic_calendar:'التقويم الأكاديمي',parent_qr:'بوابة أولياء الأمور',activity_reports:'تقارير الأنشطة',teachers:'المعلمون',teacher_reports:'عرض التقارير حسب المعلم',daily_attendance:'الحضور اليومي',student_health:'الصحة الطلابية',remedial_plans:'الخطط العلاجية',vp_reports:'التقارير إلى المدير',warning_letters:'خطابات الإنذار',teacher_achievements:'إنجازات المعلمين',sign_in:'تسجيل الدخول',sign_out:'تسجيل الخروج',save:'حفظ',cancel:'إلغاء',edit:'تعديل',delete:'حذف',view:'عرض',add:'إضافة',search:'بحث',close:'إغلاق',first_name:'الاسم الأول',last_name:'اسم العائلة',nationality:'الجنسية',father_phone:'هاتف الأب',mother_phone:'هاتف الأم',serial_no:'الرقم التسلسلي',class_sn:'رقم الفصل',username:'اسم المستخدم',password:'كلمة المرور',name:'الاسم',email:'البريد الإلكتروني',phone:'الهاتف',role:'الوظيفة',status:'الحالة',date:'التاريخ',grade:'الصف',section:'الفصل',subject:'المادة',description:'الوصف',assigned_to:'مُكلَّف إلى',assigned_by:'مُكلَّف من',due_date:'تاريخ الاستحقاق',priority:'الأولوية',pending:'معلق',in_progress:'جارٍ',completed:'مكتمل',open:'مفتوح',resolved:'محلول',closed:'مغلق',active:'نشط',inactive:'غير نشط',select_student:'ابحث عن طالب…',no_records:'لا توجد سجلات',acknowledge:'إقرار',export_excel:'تصدير Excel',export_pdf:'تصدير PDF',date_from:'من تاريخ',date_to:'إلى تاريخ',language:'اللغة',color_theme:'نظام الألوان',change_password:'تغيير كلمة المرور',current_password:'كلمة المرور الحالية',new_password:'كلمة المرور الجديدة',confirm_password:'تأكيد كلمة المرور',save_profile:'حفظ الملف الشخصي',remarks:'ملاحظات',action_taken:'الإجراء المتخذ',infraction_type:'نوع المخالفة',degree:'الدرجة',teacher:'المعلم',period:'الحصة',observations:'الملاحظات',strengths:'نقاط القوة',improvements:'مجالات التحسين',follow_up:'متابعة',rating:'التقييم',academic_ack:'إقرار المشرف الأكاديمي',principal_ack:'إقرار المدير',complaint_type:'نوع الشكوى',track_number:'رقم التتبع',parent_name:'اسم ولي الأمر',add_remark:'إضافة ملاحظة',remark_history:'سجل الملاحظات',reason:'السبب',note:'ملاحظة',live_feed:'سجل الأنشطة الحي',total_students:'إجمالي الطلاب',open_complaints:'الشكاوى المفتوحة',active_tasks:'المهام النشطة',overview:'نظرة عامة',management:'الإدارة',system:'النظام',academic:'الأكاديمي',my_work:'عملي',discipline:'الانضباط',monitoring:'المراقبة',exam_subject:'مادة الاختبار',absent_date:'تاريخ الغياب',school_name:'اسم المدرسة',academic_year:'العام الدراسي',upload_logo:'رفع الشعار',logo_emoji:'شعار رمزي',live_mode:'وضع البث المباشر',event_name:'اسم الحدث',event_date:'تاريخ الحدث',days_left:'يوم متبقي',upcoming_events:'الأحداث القادمة',add_event:'إضافة حدث',guardian:'ولي الأمر'}};
+const TR={en:{dashboard:'Dashboard',activity_log:'Activity Log',students:'Students',accounts:'Staff Accounts',complaints:'Complaints',tasks:'Tasks',infractions:'Infractions',referrals:'Referrals',class_visits:'Class Visits',notebook_checks:'Notebook Checks',activities:'Activities',early_pickup:'Early Pickup',exam_absent:'Exam Absent List',announcements:'Announcements',settings:'Settings',infraction_forms:'Infraction Forms',visit_forms:'Visit Forms',behaviour:'Behaviour & Counseling',discipline_reports:'Discipline Reports',task_requests:'Task Requests',my_profile:'My Profile',export_data:'Export Data',academic_calendar:'Academic Calendar',parent_qr:'Parent QR Portal',activity_reports:'Activity Reports',teachers:'Teachers',teacher_reports:'View Reports by Teacher',daily_attendance:'Daily Attendance',student_health:'Student Health',remedial_plans:'Remedial Plans',vp_reports:'Reports to Principal',warning_letters:'Warning Letters',teacher_achievements:'Teacher Achievements',reexam_schedule:'Re-exam Schedule',sign_in:'Sign In',sign_out:'Sign Out',save:'Save',cancel:'Cancel',edit:'Edit',delete:'Delete',view:'View',add:'Add',search:'Search',close:'Close',first_name:'First Name',last_name:'Last Name',nationality:'Nationality',father_phone:'Father Phone',mother_phone:'Mother Phone',serial_no:'Serial No.',class_sn:'Class SN',username:'Username',password:'Password',name:'Name',email:'Email',phone:'Phone',role:'Role',status:'Status',date:'Date',grade:'Grade',section:'Section',subject:'Subject',description:'Description',assigned_to:'Assigned To',assigned_by:'Assigned By',due_date:'Due Date',priority:'Priority',pending:'Pending',in_progress:'In Progress',completed:'Completed',open:'Open',resolved:'Resolved',closed:'Closed',active:'Active',inactive:'Inactive',select_student:'Search student by name or grade…',no_records:'No records found',acknowledge:'Acknowledge',export_excel:'Export Excel',export_pdf:'Export PDF',date_from:'From Date',date_to:'To Date',language:'Language',color_theme:'Color Theme',change_password:'Change Password',current_password:'Current Password',new_password:'New Password',confirm_password:'Confirm Password',save_profile:'Save Profile',remarks:'Remarks',action_taken:'Action Taken',infraction_type:'Infraction Type',degree:'Degree',teacher:'Teacher',period:'Period',observations:'Observations',strengths:'Strengths',improvements:'Areas for Improvement',follow_up:'Follow-up',rating:'Rating',academic_ack:'Academic Supervisor Ack',principal_ack:'Principal Ack',complaint_type:'Complaint Type',track_number:'Track No.',parent_name:'Parent Name',add_remark:'Add Remark',remark_history:'Remark History',reason:'Reason',note:'Note',live_feed:'Live Activity Feed',total_students:'Total Students',open_complaints:'Open Complaints',active_tasks:'Active Tasks',overview:'Overview',management:'Management',system:'System',academic:'Academic',my_work:'My Work',discipline:'Discipline',monitoring:'Monitoring',exam_subject:'Exam Subject',absent_date:'Absent Date',school_name:'School Name',academic_year:'Academic Year',upload_logo:'Upload Logo',logo_emoji:'Logo Emoji',live_mode:'Live Mode',event_name:'Event Name',event_date:'Event Date',days_left:'days left',upcoming_events:'Upcoming Events',add_event:'Add Event',guardian:'Guardian'},
+ar:{dashboard:'لوحة التحكم',activity_log:'سجل الأنشطة',students:'الطلاب',accounts:'حسابات الموظفين',complaints:'الشكاوى',tasks:'المهام',infractions:'المخالفات',referrals:'الإحالات',class_visits:'زيارات الفصول',notebook_checks:'فحص الكراسات',activities:'الأنشطة',early_pickup:'الانصراف المبكر',exam_absent:'غياب الاختبارات',announcements:'الإعلانات',settings:'الإعدادات',infraction_forms:'نماذج المخالفات',visit_forms:'نماذج الزيارات',behaviour:'المتابعة السلوكية',discipline_reports:'تقارير الانضباط',task_requests:'طلبات المهام',my_profile:'ملفي الشخصي',export_data:'تصدير البيانات',academic_calendar:'التقويم الأكاديمي',parent_qr:'بوابة أولياء الأمور',activity_reports:'تقارير الأنشطة',teachers:'المعلمون',teacher_reports:'عرض التقارير حسب المعلم',daily_attendance:'الحضور اليومي',student_health:'الصحة الطلابية',remedial_plans:'الخطط العلاجية',vp_reports:'التقارير إلى المدير',warning_letters:'خطابات الإنذار',teacher_achievements:'إنجازات المعلمين',reexam_schedule:'جدول الإختبارات التعويضية',sign_in:'تسجيل الدخول',sign_out:'تسجيل الخروج',save:'حفظ',cancel:'إلغاء',edit:'تعديل',delete:'حذف',view:'عرض',add:'إضافة',search:'بحث',close:'إغلاق',first_name:'الاسم الأول',last_name:'اسم العائلة',nationality:'الجنسية',father_phone:'هاتف الأب',mother_phone:'هاتف الأم',serial_no:'الرقم التسلسلي',class_sn:'رقم الفصل',username:'اسم المستخدم',password:'كلمة المرور',name:'الاسم',email:'البريد الإلكتروني',phone:'الهاتف',role:'الوظيفة',status:'الحالة',date:'التاريخ',grade:'الصف',section:'الفصل',subject:'المادة',description:'الوصف',assigned_to:'مُكلَّف إلى',assigned_by:'مُكلَّف من',due_date:'تاريخ الاستحقاق',priority:'الأولوية',pending:'معلق',in_progress:'جارٍ',completed:'مكتمل',open:'مفتوح',resolved:'محلول',closed:'مغلق',active:'نشط',inactive:'غير نشط',select_student:'ابحث عن طالب…',no_records:'لا توجد سجلات',acknowledge:'إقرار',export_excel:'تصدير Excel',export_pdf:'تصدير PDF',date_from:'من تاريخ',date_to:'إلى تاريخ',language:'اللغة',color_theme:'نظام الألوان',change_password:'تغيير كلمة المرور',current_password:'كلمة المرور الحالية',new_password:'كلمة المرور الجديدة',confirm_password:'تأكيد كلمة المرور',save_profile:'حفظ الملف الشخصي',remarks:'ملاحظات',action_taken:'الإجراء المتخذ',infraction_type:'نوع المخالفة',degree:'الدرجة',teacher:'المعلم',period:'الحصة',observations:'الملاحظات',strengths:'نقاط القوة',improvements:'مجالات التحسين',follow_up:'متابعة',rating:'التقييم',academic_ack:'إقرار المشرف الأكاديمي',principal_ack:'إقرار المدير',complaint_type:'نوع الشكوى',track_number:'رقم التتبع',parent_name:'اسم ولي الأمر',add_remark:'إضافة ملاحظة',remark_history:'سجل الملاحظات',reason:'السبب',note:'ملاحظة',live_feed:'سجل الأنشطة الحي',total_students:'إجمالي الطلاب',open_complaints:'الشكاوى المفتوحة',active_tasks:'المهام النشطة',overview:'نظرة عامة',management:'الإدارة',system:'النظام',academic:'الأكاديمي',my_work:'عملي',discipline:'الانضباط',monitoring:'المراقبة',exam_subject:'مادة الاختبار',absent_date:'تاريخ الغياب',school_name:'اسم المدرسة',academic_year:'العام الدراسي',upload_logo:'رفع الشعار',logo_emoji:'شعار رمزي',live_mode:'وضع البث المباشر',event_name:'اسم الحدث',event_date:'تاريخ الحدث',days_left:'يوم متبقي',upcoming_events:'الأحداث القادمة',add_event:'إضافة حدث',guardian:'ولي الأمر'}};
 let _lang='en';
 function T(k){return TR[_lang]?.[k]||TR.en[k]||k;}
 function setLang(l){_lang=l;document.getElementById('root').lang=l;document.getElementById('root').dir=l==='ar'?'rtl':'ltr';}
@@ -258,7 +258,7 @@ function seed(){
     {id:'s4',sn:4,csn:2,firstName:'Lina',lastName:'Al-Qahtani',grade:'11',section:'B',nationality:'Saudi',fatherPhone:'0507778899',motherPhone:'0507778898',advisorId:'u5',gender:'Female',created:'2024-01-15'},
     {id:'s5',sn:5,csn:1,firstName:'Tariq',lastName:'Al-Mutlaq',grade:'12',section:'A',nationality:'Emirati',fatherPhone:'0502223344',motherPhone:'0502223345',advisorId:'u5',gender:'Male',created:'2024-01-15'},
   ]);
-  ['complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','early_pickups','exam_absents','task_requests','discipline_reports','infraction_forms','visit_forms','activity_reports','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements'].forEach(k=>DB.set(k,[]));
+  ['complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','early_pickups','exam_absents','task_requests','discipline_reports','infraction_forms','visit_forms','activity_reports','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules'].forEach(k=>DB.set(k,[]));
   DB.set('teachers',[
     {id:'tch1',name:'Mohammed Al-Saadi',employeeId:'T-1042',subject:'Mathematics',department:'Science',phone:'0501112233',email:'m.alsaadi@school.sa',note:'Senior Math teacher',active:true,created:'2024-01-15'},
     {id:'tch2',name:'Layla Al-Najjar',employeeId:'T-1055',subject:'Arabic',department:'Languages',phone:'0502223344',email:'l.alnajjar@school.sa',note:'',active:true,created:'2024-01-15'},
@@ -272,7 +272,7 @@ function seed(){
   DB.set('sv7',true);
 }
 // Lightweight migration: ensure new collections exist for existing users
-function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);if(!DB.get('attendance'))DB.set('attendance',[]);if(!DB.get('student_health'))DB.set('student_health',[]);if(!DB.get('remedial_plans'))DB.set('remedial_plans',[]);if(!DB.get('vp_reports'))DB.set('vp_reports',[]);if(!DB.get('warning_letters'))DB.set('warning_letters',[]);if(!DB.get('teacher_achievements'))DB.set('teacher_achievements',[]);
+function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);if(!DB.get('attendance'))DB.set('attendance',[]);if(!DB.get('student_health'))DB.set('student_health',[]);if(!DB.get('remedial_plans'))DB.set('remedial_plans',[]);if(!DB.get('vp_reports'))DB.set('vp_reports',[]);if(!DB.get('warning_letters'))DB.set('warning_letters',[]);if(!DB.get('teacher_achievements'))DB.set('teacher_achievements',[]);if(!DB.get('reexam_schedules'))DB.set('reexam_schedules',[]);
   // Update school name from old default if still unchanged
   const s=DB.get('settings')||{};
   if(s.schoolName==='Al-Noor International School'){s.schoolName='UNAIZAH INTERNATIONAL SCHOOL';s.schoolNameAr='مدرسة عنيزة العالمية';s.city='Unaizah';DB.set('settings',s);}
@@ -336,15 +336,15 @@ function checkEvts(){
   document.getElementById('app').appendChild(p);setTimeout(()=>p.remove(),12000);
 }
 const NAV={
-  superadmin:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'activity_log',i:'⚡',k:'activity_log'},{s:'management'},{id:'students',i:'👨‍🎓',k:'students'},{id:'teachers',i:'👨‍🏫',k:'teachers'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'accounts',i:'👥',k:'accounts'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'tasks',i:'✅',k:'tasks'},{id:'infractions',i:'⚠️',k:'infractions'},{id:'referrals',i:'🔀',k:'referrals'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'vp_reports',i:'📋',k:'vp_reports'},{id:'warning_letters',i:'⚠️',k:'warning_letters'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'early_pickup',i:'🚗',k:'early_pickup'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'announcements',i:'📢',k:'announcements'},{s:'system'},{id:'parent_qr',i:'📱',k:'parent_qr'},{id:'academic_calendar',i:'📅',k:'academic_calendar'},{id:'settings',i:'⚙️',k:'settings'},{id:'infraction_forms',i:'📄',k:'infraction_forms'},{id:'visit_forms',i:'📋',k:'visit_forms'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
-  principal:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'activity_log',i:'⚡',k:'activity_log'},{s:'management'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'tasks',i:'✅',k:'tasks'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'infractions',i:'⚠️',k:'infractions'},{id:'referrals',i:'🔀',k:'referrals'},{id:'discipline_reports',i:'🗂️',k:'discipline_reports'},{id:'vp_reports',i:'📋',k:'vp_reports'},{id:'warning_letters',i:'⚠️',k:'warning_letters'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'early_pickup',i:'🚗',k:'early_pickup'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'announcements',i:'📢',k:'announcements'},{id:'parent_qr',i:'📱',k:'parent_qr'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
-  vice_principal:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'discipline'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'infractions',i:'⚠️',k:'infractions'},{id:'discipline_reports',i:'🗂️',k:'discipline_reports'},{id:'referrals',i:'🔀',k:'referrals'},{s:'reporting'},{id:'vp_reports',i:'📋',k:'vp_reports'},{id:'warning_letters',i:'⚠️',k:'warning_letters'},{s:'management'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests',b:'itr'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'announcements',i:'📢',k:'announcements'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
-  academic_supervisor:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'academic'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'referrals',i:'🔀',k:'referrals'},{id:'activity_reports',i:'📋',k:'activity_reports'},{s:'management'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests',b:'itr'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'announcements',i:'📢',k:'announcements'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
+  superadmin:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'activity_log',i:'⚡',k:'activity_log'},{s:'management'},{id:'students',i:'👨‍🎓',k:'students'},{id:'teachers',i:'👨‍🏫',k:'teachers'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'accounts',i:'👥',k:'accounts'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'tasks',i:'✅',k:'tasks'},{id:'infractions',i:'⚠️',k:'infractions'},{id:'referrals',i:'🔀',k:'referrals'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'vp_reports',i:'📋',k:'vp_reports'},{id:'warning_letters',i:'⚠️',k:'warning_letters'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'early_pickup',i:'🚗',k:'early_pickup'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'announcements',i:'📢',k:'announcements'},{s:'system'},{id:'parent_qr',i:'📱',k:'parent_qr'},{id:'academic_calendar',i:'📅',k:'academic_calendar'},{id:'settings',i:'⚙️',k:'settings'},{id:'infraction_forms',i:'📄',k:'infraction_forms'},{id:'visit_forms',i:'📋',k:'visit_forms'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
+  principal:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'activity_log',i:'⚡',k:'activity_log'},{s:'management'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'tasks',i:'✅',k:'tasks'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'infractions',i:'⚠️',k:'infractions'},{id:'referrals',i:'🔀',k:'referrals'},{id:'discipline_reports',i:'🗂️',k:'discipline_reports'},{id:'vp_reports',i:'📋',k:'vp_reports'},{id:'warning_letters',i:'⚠️',k:'warning_letters'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'early_pickup',i:'🚗',k:'early_pickup'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'announcements',i:'📢',k:'announcements'},{id:'parent_qr',i:'📱',k:'parent_qr'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
+  vice_principal:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'discipline'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'infractions',i:'⚠️',k:'infractions'},{id:'discipline_reports',i:'🗂️',k:'discipline_reports'},{id:'referrals',i:'🔀',k:'referrals'},{s:'reporting'},{id:'vp_reports',i:'📋',k:'vp_reports'},{id:'warning_letters',i:'⚠️',k:'warning_letters'},{s:'management'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests',b:'itr'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'announcements',i:'📢',k:'announcements'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
+  academic_supervisor:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'academic'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'referrals',i:'🔀',k:'referrals'},{id:'activity_reports',i:'📋',k:'activity_reports'},{s:'management'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests',b:'itr'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'announcements',i:'📢',k:'announcements'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
   student_advisor:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'students'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'referrals',i:'🔀',k:'referrals',b:'mref'},{id:'behaviour',i:'🧠',k:'behaviour'},{s:'my_work'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'announcements',i:'📢',k:'announcements'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
   activity_incharge:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'student_health',i:'🩺',k:'student_health'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
   quality_supervisor:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
   quality_incharge:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'monitoring'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
-  admin_assistant:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'student_health',i:'🩺',k:'student_health'},{id:'early_pickup',i:'🚗',k:'early_pickup',b:'pup'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'tasks',i:'✅',k:'tasks'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
+  admin_assistant:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'student_health',i:'🩺',k:'student_health'},{id:'early_pickup',i:'🚗',k:'early_pickup',b:'pup'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'tasks',i:'✅',k:'tasks'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
 };
 function buildNav(){
   const items=NAV[CU.role]||NAV.admin_assistant;
@@ -363,7 +363,7 @@ function navigate(page){
   }
   _page=page;document.querySelectorAll('.ni').forEach(el=>el.classList.remove('act'));const el=document.getElementById('nav-'+page);if(el)el.classList.add('act');
   document.getElementById('tbt').textContent=T(page)||page.replace(/_/g,' ');document.getElementById('tbs').textContent='';
-  const map={dashboard:rDash,activity_log:rActLog,students:rStudents,accounts:rAccounts,complaints:rComplaints,tasks:rTasks,infractions:rInfractions,referrals:rReferrals,class_visits:rClassVisits,notebook_checks:rNbChecks,activities:rActivities,early_pickup:rPickup,exam_absent:rExamAbsent,announcements:rAnnouncements,settings:rSettings,infraction_forms:rInfForms,visit_forms:rVisitForms,behaviour:rBehaviour,discipline_reports:rDiscipline,task_requests:rTaskReqs,my_profile:rProfile,export_data:rExport,academic_calendar:rCalendar,parent_qr:rQRCode,activity_reports:rActivityReports,teachers:rTeachers,teacher_reports:rTeacherReports,daily_attendance:rAttendance,student_health:rStudentHealth,remedial_plans:rRemedial,vp_reports:rVPReports,warning_letters:rWarnings,teacher_achievements:rTeacherAchievements};
+  const map={dashboard:rDash,activity_log:rActLog,students:rStudents,accounts:rAccounts,complaints:rComplaints,tasks:rTasks,infractions:rInfractions,referrals:rReferrals,class_visits:rClassVisits,notebook_checks:rNbChecks,activities:rActivities,early_pickup:rPickup,exam_absent:rExamAbsent,announcements:rAnnouncements,settings:rSettings,infraction_forms:rInfForms,visit_forms:rVisitForms,behaviour:rBehaviour,discipline_reports:rDiscipline,task_requests:rTaskReqs,my_profile:rProfile,export_data:rExport,academic_calendar:rCalendar,parent_qr:rQRCode,activity_reports:rActivityReports,teachers:rTeachers,teacher_reports:rTeacherReports,daily_attendance:rAttendance,student_health:rStudentHealth,remedial_plans:rRemedial,vp_reports:rVPReports,warning_letters:rWarnings,teacher_achievements:rTeacherAchievements,reexam_schedule:rReexam};
   if(map[page])map[page]();buildNav();
 }
 function toast(msg,type='info'){const el=document.createElement('div');el.className='toast '+type;el.innerHTML='<span>'+({success:'✅',danger:'❌',info:'ℹ️'}[type]||'ℹ️')+'</span><span>'+msg+'</span>';document.getElementById('tr').appendChild(el);setTimeout(()=>el.remove(),3500);}
@@ -2598,6 +2598,492 @@ function delAchievement(id){
 }
 
 // ═══════════════════════════════════════════════════════════
+// EARLY PICKUP QR — Generate QR encoding pickup details for guard scan
+// ═══════════════════════════════════════════════════════════
+
+function genPickupQR(p){
+  const payload={
+    type:'EARLY_PICKUP',
+    student:p.studentName,
+    grade:p.grade,
+    guardian:p.guardianName,
+    guardianPhone:p.guardianPhone,
+    reason:p.reason,
+    pickupTime:p.pickupTime,
+    status:p.status,
+    handledBy:p.handledBy||'',
+    issuedAt:p.qrIssuedAt||new Date().toISOString(),
+    ref:p.id
+  };
+  const data=JSON.stringify(payload);
+  return'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data='+encodeURIComponent(data);
+}
+
+function viewPickupQR(id){
+  const p=(DB.get('early_pickups')||[]).find(x=>x.id===id);if(!p)return;
+  if(p.status!=='Approved'&&p.status!=='Student Released'){toast('QR can only be generated for Approved or Released pickups','danger');return;}
+  if(!p.qrIssuedAt){
+    const list=DB.get('early_pickups')||[];const i=list.findIndex(x=>x.id===id);
+    if(i>=0){list[i].qrIssuedAt=new Date().toISOString();DB.set('early_pickups',list);p.qrIssuedAt=list[i].qrIssuedAt;}
+  }
+  const settings=DB.get('settings')||{};
+  const qrUrl=genPickupQR(p);
+  const lgUrl=qrUrl.replace('size=300x300','size=600x600').replace('margin=10','margin=20');
+  openM('<div class="mh"><h3>📱 Early Pickup QR Slip</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai">🔒 Show this QR to the gate guard. Scanning it will display the verified pickup details.</div>'
+  +'<div id="puqr-printable" style="background:#fff;color:#000;padding:18px;border-radius:8px;text-align:center;border:2px dashed #1a5f7a"><div style="font-size:15px;font-weight:bold;color:#1a5f7a;margin-bottom:3px">'+esc(settings.schoolName||'School')+'</div><div style="font-size:11px;color:#555;margin-bottom:14px">EARLY PICKUP AUTHORIZATION</div><img src="'+qrUrl+'" alt="Pickup QR" style="width:240px;height:240px;border:1px solid #ddd;border-radius:6px"><div style="margin-top:14px;text-align:left;font-size:12px;line-height:1.7;border-top:1px solid #eee;padding-top:11px;color:#000"><div><strong>Student:</strong> '+esc(p.studentName)+'</div><div><strong>Grade:</strong> '+esc(p.grade||'')+'</div><div><strong>Guardian:</strong> '+esc(p.guardianName)+' <span style="color:#555">('+esc(p.guardianPhone||'')+')</span></div><div><strong>Reason:</strong> '+esc(p.reason||'')+'</div><div><strong>Pickup Time:</strong> '+esc(p.pickupTime||'')+'</div><div><strong>Status:</strong> <span style="color:'+(p.status==='Student Released'?'#10a169':'#dd6b20')+';font-weight:bold">'+esc(p.status)+'</span></div>'+(p.handledBy?'<div><strong>Authorized by:</strong> '+esc(p.handledBy)+'</div>':'')+'<div style="font-size:10px;color:#888;margin-top:6px;border-top:1px dashed #ccc;padding-top:5px">Ref: '+p.id+' · Issued: '+new Date(p.qrIssuedAt).toLocaleString()+'</div></div></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="printPickupQR()">🖨️ Print Slip</button><a href="'+lgUrl+'" download="pickup_'+p.id+'.png" class="btn bp bsm" style="text-decoration:none">⬇️ Download QR</a></div>',true);
+}
+
+function printPickupQR(){
+  const node=document.getElementById('puqr-printable');if(!node)return;
+  const w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html><head><title>Pickup Slip</title><style>@page{size:A5;margin:10mm}body{font-family:Arial,sans-serif;margin:0;padding:14px}@media print{button{display:none}}</style></head><body>'+node.outerHTML+'<button onclick="window.print()" style="margin-top:14px;padding:8px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">🖨️ Print</button></body></html>');
+  w.document.close();
+  setTimeout(()=>{try{w.print();}catch(e){}},500);
+}
+
+// Patch manPu / savePu to add QR button (defer until both are defined)
+(function(){
+  const doPatch=()=>{
+    if(typeof manPu!=='function'||typeof savePu!=='function'){setTimeout(doPatch,200);return;}
+    if(window.__pickupQRPatchedV1)return;
+    window.__pickupQRPatchedV1=true;
+    const _origManPu=manPu;
+    window.manPu=function(id){
+      _origManPu(id);
+      setTimeout(()=>{
+        const p=(DB.get('early_pickups')||[]).find(x=>x.id===id);if(!p)return;
+        const mf=document.querySelector('#mr .mf');if(!mf)return;
+        if(document.getElementById('puqr-btn'))return;
+        if(p.status==='Approved'||p.status==='Student Released'){
+          const btn=document.createElement('button');
+          btn.id='puqr-btn';
+          btn.className='btn bo bsm';
+          btn.innerHTML='📱 Generate QR Slip';
+          btn.onclick=()=>{closeM();viewPickupQR(id);};
+          mf.insertBefore(btn,mf.lastChild);
+        }
+      },50);
+    };
+    const _origSavePu=savePu;
+    window.savePu=function(id){
+      _origSavePu(id);
+      setTimeout(()=>{
+        const p=(DB.get('early_pickups')||[]).find(x=>x.id===id);
+        if(p&&(p.status==='Approved'||p.status==='Student Released')&&!p.qrIssuedAt){
+          if(confirm('Pickup '+p.status+'. Generate QR slip for the gate guard now?'))viewPickupQR(id);
+        }
+      },300);
+    };
+  };
+  setTimeout(doPatch,300);
+})();
+
+// ═══════════════════════════════════════════════════════════
+// EXAM ABSENT — overhauled with three views (List / By Student / By Subject)
+// ═══════════════════════════════════════════════════════════
+
+function rExamAbsent(){
+  const abs=DB.get('exam_absents')||[];
+  const canC=['admin_assistant','superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
+  const canV=['superadmin','principal','vice_principal','academic_supervisor','student_advisor','admin_assistant','quality_incharge'].includes(CU.role);
+  if(!canV){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
+  
+  const uniqueStudents=new Set(abs.map(a=>a.studentId||a.studentName)).size;
+  const uniqueSubjects=new Set(abs.map(a=>a.subject)).size;
+  
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📵 '+T('exam_absent')+' ('+abs.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="expAbsC()">📊 CSV</button><button class="btn bg2 bsm" onclick="expAbsP()">📄 PDF</button>'+(canC?'<button class="btn bp bsm" onclick="addAbsM()">+ Add</button>':'')+'</div></div></div>'
+  +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Absences</div><div class="sv">'+abs.length+'</div><div class="sic">📵</div></div><div class="stat go"><div class="sl2">Affected Students</div><div class="sv">'+uniqueStudents+'</div><div class="sic">👥</div></div><div class="stat gn"><div class="sl2">Subjects</div><div class="sv">'+uniqueSubjects+'</div><div class="sic">📚</div></div><div class="stat rd"><div class="sl2">Multi-Subject</div><div class="sv">'+countMultiSubject(abs)+'</div><div class="sb3">2+ subjects</div><div class="sic">⚠️</div></div></div>'
+  +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap"><button id="abv-list" class="btn bp bsm" onclick="absView(\'list\')">📋 List View</button><button id="abv-stu" class="btn bg2 bsm" onclick="absView(\'student\')">👨‍🎓 Group by Student</button><button id="abv-sub" class="btn bg2 bsm" onclick="absView(\'subject\')">📚 Group by Subject</button></div></div>'
+  +'<div id="absview"></div>';
+  
+  if(!window._absMode)window._absMode='list';
+  absView(window._absMode);
+}
+
+function countMultiSubject(abs){
+  const map={};
+  abs.forEach(a=>{const k=a.studentId||a.studentName;if(!map[k])map[k]=new Set();map[k].add(a.subject);});
+  return Object.values(map).filter(s=>s.size>=2).length;
+}
+
+function absView(mode){
+  window._absMode=mode;
+  ['list','stu','sub'].forEach(k=>{const b=document.getElementById('abv-'+k);if(b)b.className=b.className.replace('bp','bg2');});
+  const activeKey=mode==='list'?'list':mode==='student'?'stu':'sub';
+  const activeBtn=document.getElementById('abv-'+activeKey);if(activeBtn)activeBtn.className=activeBtn.className.replace('bg2','bp');
+  
+  if(mode==='list')renderAbsList();
+  else if(mode==='student')renderAbsByStudent();
+  else if(mode==='subject')renderAbsBySubject();
+}
+
+function renderAbsList(){
+  const abs=DB.get('exam_absents')||[];
+  document.getElementById('absview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px"><input id="absq" placeholder="🔍 Search by student name, subject, or grade…" oninput="fltAbsList()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"></div><div id="absw">'+bAbsTbl(abs)+'</div></div>';
+  window.fltAbsList=function(){
+    const q=document.getElementById('absq').value.toLowerCase();
+    const list=q?(DB.get('exam_absents')||[]).filter(a=>(a.studentName+' '+a.subject+' '+(a.grade||'')+'-'+(a.section||'')).toLowerCase().includes(q)):(DB.get('exam_absents')||[]);
+    document.getElementById('absw').innerHTML=bAbsTbl(list);
+  };
+}
+
+function bAbsTbl(list){
+  if(!list.length)return'<div class="emp"><div class="ei">📵</div><p>'+T('no_records')+'</p></div>';
+  const isQI=CU.role==='quality_incharge';
+  return'<div class="tw"><table><thead><tr><th>Student</th><th>'+T('grade')+'</th><th>'+T('exam_subject')+'</th><th>'+T('absent_date')+'</th><th>'+T('remarks')+'</th><th>Added By</th>'+(isQI?'':'<th>Actions</th>')+'</tr></thead><tbody>'+list.slice().reverse().map(a=>'<tr><td><strong>'+esc(a.studentName)+'</strong></td><td>'+(a.grade||'')+(a.section||'')+'</td><td><span class="badge brd">'+esc(a.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(a.absentDate)+'</td><td style="font-size:11px;color:var(--tx2)">'+esc(a.remarks||'—')+'</td><td style="font-size:11px;color:var(--tx3)">'+esc(a.addedBy||'')+'</td>'+(isQI?'':'<td><button class="btn bd3 bxs" onclick="delAbs(\''+a.id+'\')">Del</button></td>')+'</td></tr>').join('')+'</tbody></table></div>';
+}
+
+function renderAbsByStudent(){
+  const abs=DB.get('exam_absents')||[];
+  const map={};
+  abs.forEach(a=>{
+    const k=a.studentId||a.studentName;
+    if(!map[k])map[k]={studentId:a.studentId,studentName:a.studentName,grade:a.grade,section:a.section,records:[]};
+    map[k].records.push(a);
+  });
+  const students=Object.values(map).sort((a,b)=>a.studentName.localeCompare(b.studentName));
+  document.getElementById('absview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px"><input id="absq2" placeholder="🔍 Search by student name…" oninput="fltAbsStu()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"></div><div style="font-size:11px;color:var(--tx3);margin-bottom:9px">📊 '+students.length+' student(s) absent. Each row shows all subjects that student missed.</div><div id="absstuw">'+buildAbsByStudentTbl(students)+'</div></div>';
+  window.fltAbsStu=function(){
+    const q=document.getElementById('absq2').value.toLowerCase();
+    const filtered=q?students.filter(s=>s.studentName.toLowerCase().includes(q)):students;
+    document.getElementById('absstuw').innerHTML=buildAbsByStudentTbl(filtered);
+  };
+}
+
+function buildAbsByStudentTbl(students){
+  if(!students.length)return'<div class="emp"><div class="ei">📵</div><p>No absences recorded</p></div>';
+  return'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Subjects Missed</th><th>Total</th><th>Latest Date</th><th>Actions</th></tr></thead><tbody>'+students.map(s=>{
+    const subjects=[...new Set(s.records.map(r=>r.subject))];
+    const latestDate=s.records.map(r=>r.absentDate||'').sort().slice(-1)[0]||'—';
+    return'<tr><td><strong>'+esc(s.studentName)+'</strong></td><td>'+(s.grade||'')+(s.section||'')+'</td><td><div style="display:flex;gap:4px;flex-wrap:wrap;max-width:380px">'+subjects.map(sj=>'<span class="badge brd">'+esc(sj)+'</span>').join('')+'</div></td><td><span class="badge bpu">'+s.records.length+' absence'+(s.records.length!==1?'s':'')+'</span></td><td class="mono" style="font-size:11px">'+esc(latestDate)+'</td><td><button class="btn bg2 bxs" onclick="vAbsByStu(\''+esc(s.studentId||'').replace(/\'/g,"\\'")+'\',\''+esc(s.studentName).replace(/\'/g,"\\'")+'\')">Details</button></td></tr>';
+  }).join('')+'</tbody></table></div>';
+}
+
+function vAbsByStu(sid,sname){
+  const abs=(DB.get('exam_absents')||[]).filter(a=>(sid&&a.studentId===sid)||a.studentName===sname);
+  if(!abs.length)return;
+  const sample=abs[0];
+  openM('<div class="mh"><h3>📵 Absences — '+esc(sname)+'</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai">📊 <strong>'+sname+'</strong> (Grade '+(sample.grade||'')+(sample.section||'')+') has <strong>'+abs.length+'</strong> exam absence(s) across <strong>'+(new Set(abs.map(a=>a.subject))).size+'</strong> subject(s).</div>'
+  +'<div class="tw"><table><thead><tr><th>Subject</th><th>Date</th><th>Remarks</th><th>Added By</th></tr></thead><tbody>'+abs.slice().sort((a,b)=>(b.absentDate||'').localeCompare(a.absentDate||'')).map(a=>'<tr><td><span class="badge brd">'+esc(a.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(a.absentDate)+'</td><td style="font-size:11px;color:var(--tx2)">'+esc(a.remarks||'—')+'</td><td style="font-size:11px;color:var(--tx3)">'+esc(a.addedBy||'')+'</td></tr>').join('')+'</tbody></table></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
+}
+
+function renderAbsBySubject(){
+  const abs=DB.get('exam_absents')||[];
+  const subjects=[...new Set(abs.map(a=>a.subject))].sort();
+  document.getElementById('absview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px"><select id="abssubj" onchange="fltAbsSub()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><option value="">— Select a subject to see all absent students —</option>'+subjects.map(s=>'<option>'+esc(s)+'</option>').join('')+'</select></div><div id="abssubw">'+buildSubjectsList(abs,subjects)+'</div></div>';
+  window.fltAbsSub=function(){
+    const sj=document.getElementById('abssubj').value;
+    if(!sj){document.getElementById('abssubw').innerHTML=buildSubjectsList(abs,subjects);return;}
+    const filtered=abs.filter(a=>a.subject===sj);
+    document.getElementById('abssubw').innerHTML=buildAbsBySubjectDetail(sj,filtered);
+  };
+}
+
+function buildSubjectsList(abs,subjects){
+  if(!subjects.length)return'<div class="emp"><div class="ei">📚</div><p>No subjects recorded</p></div>';
+  return'<div style="font-size:11px;color:var(--tx3);margin-bottom:9px">📚 '+subjects.length+' subject(s) with absences. Click below or use the dropdown.</div><div style="display:flex;gap:7px;flex-wrap:wrap">'+subjects.map(sj=>{
+    const count=abs.filter(a=>a.subject===sj).length;
+    return'<button class="btn bg2 bsm" onclick="document.getElementById(\'abssubj\').value=\''+esc(sj).replace(/\'/g,"\\'")+'\';fltAbsSub()"><strong>'+esc(sj)+'</strong> <span style="background:var(--ac);color:#fff;padding:2px 7px;border-radius:9px;margin-left:5px;font-size:10px">'+count+'</span></button>';
+  }).join('')+'</div>';
+}
+
+function buildAbsBySubjectDetail(subject,filtered){
+  if(!filtered.length)return'<div class="emp"><p>No absences for this subject</p></div>';
+  const studentMap={};
+  filtered.forEach(a=>{const k=a.studentId||a.studentName;if(!studentMap[k])studentMap[k]={...a,dates:[]};studentMap[k].dates.push(a.absentDate);});
+  const studentRows=Object.values(studentMap);
+  return'<div class="al aw" style="margin-bottom:12px"><strong>📚 '+esc(subject)+':</strong> '+studentRows.length+' student(s) absent · '+filtered.length+' record(s)</div>'
+  +'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Date(s) Absent</th><th>Remarks</th></tr></thead><tbody>'+studentRows.map(s=>{
+    const recs=filtered.filter(a=>(a.studentId&&a.studentId===s.studentId)||a.studentName===s.studentName);
+    return'<tr><td><strong>'+esc(s.studentName)+'</strong></td><td>'+(s.grade||'')+(s.section||'')+'</td><td>'+recs.map(r=>'<span class="mono" style="font-size:11px;display:inline-block;background:var(--sf2);padding:2px 7px;border-radius:6px;margin:1px">'+esc(r.absentDate)+'</span>').join('')+'</td><td style="font-size:11px;color:var(--tx2)">'+recs.map(r=>esc(r.remarks||'—')).filter(r=>r!=='—').join('; ')+'</td></tr>';
+  }).join('')+'</tbody></table></div>';
+}
+
+// ═══════════════════════════════════════════════════════════
+// RE-EXAM SCHEDULE — One schedule per student listing all subjects
+// they were absent in, with a re-exam date/time per subject.
+// Shareable as PDF with the parent (one student, one PDF).
+// ═══════════════════════════════════════════════════════════
+
+function rReexam(){
+  const canEdit=['academic_supervisor','admin_assistant','superadmin'].includes(CU.role);
+  const canShare=['admin_assistant','superadmin','principal','academic_supervisor'].includes(CU.role);
+  const canView=canEdit||['principal','vice_principal','student_advisor'].includes(CU.role);
+  if(!canView){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
+  
+  const list=DB.get('reexam_schedules')||[];
+  
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📝 '+T('reexam_schedule')+' ('+list.length+')</h3>'+(canEdit?'<button class="btn bp bsm" onclick="addReexamM()">+ New Schedule for Student</button>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Build a personalized re-exam schedule for each absent student listing every subject they missed and the new exam date for each.</div></div>'
+  
+  // View tabs: List | By Date
+  +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap"><button id="rxv-list" class="btn bp bsm" onclick="reexView(\'list\')">📋 All Schedules</button><button id="rxv-date" class="btn bg2 bsm" onclick="reexView(\'date\')">📅 By Exam Date</button></div></div>'
+  +'<div id="rexview"></div>';
+  
+  if(!window._rexMode)window._rexMode='list';
+  reexView(window._rexMode);
+}
+
+function reexView(mode){
+  window._rexMode=mode;
+  ['list','date'].forEach(k=>{const b=document.getElementById('rxv-'+k);if(b)b.className=b.className.replace('bp','bg2');});
+  const a=document.getElementById('rxv-'+mode);if(a)a.className=a.className.replace('bg2','bp');
+  if(mode==='list')renderRexList();
+  else renderRexByDate();
+}
+
+function renderRexList(){
+  const list=DB.get('reexam_schedules')||[];
+  const canEdit=['academic_supervisor','admin_assistant','superadmin'].includes(CU.role);
+  const canShare=['admin_assistant','superadmin','principal','academic_supervisor'].includes(CU.role);
+  document.getElementById('rexview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px"><input id="rexq" placeholder="🔍 Search by student name…" oninput="fltRexList()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"></div><div id="rexlistw">'+buildRexList(list,canEdit,canShare)+'</div></div>';
+  window.fltRexList=function(){
+    const q=document.getElementById('rexq').value.toLowerCase();
+    const filtered=q?list.filter(r=>r.studentName.toLowerCase().includes(q)):list;
+    document.getElementById('rexlistw').innerHTML=buildRexList(filtered,canEdit,canShare);
+  };
+}
+
+function buildRexList(list,canEdit,canShare){
+  if(!list.length)return'<div class="emp"><div class="ei">📝</div><p>No re-exam schedules created yet</p></div>';
+  return'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Subjects</th><th>Earliest Date</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>'+list.slice().reverse().map(r=>{
+    const subjs=(r.subjects||[]);
+    const dates=subjs.map(s=>s.examDate||'').filter(d=>d).sort();
+    const earliest=dates[0]||'—';
+    return'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><div style="display:flex;gap:3px;flex-wrap:wrap">'+subjs.map(s=>'<span class="badge brd" title="'+esc(s.examDate||'no date')+'">'+esc(s.subject)+'</span>').join('')+' <span style="color:var(--tx3);font-size:10px">('+subjs.length+')</span></div></td><td class="mono" style="font-size:11px">'+esc(earliest)+'</td><td><span class="badge '+(r.status==='Completed'?'bgn':r.status==='In Progress'?'bbl':'bgo')+'">'+(r.status||'Scheduled')+'</span></td><td style="font-size:10px;color:var(--tx3)">'+(r.created||'').split('T')[0]+'<br>'+esc(r.createdByName||'—')+'</td><td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn bg2 bxs" onclick="vReexam(\''+r.id+'\')">View</button><button class="btn bg2 bxs" onclick="expReexamPDF(\''+r.id+'\')">📄</button>'+(canShare?'<button class="btn bp bxs" onclick="shareReexamWA(\''+r.id+'\')">📱 WA</button>':'')+(canEdit?'<button class="btn bp bxs" onclick="editReexamM(\''+r.id+'\')">Edit</button><button class="btn bd3 bxs" onclick="delReexam(\''+r.id+'\')">Del</button>':'')+'</td></tr>';
+  }).join('')+'</tbody></table></div>';
+}
+
+function renderRexByDate(){
+  const list=DB.get('reexam_schedules')||[];
+  // Build flat list: each row = one student + one subject + one date
+  const rows=[];
+  list.forEach(r=>{(r.subjects||[]).forEach(s=>{
+    if(s.examDate)rows.push({scheduleId:r.id,studentName:r.studentName,grade:r.grade,section:r.section,subject:s.subject,examDate:s.examDate,startTime:s.startTime,endTime:s.endTime,venue:s.venue,invigilator:s.invigilator,status:r.status});
+  });});
+  // Get all unique dates
+  const allDates=[...new Set(rows.map(r=>r.examDate))].sort();
+  document.getElementById('rexview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap"><label style="font-size:12px;font-weight:600">📅 Pick exam date:</label><input type="date" id="rexdate" onchange="fltRexDate()" value="'+(allDates[0]||'')+'" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'+(allDates.length?'<span style="font-size:11px;color:var(--tx3)">('+allDates.length+' date(s) with scheduled exams)</span>':'')+'</div>'
+  +(allDates.length?'<div style="margin-bottom:11px"><div style="font-size:11px;color:var(--tx3);margin-bottom:5px">Quick pick:</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+allDates.map(d=>{const c=rows.filter(r=>r.examDate===d).length;return'<button class="btn bg2 bxs" onclick="document.getElementById(\'rexdate\').value=\''+d+'\';fltRexDate()">'+d+' <span style="background:var(--ac);color:#fff;padding:1px 6px;border-radius:8px;margin-left:4px">'+c+'</span></button>';}).join('')+'</div></div>':'')
+  +'<div id="rexdatew">'+buildRexByDateTbl(rows,allDates[0]||'')+'</div></div>';
+  window.fltRexDate=function(){
+    const d=document.getElementById('rexdate').value;
+    document.getElementById('rexdatew').innerHTML=buildRexByDateTbl(rows,d);
+  };
+}
+
+function buildRexByDateTbl(rows,date){
+  if(!date)return'<div class="emp"><p style="font-size:12px">Select a date above</p></div>';
+  const filtered=rows.filter(r=>r.examDate===date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
+  if(!filtered.length)return'<div class="emp"><p style="font-size:12px">No re-exams scheduled on '+esc(date)+'</p></div>';
+  return'<div class="al aw" style="margin-bottom:11px"><strong>📅 '+esc(date)+':</strong> '+filtered.length+' student-subject combination(s) scheduled</div>'
+  +'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Subject</th><th>Time</th><th>Venue</th><th>Invigilator</th><th>Action</th></tr></thead><tbody>'+filtered.map(r=>'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><span class="badge brd">'+esc(r.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(r.startTime||'—')+(r.endTime?' - '+esc(r.endTime):'')+'</td><td style="font-size:11px">'+esc(r.venue||'—')+'</td><td style="font-size:11px">'+esc(r.invigilator||'—')+'</td><td><button class="btn bg2 bxs" onclick="vReexam(\''+r.scheduleId+'\')">View</button></td></tr>').join('')+'</tbody></table></div>';
+}
+
+// ─── Add / Edit form ─────────────────────────────────────────
+
+function addReexamM(){
+  // Build map of absent students with their subjects
+  const abs=DB.get('exam_absents')||[];
+  if(!abs.length){toast('No exam absences recorded yet — record absences first','danger');return;}
+  // Find existing schedules to avoid duplicates? Just allow — supervisor can always edit.
+  window._rexEdit={isNew:true,subjects:[]};
+  renderReexamForm();
+}
+
+function editReexamM(id){
+  const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
+  window._rexEdit={isNew:false,id,...JSON.parse(JSON.stringify(r))};
+  renderReexamForm();
+}
+
+function renderReexamForm(){
+  const data=window._rexEdit;
+  // Build list of students with absences
+  const abs=DB.get('exam_absents')||[];
+  const stuMap={};
+  abs.forEach(a=>{
+    const k=a.studentId||a.studentName;
+    if(!stuMap[k])stuMap[k]={studentId:a.studentId,studentName:a.studentName,grade:a.grade,section:a.section,subjects:{}};
+    if(!stuMap[k].subjects[a.subject])stuMap[k].subjects[a.subject]={subject:a.subject,absentDates:[]};
+    stuMap[k].subjects[a.subject].absentDates.push(a.absentDate);
+  });
+  const absentStudents=Object.values(stuMap).sort((a,b)=>a.studentName.localeCompare(b.studentName));
+  
+  // For the chosen student, build the subjects list
+  const chosenStu=data.studentName?absentStudents.find(s=>(data.studentId&&s.studentId===data.studentId)||s.studentName===data.studentName):null;
+  const stuSubjects=chosenStu?Object.values(chosenStu.subjects):[];
+  
+  // Map existing chosen subjects to data.subjects rows (to preserve dates already set)
+  const existingMap={};(data.subjects||[]).forEach(s=>{existingMap[s.subject]=s;});
+  
+  openM('<div class="mh"><h3>📝 '+(data.isNew?'New':'Edit')+' Re-exam Schedule</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai">📋 Pick an absent student. The form will load every subject they were absent in. For each subject, set a re-exam date, time, and venue.</div>'
+  
+  // Step 1: Student picker (autocomplete from absent students only)
+  +'<div style="background:var(--sf2);border-radius:var(--r);padding:12px;margin-bottom:12px;border-left:4px solid var(--ac)"><div style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:7px">Step 1 · Select Absent Student</div>'
+  +(data.isNew?'<div class="fg" style="margin-bottom:0"><label>Student * <span style="font-weight:400;color:var(--tx3);font-size:10px">(only students with recorded absences)</span></label><div style="position:relative"><input id="rex-stu-i" value="'+esc(data.studentName||'')+'" placeholder="🔍 Type student name…" autocomplete="off" oninput="rexStuSearch(this.value)" onblur="setTimeout(()=>{const d=document.getElementById(\'rex-stu-d\');if(d)d.style.display=\'none\'},250)" style="width:100%;padding:9px 11px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><div id="rex-stu-d" class="sd"></div></div>'+(chosenStu?'<div class="al ag" style="margin-top:8px;margin-bottom:0;padding:7px 10px">✓ <strong>'+esc(chosenStu.studentName)+'</strong> — Grade '+esc(chosenStu.grade||'')+esc(chosenStu.section||'')+' · '+stuSubjects.length+' subject(s) absent</div>':'')+'</div>':'<div class="al ag" style="margin-bottom:0;padding:7px 10px">Editing schedule for: <strong>'+esc(data.studentName)+'</strong> — Grade '+esc(data.grade||'')+esc(data.section||'')+'</div>')
+  +'</div>'
+  
+  // Step 2: Per-subject re-exam date/time
+  +'<div style="background:var(--sf2);border-radius:var(--r);padding:12px;margin-bottom:12px;border-left:4px solid var(--gd)"><div style="font-size:11px;font-weight:700;color:var(--gd);text-transform:uppercase;margin-bottom:9px">Step 2 · Set Re-exam Date for Each Subject</div>'
+  +(chosenStu||(!data.isNew&&data.subjects&&data.subjects.length)?(()=>{
+    // Use data.subjects if editing, or chosen student's subjects if creating
+    const subjects=data.isNew?stuSubjects:(data.subjects||[]);
+    if(!subjects.length)return'<div style="font-size:11px;color:var(--tx3);padding:9px;text-align:center">No subjects to schedule</div>';
+    return subjects.map((s,idx)=>{
+      const existing=existingMap[s.subject]||s;
+      const absentDates=s.absentDates||(existing.absentDates||[]);
+      return'<div style="background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:5px"><div><strong style="color:var(--ac);font-size:13px">📚 '+esc(s.subject)+'</strong> '+(absentDates.length?'<span style="font-size:10px;color:var(--tx3)">(was absent: '+absentDates.map(d=>esc(d)).join(', ')+')</span>':'')+'</div></div><div class="fr f3" style="margin-bottom:8px"><div class="fg" style="margin-bottom:0"><label>Re-exam Date *</label><input type="date" data-rex-subject="'+esc(s.subject)+'" data-rex-field="examDate" value="'+esc(existing.examDate||'')+'" oninput="updRexSubField(this)"></div><div class="fg" style="margin-bottom:0"><label>Start</label><input type="time" data-rex-subject="'+esc(s.subject)+'" data-rex-field="startTime" value="'+esc(existing.startTime||'')+'" oninput="updRexSubField(this)"></div><div class="fg" style="margin-bottom:0"><label>End</label><input type="time" data-rex-subject="'+esc(s.subject)+'" data-rex-field="endTime" value="'+esc(existing.endTime||'')+'" oninput="updRexSubField(this)"></div></div><div class="fr f2"><div class="fg" style="margin-bottom:0"><label>Venue</label><input data-rex-subject="'+esc(s.subject)+'" data-rex-field="venue" value="'+esc(existing.venue||'')+'" placeholder="e.g. Hall 2, Room 10A" oninput="updRexSubField(this)"></div><div class="fg" style="margin-bottom:0"><label>Invigilator</label><input data-rex-subject="'+esc(s.subject)+'" data-rex-field="invigilator" value="'+esc(existing.invigilator||'')+'" placeholder="Teacher name" oninput="updRexSubField(this)"></div></div></div>';
+    }).join('');
+  })():'<div style="font-size:11px;color:var(--tx3);text-align:center;padding:9px">⬆️ Pick a student first to see their subjects.</div>')
+  +'</div>'
+  
+  // Status + Notes
+  +'<div class="fr f2"><div class="fg"><label>Overall Status</label><select id="rex-status"><option '+(data.status==='Scheduled'||!data.status?'selected':'')+'>Scheduled</option><option '+(data.status==='In Progress'?'selected':'')+'>In Progress</option><option '+(data.status==='Completed'?'selected':'')+'>Completed</option><option '+(data.status==='Postponed'?'selected':'')+'>Postponed</option></select></div><div class="fg"><label>General Notes</label><input id="rex-notes" value="'+esc(data.notes||'')+'" placeholder="Bring calculators, ID card…"></div></div>'
+  
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveReexam()">💾 '+(data.isNew?'Create Schedule':'Save Changes')+' →</button></div>',true);
+  
+  // Build absent students lookup for autocomplete
+  window._rexAbsentStudents=absentStudents;
+}
+
+function rexStuSearch(q){
+  const d=document.getElementById('rex-stu-d');if(!d)return;
+  if(!q.trim()){d.style.display='none';return;}
+  const ql=q.toLowerCase();
+  const found=(window._rexAbsentStudents||[]).filter(s=>s.studentName.toLowerCase().includes(ql)).slice(0,8);
+  if(!found.length){d.style.display='block';d.innerHTML='<div style="padding:9px 12px;font-size:11px;color:var(--tx3)">No student found with that name (in absence records).</div>';return;}
+  d.style.display='block';
+  d.innerHTML=found.map(s=>{
+    const subjCount=Object.keys(s.subjects).length;
+    return'<div class="sdi" onmousedown="pickRexStu(\''+esc(s.studentId||'').replace(/\'/g,"\\'")+'\',\''+esc(s.studentName).replace(/\'/g,"\\'")+'\')"><strong>'+esc(s.studentName)+'</strong> <span style="color:var(--tx3);font-size:10px">Gr '+esc(s.grade||'')+esc(s.section||'')+' · '+subjCount+' subject'+(subjCount!==1?'s':'')+'</span></div>';
+  }).join('');
+}
+
+function pickRexStu(sid,sname){
+  const stu=(window._rexAbsentStudents||[]).find(s=>(sid&&s.studentId===sid)||s.studentName===sname);
+  if(!stu)return;
+  window._rexEdit.studentId=stu.studentId;
+  window._rexEdit.studentName=stu.studentName;
+  window._rexEdit.grade=stu.grade;
+  window._rexEdit.section=stu.section;
+  // Initialize subjects array from absences (preserve any already-saved dates)
+  const existingMap={};(window._rexEdit.subjects||[]).forEach(s=>{existingMap[s.subject]=s;});
+  window._rexEdit.subjects=Object.values(stu.subjects).map(s=>{
+    return existingMap[s.subject]||{subject:s.subject,examDate:'',startTime:'',endTime:'',venue:'',invigilator:'',absentDates:s.absentDates};
+  });
+  renderReexamForm();
+}
+
+function updRexSubField(el){
+  const subj=el.dataset.rexSubject,field=el.dataset.rexField,val=el.value;
+  const data=window._rexEdit;
+  if(!data.subjects)data.subjects=[];
+  let row=data.subjects.find(s=>s.subject===subj);
+  if(!row){row={subject:subj,examDate:'',startTime:'',endTime:'',venue:'',invigilator:''};data.subjects.push(row);}
+  row[field]=val;
+}
+
+function saveReexam(){
+  const data=window._rexEdit;
+  if(!data.studentName){toast('Pick a student first','danger');return;}
+  if(!data.subjects||!data.subjects.length){toast('No subjects to schedule','danger');return;}
+  // Require at least one subject to have an exam date
+  const withDates=data.subjects.filter(s=>s.examDate);
+  if(!withDates.length){toast('Set a re-exam date for at least one subject','danger');return;}
+  data.status=document.getElementById('rex-status').value;
+  data.notes=document.getElementById('rex-notes').value.trim();
+  
+  const list=DB.get('reexam_schedules')||[];
+  if(data.isNew){
+    list.push({id:nid('rex'),studentId:data.studentId||null,studentName:data.studentName,grade:data.grade||'',section:data.section||'',subjects:data.subjects,status:data.status,notes:data.notes,createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,created:new Date().toISOString()});
+    logA('Created re-exam schedule for '+data.studentName+' ('+data.subjects.length+' subjects)');
+    toast('Re-exam schedule created','success');
+  }else{
+    const i=list.findIndex(r=>r.id===data.id);if(i>=0){list[i]={...list[i],studentName:data.studentName,grade:data.grade,section:data.section,subjects:data.subjects,status:data.status,notes:data.notes,updated:new Date().toISOString()};
+    logA('Updated re-exam schedule for '+data.studentName);toast('Updated','success');}
+  }
+  DB.set('reexam_schedules',list);closeM();rReexam();
+}
+
+function vReexam(id){
+  const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
+  const canEdit=['academic_supervisor','admin_assistant','superadmin'].includes(CU.role);
+  const canShare=['admin_assistant','superadmin','principal','academic_supervisor'].includes(CU.role);
+  openM('<div class="mh"><h3>📝 Re-exam Schedule</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap"><span class="badge bpu">'+(r.subjects||[]).length+' subject(s)</span><span class="badge '+(r.status==='Completed'?'bgn':r.status==='In Progress'?'bbl':'bgo')+'">'+(r.status||'Scheduled')+'</span></div>'
+  +'<h2 style="font-size:17px;color:var(--tx);margin-bottom:5px">'+esc(r.studentName)+'</h2>'
+  +'<div style="font-size:12px;color:var(--tx3);margin-bottom:13px">Grade '+esc(r.grade||'')+esc(r.section||'')+'</div>'
+  +'<div class="fg"><label>📅 Re-exam Schedule by Subject</label><div class="tw"><table style="font-size:12px"><thead><tr><th>Subject</th><th>Date</th><th>Time</th><th>Venue</th><th>Invigilator</th></tr></thead><tbody>'+(r.subjects||[]).map(s=>'<tr><td><span class="badge brd">'+esc(s.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(s.examDate||'—')+'</td><td class="mono" style="font-size:11px">'+esc(s.startTime||'—')+(s.endTime?' - '+esc(s.endTime):'')+'</td><td style="font-size:11px">'+esc(s.venue||'—')+'</td><td style="font-size:11px">'+esc(s.invigilator||'—')+'</td></tr>').join('')+'</tbody></table></div></div>'
+  +(r.notes?'<div class="al aw" style="margin-bottom:0"><strong>📝 Notes:</strong> '+esc(r.notes)+'</div>':'')
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:11px;padding-top:9px;border-top:1px solid var(--bd)">Created by <strong>'+esc(r.createdByName||'—')+'</strong> on '+(r.created||'').split('T')[0]+'</div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expReexamPDF(\''+r.id+'\')">📄 Export PDF</button>'+(canShare?'<button class="btn bp bsm" onclick="shareReexamWA(\''+r.id+'\')">📱 Share WhatsApp</button>':'')+(canEdit?'<button class="btn bp bsm" onclick="editReexamM(\''+r.id+'\')">'+T('edit')+'</button>':'')+'</div>',true);
+}
+
+function delReexam(id){
+  if(!confirm('Delete this re-exam schedule?'))return;
+  DB.set('reexam_schedules',(DB.get('reexam_schedules')||[]).filter(r=>r.id!==id));
+  logA('Deleted re-exam schedule');toast('Deleted','danger');rReexam();
+}
+
+function expReexamPDF(id){
+  const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
+  const settings=DB.get('settings')||{};
+  const win=window.open('','_blank');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Re-exam Schedule — '+r.studentName+'</title><style>@page{size:A4;margin:18mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:12px;line-height:1.5;max-width:170mm}.hdr{text-align:center;border-bottom:3px solid #1a5f7a;padding-bottom:12px;margin-bottom:18px}.hdr h1{font-size:18px;margin:0 0 4px;color:#1a5f7a}.hdr p{margin:2px 0;font-size:11px;color:#555}.title{font-size:18px;color:#a52424;text-align:center;margin:14px 0;font-weight:bold;background:#fce0e0;padding:9px;border-radius:6px}.stuinfo{background:#f0f4f8;border-radius:8px;padding:13px 18px;margin-bottom:14px;font-size:13px;text-align:center}.stuinfo strong{font-size:16px;color:#1a5f7a}table{width:100%;border-collapse:collapse;margin-top:6px;font-size:11px}td,th{padding:8px 9px;border:1px solid #ddd;text-align:left}th{background:#1a5f7a;color:#fff;font-size:10px;text-transform:uppercase}.notes{background:#fdf3dc;padding:10px;border-radius:5px;margin-top:14px;font-size:11px;color:#7a4d00;font-style:italic}.parent-msg{background:#e4ecfb;border-radius:8px;padding:13px 16px;font-size:11px;line-height:1.6;color:#1a3a5c;margin-top:18px}.footer{margin-top:24px;padding-top:9px;border-top:1px solid #ddd;font-size:9px;color:#888;text-align:center}@media print{button{display:none}}</style></head><body><div class="hdr"><h1>'+(settings.schoolName||'School')+'</h1>'+(settings.schoolNameAr?'<p style="direction:rtl">'+settings.schoolNameAr+'</p>':'')+'<p>Re-exam Schedule — Parent Notification</p></div><div class="title">📝 RE-EXAM SCHEDULE</div><div class="stuinfo"><strong>'+r.studentName+'</strong><br>Grade '+(r.grade||'')+(r.section||'')+'</div><table><thead><tr><th>Subject</th><th>Re-exam Date</th><th>Time</th><th>Venue</th><th>Invigilator</th></tr></thead><tbody>'+(r.subjects||[]).map(s=>'<tr><td><strong>'+s.subject+'</strong></td><td>'+(s.examDate||'—')+'</td><td>'+(s.startTime||'—')+(s.endTime?' to '+s.endTime:'')+'</td><td>'+(s.venue||'—')+'</td><td>'+(s.invigilator||'—')+'</td></tr>').join('')+'</tbody></table>'+(r.notes?'<div class="notes"><strong>📝 Notes:</strong> '+r.notes+'</div>':'')+'<div class="parent-msg">Dear Parent,<br><br>Your child '+r.studentName+' missed scheduled exams. The school has arranged the above re-exam schedule. Please ensure your child attends each subject\'s re-exam at the date, time, and venue listed.<br><br>For questions, please contact the school office.<br><br>Thank you for your cooperation.</div><div class="footer">Generated from '+(settings.schoolName||'School')+' on '+new Date().toLocaleString()+(r.createdByName?' · Created by '+r.createdByName:'')+'</div><button onclick="window.print()" style="margin-top:14px;padding:8px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">🖨️ Print / Save as PDF</button></body></html>');
+  win.document.close();
+  setTimeout(()=>{try{win.print();}catch(e){}},800);
+  toast('Re-exam PDF generated','success');
+}
+
+function shareReexamWA(id){
+  const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
+  // Look up the student in master list to find phone numbers
+  const stu=r.studentId?(DB.get('students')||[]).find(s=>s.id===r.studentId):null;
+  const fp=stu?stu.fatherPhone:'';
+  const mp=stu?stu.motherPhone:'';
+  
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.id='rex-share-modal';
+  let html='<div style="background:var(--sf);border:1px solid var(--bd);border-radius:14px;width:100%;max-width:480px;box-shadow:var(--shl)"><div class="mh"><h3>📱 Share Re-exam Schedule</h3><button class="mc" onclick="document.getElementById(\'rex-share-modal\').remove()">×</button></div><div class="mb2">';
+  html+='<div class="al ai">Share '+esc(r.studentName)+'\'s re-exam schedule with their parent. The PDF contains the full per-subject schedule.</div>';
+  if(fp||mp){
+    html+='<div style="display:flex;flex-direction:column;gap:7px">';
+    if(fp)html+='<button class="btn bg2" style="justify-content:flex-start;padding:11px" onclick="shareReexamGo(\''+r.id+'\',\''+fp+'\',\'Father\')">📱 Father ('+fp+')</button>';
+    if(mp)html+='<button class="btn bg2" style="justify-content:flex-start;padding:11px" onclick="shareReexamGo(\''+r.id+'\',\''+mp+'\',\'Mother\')">📱 Mother ('+mp+')</button>';
+    html+='<button class="btn bg2" style="justify-content:flex-start;padding:11px" onclick="shareReexamGo(\''+r.id+'\',\'\',\'Other\')">📱 Other (enter manually)</button>';
+    html+='</div>';
+  }else{
+    html+='<div class="al aw">No phone numbers on file for this student. Enter manually below.</div><button class="btn bp" onclick="shareReexamGo(\''+r.id+'\',\'\',\'Recipient\')">📱 Open WhatsApp Share</button>';
+  }
+  html+='</div><div class="mf"><button class="btn bg2" onclick="document.getElementById(\'rex-share-modal\').remove()">'+T('close')+'</button></div></div>';
+  overlay.innerHTML=html;
+  document.body.appendChild(overlay);
+}
+
+function shareReexamGo(id,phone,parent){
+  const m=document.getElementById('rex-share-modal');if(m)m.remove();
+  const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
+  const s=DB.get('settings')||{};
+  const subjList=(r.subjects||[]).map(sb=>'• '+sb.subject+(sb.examDate?' — '+sb.examDate:'')+(sb.startTime?' at '+sb.startTime:'')+(sb.venue?' ('+sb.venue+')':'')).join('\n');
+  const msg='Dear Parent / السلام عليكم،\n\n'+(s.schoolName||'The school')+' has arranged a re-exam schedule for your child '+r.studentName+' (Grade '+(r.grade||'')+(r.section||'')+'):\n\n'+subjList+'\n\nFull PDF schedule is attached. Please ensure your child attends each subject on the listed date and time.\n\nFor questions, contact the school office.\n\n— '+(s.schoolName||'School');
+  if(typeof waShareModal==='function'){
+    waShareModal({phone,name:parent+' of '+r.studentName,message:msg,pdfFn:()=>expReexamPDF(id),context:'re-exam schedule ('+r.studentName+')'});
+  }else{
+    expReexamPDF(id);
+    setTimeout(()=>{
+      const cleanPh=phone?cleanPhone(phone):'';
+      window.open('https://wa.me/'+cleanPh+'?text='+encodeURIComponent(msg),'_blank');
+    },500);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // FIREBASE SYNC LAYER
 // Wraps DB.set() to push to Firebase Realtime Database.
 // Subscribes to all collection changes for live multi-device sync.
@@ -2610,7 +3096,7 @@ const SYNC_KEYS = [
   'referrals','class_visits','notebook_checks','activities','activity_reports',
   'early_pickups','announcements','discipline_reports','activity_log','infraction_forms',
   'visit_forms','task_requests','exam_absents','academic_calendar','attendance',
-  'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements'
+  'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules'
 ];
 
 // Pages that should auto-refresh when their data changes from another device
@@ -2624,7 +3110,8 @@ const AUTO_REFRESH_MAP = {
   task_requests: ['rTaskReqs'], exam_absents: ['rExamAbsent'], academic_calendar: ['rCalendar'],
   attendance: ['rAttendance'], student_health: ['rStudentHealth'], remedial_plans: ['rRemedial'],
   vp_reports: ['rVPReports'], warning_letters: ['rWarnings'],
-  teacher_achievements: ['rTeacherAchievements'], settings: ['rSettings']
+  teacher_achievements: ['rTeacherAchievements'], settings: ['rSettings'],
+  reexam_schedules: ['rReexam']
 };
 
 let SYNC_ENABLED = false;
@@ -2819,9 +3306,9 @@ function saveSettings(){const s=DB.get('settings')||{};Object.assign(s,{schoolNa
 function prevLogo(){const file=document.getElementById('logof').files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{document.getElementById('logoprev').innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:contain">';};reader.readAsDataURL(file);}
 function saveLogo(){const file=document.getElementById('logof').files[0],emoji=document.getElementById('logoem').value;if(file){const reader=new FileReader();reader.onload=e=>{const s=DB.get('settings')||{};s.logo=e.target.result;DB.set('settings',s);applyBrand(s);logA('Updated school logo (image)');toast('Logo saved','success');};reader.readAsDataURL(file);}else if(emoji){const s=DB.get('settings')||{};s.logo=emoji;DB.set('settings',s);applyBrand(s);logA('Updated school logo: '+emoji);toast('Logo saved','success');}}
 function setLiveMode(val){toast('Live Mode is no longer needed — demo panel has been permanently removed for production.','info');}
-function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
+function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
 function impAllM(){openM('<div class="mh"><h3>📤 Restore Backup</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ad">⚠️ This will overwrite ALL data. Export a backup first!</div><div class="fg"><label>Backup JSON File</label><input type="file" id="impjf" accept=".json"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bd3" onclick="procRestore()">Restore →</button></div>');window.procRestore=function(){const file=document.getElementById('impjf').files[0];if(!file){toast('Select file','danger');return;}const reader=new FileReader();reader.onload=e=>{try{const data=JSON.parse(e.target.result);Object.entries(data).forEach(([k,v])=>{if(k!=='exportedAt')DB.set(k,v);});closeM();toast('Data restored!','success');setTimeout(()=>{applyBrand(DB.get('settings')||{});navigate('dashboard');},500);}catch{toast('Invalid backup file','danger');}};reader.readAsText(file);};}
-function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
+function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
 function rInfForms(){const forms=DB.get('infraction_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>⚠️ '+T('infraction_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'infraction_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'infraction_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'infraction_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📄</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function rVisitForms(){const forms=DB.get('visit_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>📝 '+T('visit_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'visit_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'visit_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'visit_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📋</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function upFormM(k){openM('<div class="mh"><h3>📤 Upload Form</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Form Name *</label><input id="ufn"></div><div class="fg"><label>File *</label><input type="file" id="uff" accept=".pdf,.jpg,.png,.docx"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveForm(\''+k+'\')">Upload →</button></div>');}
