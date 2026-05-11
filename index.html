@@ -4626,6 +4626,8 @@ function rDutyRoster(){
 }
 
 function rdShiftDate(delta){
+  // Clear working roster — we're moving to a different date
+  delete window._workingRoster;
   const d=new Date(window._rosterDate+'T00:00:00');
   d.setDate(d.getDate()+delta);
   window._rosterDate=d.toISOString().split('T')[0];
@@ -4634,12 +4636,14 @@ function rdShiftDate(delta){
 }
 
 function rdToday(){
+  delete window._workingRoster;
   window._rosterDate=new Date().toISOString().split('T')[0];
   document.getElementById('rd-date').value=window._rosterDate;
   rdRender();
 }
 
 function onRosterDateChange(){
+  delete window._workingRoster;
   window._rosterDate=document.getElementById('rd-date').value;
   rdRender();
 }
@@ -4651,13 +4655,29 @@ function rdRender(){
   const canEdit=['admin_assistant','superadmin'].includes(CU.role);
   const settings=DB.get('settings')||{};
   
-  let roster=getRosterForDate(date);
-  if(!roster){
-    roster={date,day,slots:{},classDuties:[]};
-    DUTY_SLOTS.forEach(s=>{if(!s.isClassDuty){roster.slots[s.id]={};s.spots.forEach(sp=>roster.slots[s.id][sp]=[]);}});
+  // CRITICAL: Use the in-memory working roster if it's already initialized for this date.
+  // Otherwise load from DB. This prevents losing in-progress edits when re-rendering
+  // (e.g., when adding a teacher and the UI re-renders before save).
+  let roster;
+  if(window._workingRoster&&window._workingRoster.date===date){
+    roster=window._workingRoster;
+  }else{
+    roster=getRosterForDate(date);
+    if(!roster){
+      roster={date,day,slots:{},classDuties:[]};
+      DUTY_SLOTS.forEach(s=>{if(!s.isClassDuty){roster.slots[s.id]={};s.spots.forEach(sp=>roster.slots[s.id][sp]=[]);}});
+    }else{
+      // Make sure all expected slots/spots exist (defensive — older rosters may be missing newer spots)
+      if(!roster.slots)roster.slots={};
+      DUTY_SLOTS.forEach(s=>{if(!s.isClassDuty){if(!roster.slots[s.id])roster.slots[s.id]={};s.spots.forEach(sp=>{if(!roster.slots[s.id][sp])roster.slots[s.id][sp]=[];});}});
+      if(!roster.classDuties)roster.classDuties=[];
+    }
+    // Set this as the working copy
+    window._workingRoster=JSON.parse(JSON.stringify(roster));
+    roster=window._workingRoster;
   }
   
-  let html='<div class="card" style="margin-bottom:13px;text-align:center;padding:16px;background:linear-gradient(135deg,var(--ac2),var(--sf2))"><div style="font-size:14px;font-weight:600;color:var(--tx)">'+esc(settings.schoolName||'School')+'</div><div style="font-size:18px;font-weight:bold;color:var(--ac);margin-top:5px">DAILY DUTY ROSTER · '+esc(day||'—')+' · '+esc(date)+'</div>'+(!isWork?'<div class="al aw" style="margin-top:9px;margin-bottom:0">⚠️ '+esc(day)+' is not a typical working day. Roster editing is still allowed.</div>':'')+'</div>';
+  let html='<div class="card" style="margin-bottom:13px;text-align:center;padding:16px;background:linear-gradient(135deg,var(--ac2),var(--sf2))"><div style="font-size:14px;font-weight:600;color:var(--tx)">'+esc(settings.schoolName||'School')+'</div><div style="font-size:18px;font-weight:bold;color:var(--ac);margin-top:5px">DAILY DUTY ROSTER · '+esc(day||'—')+' · '+esc(date)+'</div>'+(!isWork?'<div class="al aw" style="margin-top:9px;margin-bottom:0">⚠️ '+esc(day)+' is not a typical working day. Roster editing is still allowed.</div>':'')+(canEdit?'<div style="margin-top:9px;font-size:11px;color:var(--tx3)">💡 Type a teacher\'s name in any input → click a suggestion to add. Click 💾 Save when done.</div>':'')+'</div>';
   
   // Render each duty slot
   DUTY_SLOTS.forEach(slot=>{
@@ -4670,13 +4690,17 @@ function rdRender(){
   });
   
   if(canEdit){
-    html+='<div style="text-align:center;margin-top:14px"><button class="btn bp" onclick="saveRoster()" style="padding:11px 24px">💾 Save Roster →</button></div>';
+    html+='<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn bg2" onclick="rdReload()" title="Reload last saved version (discards unsaved changes)">↺ Reload Saved</button><button class="btn bp" onclick="saveRoster()" style="padding:11px 24px">💾 Save Roster →</button></div>';
   }
   
   document.getElementById('roster-body').innerHTML=html;
-  
-  // Store working copy for save
-  window._workingRoster=JSON.parse(JSON.stringify(roster));
+}
+
+// Discard unsaved changes — reload from DB
+function rdReload(){
+  if(!confirm('Discard any unsaved changes and reload the last saved roster for this date?'))return;
+  delete window._workingRoster;
+  rdRender();
 }
 
 function renderDutySlot(roster,slot,canEdit){
@@ -4831,7 +4855,13 @@ function saveRoster(){
   else list.push({...r,createdAt:new Date().toISOString(),createdBy:CU.firstName+' '+CU.lastName});
   DB.set('duty_rosters',list);
   logA('Saved duty roster for '+r.date);
-  toast('Roster saved for '+r.date,'success');
+  // Count total assignments for toast feedback
+  let totalAssigned=0;
+  Object.values(r.slots||{}).forEach(slot=>{Object.values(slot).forEach(arr=>{totalAssigned+=arr.length;});});
+  totalAssigned+=(r.classDuties||[]).filter(c=>c.teacher).length;
+  toast('Roster saved for '+r.date+' · '+totalAssigned+' assignments','success');
+  // Clear working copy so next render pulls fresh from DB
+  delete window._workingRoster;
   rdRender();
 }
 
@@ -4852,16 +4882,16 @@ function rdCopyPrev(){
     }
   }
   if(!prev){toast('No previous roster found in the last 14 days','danger');return;}
-  if(!confirm('Copy duties from '+prev.date+' ('+prev.day+') to '+date+'?'))return;
-  // Copy slots and classDuties
+  if(!confirm('Copy duties from '+prev.date+' ('+prev.day+') to '+date+'? This will overwrite any existing entries for '+date+'.'))return;
+  // Set working roster (don't save yet — let user review then click Save)
   window._workingRoster={
     date,day:getDayOfWeek(date),
     slots:JSON.parse(JSON.stringify(prev.slots||{})),
     classDuties:JSON.parse(JSON.stringify(prev.classDuties||[])),
     copiedFrom:prev.date
   };
-  // Save immediately
-  saveRoster();
+  toast('Copied from '+prev.date+' — review and click Save','info');
+  rdRender();
 }
 
 // ─── PDF EXPORT ──────────────────────────────────────────
@@ -5323,6 +5353,635 @@ function vAllMySubsHistory(){
   }).join(''):'<div class="emp"><div class="ei">🔄</div><p>No substitutions yet</p></div>')
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
 }
+
+// ═══════════════════════════════════════════════════════════
+// TEACHER EXCEL IMPORT + DUAL ROLE SUPPORT
+//
+// Adds:
+// 1. "Import Teachers with Accounts" — creates teacher records AND login
+//    accounts in one operation from a CSV/Excel file (Name | Subject | Phone).
+// 2. extraRoles field on accounts — lets one user switch between roles
+//    (e.g. teacher who is also Quality Supervisor) WITHOUT logging out.
+// 3. Topbar role switcher — shows when the active user has extraRoles.
+// ═══════════════════════════════════════════════════════════
+
+// ─── EXCEL/CSV IMPORT WITH ACCOUNT CREATION ───────────────
+
+function impTchAccM(){
+  openM('<div class="mh"><h3>📥 Import Teachers + Create Accounts</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai">📋 Upload a CSV file to import teachers AND create their login accounts in one step.</div>'
+  +'<div style="background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);padding:12px;margin-bottom:12px"><div style="font-weight:700;font-size:12px;color:var(--ac);margin-bottom:7px">📋 Required CSV Format (3 columns):</div><div style="font-family:monospace;font-size:11px;color:var(--tx2);line-height:1.7;background:var(--sf);padding:8px 11px;border-radius:var(--rs)">Name,Subject,Phone<br>Mohammed Al-Saadi,Mathematics,0501234567<br>Layla Al-Najjar,Arabic,0502223344<br>Ahmed Hussain,Physics,0503334455</div><div style="font-size:11px;color:var(--tx3);margin-top:8px">⚠️ <strong>First row is treated as header and skipped.</strong> Data starts from row 2.</div></div>'
+  
+  +'<div class="al aw" style="margin-bottom:12px">💡 <strong>Account credentials generated automatically:</strong><br>• <strong>Username</strong>: First name in lowercase (e.g. "mohammed"). Conflicts add a number.<br>• <strong>Password</strong>: <span class="mono">teacher@123</span> (teachers should change after first login)<br>• <strong>Role</strong>: Teacher</div>'
+  
+  +'<div class="al ag" style="margin-bottom:12px">ℹ️ <strong>Need to give a teacher an additional role (like Quality Supervisor)?</strong><br>After import, click the <strong>🎭 Roles</strong> button next to any teacher in the Teachers list to assign extra roles individually. Only specific teachers should receive secondary roles.</div>'
+  
+  +'<div class="fg" style="margin-bottom:0"><label>📂 CSV File *</label><input type="file" id="tcha-file" accept=".csv,.txt"></div>'
+  
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="procTchAccImp()">📥 Import & Create Accounts →</button></div>');
+}
+
+function procTchAccImp(){
+  const file=document.getElementById('tcha-file').files[0];
+  if(!file){toast('Please select a CSV file','danger');return;}
+  
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const text=e.target.result;
+    // Skip header row
+    const lines=text.split(/\r?\n/).filter(l=>l.trim()).slice(1);
+    if(!lines.length){toast('CSV is empty or only has a header row','danger');return;}
+    
+    const teachers=DB.get('teachers')||[];
+    const accounts=DB.get('accounts')||[];
+    const existingUsernames=new Set(accounts.map(a=>a.username.toLowerCase()));
+    const existingTeacherNames=new Set(teachers.map(t=>(t.name||'').trim().toLowerCase()));
+    
+    let createdTch=0,createdAcc=0,skipped=0,duplicatesT=0,duplicatesA=0;
+    const importedNames=[];
+    
+    lines.forEach((line,idx)=>{
+      // Parse CSV row (basic — handles quoted values)
+      const cols=parseCsvRow(line);
+      const name=(cols[0]||'').trim();
+      const subject=(cols[1]||'').trim();
+      const phone=(cols[2]||'').trim();
+      
+      if(!name){skipped++;return;}
+      
+      // Generate first/last name split
+      const nameParts=name.split(/\s+/);
+      const firstName=nameParts[0]||name;
+      const lastName=nameParts.slice(1).join(' ')||'';
+      
+      // 1) Add teacher record if not exists
+      const nameLower=name.toLowerCase();
+      if(existingTeacherNames.has(nameLower)){
+        duplicatesT++;
+      }else{
+        teachers.push({
+          id:'tch'+Date.now()+'_'+idx,
+          name,
+          firstName,lastName,
+          employeeId:'',
+          subject,
+          department:'',
+          phone,
+          email:'',
+          note:'',
+          active:true,
+          created:new Date().toISOString().split('T')[0]
+        });
+        existingTeacherNames.add(nameLower);
+        createdTch++;
+      }
+      
+      // 2) Create login account if not exists
+      // Generate username from first name (lowercase, no special chars)
+      let baseUsername=firstName.toLowerCase().replace(/[^a-z0-9]/g,'');
+      if(!baseUsername)baseUsername='teacher';
+      let username=baseUsername;
+      let counter=2;
+      while(existingUsernames.has(username.toLowerCase())){
+        username=baseUsername+counter;
+        counter++;
+        if(counter>999)break;
+      }
+      
+      if(existingUsernames.has(username.toLowerCase())){
+        duplicatesA++;
+      }else{
+        const account={
+          id:'u'+Date.now()+'_'+idx,
+          username,
+          password:'teacher@123',
+          role:'teacher',
+          firstName,lastName,
+          email:'',
+          phone,
+          active:true,
+          created:new Date().toISOString().split('T')[0],
+          theme:'blue',
+          lang:'en'
+        };
+        accounts.push(account);
+        existingUsernames.add(username.toLowerCase());
+        createdAcc++;
+        importedNames.push({name,username,subject,phone});
+      }
+    });
+    
+    DB.set('teachers',teachers);
+    DB.set('accounts',accounts);
+    
+    logA('Imported '+createdTch+' teacher record(s) and '+createdAcc+' account(s)');
+    closeM();
+    
+    // Show summary modal with credentials list
+    showImportSummary(importedNames,{createdTch,createdAcc,skipped,duplicatesT,duplicatesA});
+  };
+  reader.readAsText(file);
+}
+
+// Robust CSV row parser — handles "quoted, values" with commas inside
+function parseCsvRow(line){
+  const result=[];
+  let inQuotes=false,cur='';
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){
+      if(inQuotes&&line[i+1]==='"'){cur+='"';i++;}
+      else{inQuotes=!inQuotes;}
+    }else if(ch===','&&!inQuotes){
+      result.push(cur);cur='';
+    }else{
+      cur+=ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function showImportSummary(imported,stats){
+  const credentialsTable=imported.length?'<div class="tw" style="max-height:280px;overflow-y:auto;margin-bottom:12px"><table style="font-size:11px"><thead><tr><th>Teacher</th><th>Username</th><th>Password</th><th>Subject</th><th>Phone</th><th></th></tr></thead><tbody>'+imported.map(t=>'<tr><td><strong>'+esc(t.name)+'</strong></td><td class="mono" style="color:var(--ac);font-weight:600">'+esc(t.username)+'</td><td class="mono">teacher@123</td><td>'+esc(t.subject||'—')+'</td><td class="mono">'+esc(t.phone||'—')+'</td><td><button class="btn bs bxs" onclick="quickAssignExtraRoleByUsername(\''+esc(t.username)+'\')">🎭 Roles</button></td></tr>').join('')+'</tbody></table></div>':'';
+  
+  openM('<div class="mh"><h3>✅ Import Complete</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="cg g4" style="margin-bottom:12px"><div class="al ag" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;color:var(--gd);text-transform:uppercase;font-weight:700">Teachers Added</div><div style="font-size:24px;font-weight:bold;color:var(--gd)">'+stats.createdTch+'</div></div><div class="al ai" style="margin:0;padding:11px;text-align:center;background:var(--ac2)"><div style="font-size:10px;color:var(--ac);text-transform:uppercase;font-weight:700">Accounts Created</div><div style="font-size:24px;font-weight:bold;color:var(--ac)">'+stats.createdAcc+'</div></div><div class="al" style="margin:0;padding:11px;text-align:center;background:var(--sf2)"><div style="font-size:10px;color:var(--tx3);text-transform:uppercase;font-weight:700">Skipped (empty)</div><div style="font-size:24px;font-weight:bold;color:var(--tx2)">'+stats.skipped+'</div></div><div class="al" style="margin:0;padding:11px;text-align:center;background:var(--sf2)"><div style="font-size:10px;color:var(--tx3);text-transform:uppercase;font-weight:700">Duplicates</div><div style="font-size:24px;font-weight:bold;color:var(--tx2)">'+(stats.duplicatesT+stats.duplicatesA)+'</div></div></div>'
+  +(imported.length?'<div class="al aw" style="margin-bottom:12px">⚠️ <strong>Save these credentials!</strong> Share the username/password with each teacher. Default password is <span class="mono">teacher@123</span> — teachers should change it on first login.</div>':'')
+  +(imported.length?'<div class="al ai" style="margin-bottom:12px">🎭 <strong>Need to assign extra roles?</strong> Click the <strong>🎭 Roles</strong> button next to any teacher below to assign roles like Quality Supervisor, Academic Supervisor, etc. You can also do this anytime later from the Teachers list or Staff Accounts page.</div>':'')
+  +credentialsTable
+  +(imported.length?'<div style="display:flex;gap:7px;margin-bottom:0"><button class="btn bg2 bsm" onclick="dlImportCreds()" style="flex:1">⬇️ Download credentials as CSV</button><button class="btn bg2 bsm" onclick="printImportCreds()" style="flex:1">🖨️ Print credentials</button></div>':'')
+  +'</div><div class="mf"><button class="btn bp" onclick="closeM();rTeachers&&rTeachers()">✓ Done</button></div>',true);
+  
+  // Stash imported list for download/print buttons
+  window._lastImportCreds=imported;
+}
+
+// Quick role assignment by username — used from import summary
+function quickAssignExtraRoleByUsername(username){
+  const accounts=DB.get('accounts')||[];
+  const acc=accounts.find(a=>a.username===username);
+  if(!acc){toast('Account not found','danger');return;}
+  quickAssignExtraRoleM(acc.id);
+}
+
+function dlImportCreds(){
+  const imp=window._lastImportCreds||[];
+  if(!imp.length)return;
+  expCSV(['Teacher Name','Username','Password','Subject','Phone'],imp.map(t=>[t.name,t.username,'teacher@123',t.subject||'',t.phone||'']),'teacher_credentials_'+new Date().toISOString().split('T')[0]);
+}
+
+function printImportCreds(){
+  const imp=window._lastImportCreds||[];
+  if(!imp.length)return;
+  const settings=DB.get('settings')||{};
+  const w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Teacher Account Credentials</title><style>body{font-family:Arial,sans-serif;color:#000;padding:20px}h1{color:#1a5f7a}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#1a5f7a;color:#fff;padding:7px;text-align:left}td{padding:6px 7px;border-bottom:1px solid #ddd}.note{background:#fff8e1;padding:10px;border-radius:5px;margin:10px 0;font-size:11px}@media print{button{display:none}}</style></head><body><h1>'+esc(settings.schoolName||'School')+' — Teacher Account Credentials</h1><p style="font-size:11px;color:#555">Generated '+new Date().toLocaleString()+' · '+imp.length+' accounts</p><div class="note">⚠️ CONFIDENTIAL — Distribute credentials individually. Teachers must change their password after first login.</div><table><thead><tr><th>Teacher Name</th><th>Username</th><th>Default Password</th><th>Subject</th><th>Phone</th></tr></thead><tbody>'+imp.map(t=>'<tr><td><strong>'+esc(t.name)+'</strong></td><td style="font-family:monospace;font-weight:bold;color:#1a5f7a">'+esc(t.username)+'</td><td style="font-family:monospace">teacher@123</td><td>'+esc(t.subject||'')+'</td><td style="font-family:monospace">'+esc(t.phone||'')+'</td></tr>').join('')+'</tbody></table><button onclick="window.print()" style="margin-top:20px;padding:10px 20px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">🖨️ Print</button></body></html>');
+  w.document.close();
+  setTimeout(()=>{try{w.print();}catch(e){}},500);
+}
+
+// ─── DUAL-ROLE SUPPORT ────────────────────────────────────
+
+// Quick modal: assign/revoke extra roles for ONE account.
+// Used as a shortcut from Teachers list and Staff Accounts list.
+function quickAssignExtraRoleM(accountId){
+  const accounts=DB.get('accounts')||[];
+  const acc=accounts.find(a=>a.id===accountId);
+  if(!acc){toast('Account not found','danger');return;}
+  
+  const allRoles=Object.keys(RL).filter(r=>r!=='superadmin'&&r!==acc.role);
+  const cur=Array.isArray(acc.extraRoles)?acc.extraRoles:[];
+  
+  openM('<div class="mh"><h3>🎭 Extra Roles — '+esc((acc.firstName||'')+' '+(acc.lastName||''))+'</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai">📋 Assign additional roles to this user. They\'ll be able to switch between roles from the topbar without logging out.<br><br><strong>Primary role:</strong> '+esc(rL(acc.role))+' (can\'t be changed here — edit account to change)</div>'
+  
+  +'<div class="fg" style="margin-bottom:0"><label>🎭 Select Additional Roles</label><div style="background:var(--sf2);padding:11px;border-radius:var(--rs);border:1px solid var(--bd);max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:6px" id="qer-list">'
+  +allRoles.map(r=>'<label style="display:flex;align-items:center;gap:9px;padding:8px 11px;cursor:pointer;background:'+(cur.includes(r)?'var(--ac2)':'var(--sf)')+';border-radius:var(--rs);border:1.5px solid '+(cur.includes(r)?'var(--ac)':'var(--bd)')+';transition:all .15s"><input type="checkbox" value="'+r+'" '+(cur.includes(r)?'checked':'')+' style="accent-color:var(--ac);width:16px;height:16px"><div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--tx)">'+esc(rL(r))+'</div></div></label>').join('')
+  +'</div></div>'
+  
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveQuickExtraRoles(\''+accountId+'\')">💾 Save →</button></div>',true);
+}
+
+function saveQuickExtraRoles(accountId){
+  const wrap=document.getElementById('qer-list');
+  if(!wrap)return;
+  const selected=[];
+  wrap.querySelectorAll('input[type="checkbox"]:checked').forEach(cb=>{selected.push(cb.value);});
+  
+  const accounts=DB.get('accounts')||[];
+  const i=accounts.findIndex(a=>a.id===accountId);
+  if(i<0)return;
+  
+  if(selected.length){
+    accounts[i].extraRoles=selected;
+  }else{
+    delete accounts[i].extraRoles;
+  }
+  accounts[i].updated=new Date().toISOString();
+  DB.set('accounts',accounts);
+  
+  logA('Updated extra roles for '+accounts[i].username+': '+(selected.length?selected.map(r=>rL(r)).join(', '):'(none)'));
+  toast(selected.length?'Extra roles updated · '+selected.length+' role(s) assigned':'Extra roles cleared','success');
+  
+  // If editing the currently-logged-in user, update CU and refresh switcher
+  if(CU&&CU.id===accountId){
+    if(selected.length)CU.extraRoles=selected;
+    else delete CU.extraRoles;
+    if(typeof renderRoleSwitcher==='function')renderRoleSwitcher();
+  }
+  
+  closeM();
+  // Refresh whichever page they came from
+  if(_page==='teachers'&&typeof rTeachers==='function')rTeachers();
+  else if(_page==='accounts'&&typeof rAccounts==='function')rAccounts();
+}
+
+// Get the active role for the current user (falls back to their primary role)
+function getActiveRole(){
+  if(!CU)return null;
+  return window._activeRoleOverride||CU.role;
+}
+
+// Get all roles available to the current user
+function getMyAvailableRoles(){
+  if(!CU)return [];
+  const roles=[CU.role];
+  if(Array.isArray(CU.extraRoles)){
+    CU.extraRoles.forEach(r=>{if(r&&!roles.includes(r))roles.push(r);});
+  }
+  return roles;
+}
+
+// Switch the active role (re-render the app without re-logging in)
+function switchActiveRole(newRole){
+  const avail=getMyAvailableRoles();
+  if(!avail.includes(newRole)){toast('You don\'t have access to that role','danger');return;}
+  
+  window._activeRoleOverride=newRole;
+  // Save preference for this session
+  try{sessionStorage.setItem('sms7_active_role_override',newRole);}catch(e){}
+  
+  // Update CU.role temporarily by SWAPPING (so all role-check code throughout the app works)
+  // We back up the original role to CU._origRole
+  if(!CU._origRole)CU._origRole=CU.role;
+  CU.role=newRole;
+  
+  logA('Switched active role to: '+rL(newRole));
+  toast('Now acting as: '+rL(newRole),'success');
+  
+  // Rebuild navigation (which is role-based)
+  if(typeof buildNav==='function')buildNav();
+  // Go to dashboard
+  if(typeof navigate==='function')navigate('dashboard');
+  // Update the role display in the sidebar
+  const sbur=document.getElementById('sbur');if(sbur)sbur.textContent=rL(newRole);
+  // Re-render the role switcher itself (to show the new active role)
+  if(typeof renderRoleSwitcher==='function')renderRoleSwitcher();
+}
+
+// Restore active role on page load if there's a session-saved override
+function restoreActiveRoleOnLoad(){
+  if(!CU)return;
+  try{
+    const saved=sessionStorage.getItem('sms7_active_role_override');
+    if(saved&&saved!==CU.role){
+      const avail=getMyAvailableRoles();
+      if(avail.includes(saved)){
+        CU._origRole=CU.role;
+        CU.role=saved;
+        window._activeRoleOverride=saved;
+      }
+    }
+  }catch(e){}
+}
+
+// Render the role switcher in the topbar — only visible when extraRoles exist
+function renderRoleSwitcher(){
+  // Only show if user has more than one available role
+  const avail=getMyAvailableRoles();
+  // Always use the ORIGINAL (primary) role + extras to build the switcher list
+  const primary=CU._origRole||CU.role;
+  const allRoles=[primary,...(Array.isArray(CU.extraRoles)?CU.extraRoles:[])];
+  if(allRoles.length<=1)return;
+  
+  const currentRole=CU.role; // currently active
+  let sw=document.getElementById('role-switcher');
+  if(!sw){
+    sw=document.createElement('div');
+    sw.id='role-switcher';
+    sw.className='tbg';
+    sw.style.cssText='display:flex;align-items:center;gap:5px;cursor:pointer;position:relative;font-size:11px';
+    sw.title='Switch your active role (no need to log out)';
+    // Insert before the date element in topbar (or before session indicator if it exists)
+    const tbd=document.getElementById('tbd');
+    const sesInd=document.getElementById('ses-ind');
+    const insertBefore=sesInd||tbd;
+    if(insertBefore&&insertBefore.parentNode){insertBefore.parentNode.insertBefore(sw,insertBefore);}
+  }
+  sw.innerHTML='<span style="color:var(--pu)">🎭</span><span><strong>'+esc(rL(currentRole))+'</strong></span><span style="opacity:.6">▾</span>';
+  sw.onclick=(e)=>{e.stopPropagation();showRoleSwitcherMenu(sw,allRoles,currentRole);};
+}
+
+function showRoleSwitcherMenu(anchor,roles,currentRole){
+  // Remove any existing menu
+  const existing=document.getElementById('role-switcher-menu');
+  if(existing){existing.remove();return;}
+  
+  const menu=document.createElement('div');
+  menu.id='role-switcher-menu';
+  menu.style.cssText='position:absolute;top:100%;left:0;margin-top:5px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);box-shadow:var(--sh);z-index:1000;min-width:220px;overflow:hidden';
+  menu.innerHTML='<div style="padding:8px 12px;background:var(--sf2);font-size:10px;color:var(--tx3);text-transform:uppercase;font-weight:700;border-bottom:1px solid var(--bd)">Switch Role</div>'+roles.map(r=>'<div onclick="switchActiveRole(\''+r+'\');document.getElementById(\'role-switcher-menu\').remove()" style="padding:9px 12px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bd);'+(r===currentRole?'background:var(--ac2);color:var(--ac);font-weight:600':'')+'" onmouseover="this.style.background=\''+(r===currentRole?'var(--ac2)':'var(--sf2)')+'\'" onmouseout="this.style.background=\''+(r===currentRole?'var(--ac2)':'transparent')+'\'"><span>'+esc(rL(r))+'</span>'+(r===currentRole?'<span style="font-size:10px">✓ Active</span>':'')+'</div>').join('')+'<div style="padding:7px 12px;font-size:10px;color:var(--tx3);background:var(--sf2);text-align:center">No logout needed</div>';
+  anchor.appendChild(menu);
+  
+  // Close menu when clicking elsewhere
+  setTimeout(()=>{
+    const closeHandler=(e)=>{
+      if(!menu.contains(e.target)&&e.target!==anchor&&!anchor.contains(e.target)){
+        menu.remove();
+        document.removeEventListener('click',closeHandler);
+      }
+    };
+    document.addEventListener('click',closeHandler);
+  },10);
+}
+
+// Hook into the launch flow — render switcher after login + restore saved role
+(function(){
+  const origLaunch=window.launch;
+  if(typeof origLaunch==='function'){
+    window.launch=function(){
+      origLaunch.apply(this,arguments);
+      // Restore any session-saved role override
+      restoreActiveRoleOnLoad();
+      // Render the role switcher in topbar (if applicable)
+      setTimeout(()=>{
+        try{
+          renderRoleSwitcher();
+          // Update role display in sidebar to reflect actual active role
+          const sbur=document.getElementById('sbur');if(sbur)sbur.textContent=rL(CU.role);
+        }catch(e){console.warn('Role switcher render failed:',e);}
+      },120);
+    };
+  }
+})();
+
+// Hook into doLogout — clear role override on logout
+(function(){
+  const origLogout=window.doLogout;
+  if(typeof origLogout==='function'){
+    window.doLogout=function(){
+      try{sessionStorage.removeItem('sms7_active_role_override');}catch(e){}
+      window._activeRoleOverride=null;
+      // Restore original role before clearing CU
+      if(CU&&CU._origRole){CU.role=CU._origRole;delete CU._origRole;}
+      // Remove role switcher UI
+      const sw=document.getElementById('role-switcher');if(sw)sw.remove();
+      const menu=document.getElementById('role-switcher-menu');if(menu)menu.remove();
+      origLogout.apply(this,arguments);
+    };
+  }
+})();
+
+// ─── ACCOUNT EDIT — add extraRoles dropdown ──────────────
+// Wraps existing editAccM to inject an "Extra Roles" multi-select
+
+(function(){
+  if(typeof window.editAccM!=='function')return;
+  const origEdit=window.editAccM;
+  window.editAccM=function(id){
+    origEdit(id);
+    // Inject Extra Roles field into the open modal
+    setTimeout(()=>{
+      const modal=document.querySelector('.modal-content,.mb2');
+      if(!modal)return;
+      const a=(DB.get('accounts')||[]).find(x=>x.id===id);
+      if(!a)return;
+      // Skip if already injected
+      if(document.getElementById('acc-extra-roles'))return;
+      // Find a place to inject — look for the role field or fall back to appending
+      const roleSelect=modal.querySelector('select[id*="role"],select[id*="ar"]');
+      // Build the extra roles control
+      const allRoles=Object.keys(RL).filter(r=>r!=='superadmin'&&r!==a.role);
+      const cur=Array.isArray(a.extraRoles)?a.extraRoles:[];
+      const html='<div class="fg" id="extra-roles-wrap"><label>🎭 Extra Roles (optional)<br><span style="font-size:10px;font-weight:400;color:var(--tx3)">Allow this user to ALSO act in these roles. They can switch from the topbar without logging out.</span></label><div id="acc-extra-roles" style="display:flex;flex-wrap:wrap;gap:6px;background:var(--sf2);padding:9px;border-radius:var(--rs);border:1px solid var(--bd);max-height:130px;overflow-y:auto">'+allRoles.map(r=>'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;padding:4px 8px;background:'+(cur.includes(r)?'var(--ac2)':'var(--sf)')+';border-radius:var(--rs);border:1px solid '+(cur.includes(r)?'var(--ac)':'var(--bd)')+'"><input type="checkbox" value="'+r+'" '+(cur.includes(r)?'checked':'')+' style="accent-color:var(--ac)">'+esc(rL(r))+'</label>').join('')+'</div></div>';
+      // Insert after the role select
+      if(roleSelect){
+        const parentFg=roleSelect.closest('.fg');
+        if(parentFg){
+          parentFg.insertAdjacentHTML('afterend',html);
+        }else{
+          modal.insertAdjacentHTML('beforeend',html);
+        }
+      }else{
+        modal.insertAdjacentHTML('beforeend',html);
+      }
+    },50);
+  };
+})();
+
+// Wrap saveAccEdit to persist extraRoles
+(function(){
+  if(typeof window.saveAccEdit!=='function')return;
+  const origSave=window.saveAccEdit;
+  window.saveAccEdit=function(id){
+    // First read extraRoles from our injected UI before calling original
+    const extraRolesEl=document.getElementById('acc-extra-roles');
+    let extraRoles=[];
+    if(extraRolesEl){
+      extraRolesEl.querySelectorAll('input[type="checkbox"]:checked').forEach(cb=>{extraRoles.push(cb.value);});
+    }
+    // Save before original closes the modal
+    const accounts=DB.get('accounts')||[];
+    const i=accounts.findIndex(a=>a.id===id);
+    // Let original do its work
+    origSave.apply(this,arguments);
+    // Then update extraRoles
+    if(i>=0){
+      const fresh=DB.get('accounts')||[];
+      const j=fresh.findIndex(a=>a.id===id);
+      if(j>=0){
+        if(extraRoles.length){fresh[j].extraRoles=extraRoles;}
+        else{delete fresh[j].extraRoles;}
+        DB.set('accounts',fresh);
+        // If this is the currently logged-in user, update CU too
+        if(CU&&CU.id===id){
+          if(extraRoles.length)CU.extraRoles=extraRoles;
+          else delete CU.extraRoles;
+          if(typeof renderRoleSwitcher==='function')renderRoleSwitcher();
+        }
+      }
+    }
+  };
+})();
+
+// Inject the same field into addAccM too
+(function(){
+  if(typeof window.addAccM!=='function')return;
+  const origAdd=window.addAccM;
+  window.addAccM=function(){
+    origAdd.apply(this,arguments);
+    setTimeout(()=>{
+      const modal=document.querySelector('.modal-content,.mb2');
+      if(!modal||document.getElementById('acc-extra-roles'))return;
+      const allRoles=Object.keys(RL).filter(r=>r!=='superadmin');
+      const html='<div class="fg" id="extra-roles-wrap"><label>🎭 Extra Roles (optional)<br><span style="font-size:10px;font-weight:400;color:var(--tx3)">Allow this user to also act in additional roles. They can switch without logging out.</span></label><div id="acc-extra-roles" style="display:flex;flex-wrap:wrap;gap:6px;background:var(--sf2);padding:9px;border-radius:var(--rs);border:1px solid var(--bd);max-height:130px;overflow-y:auto">'+allRoles.map(r=>'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;padding:4px 8px;background:var(--sf);border-radius:var(--rs);border:1px solid var(--bd)"><input type="checkbox" value="'+r+'" style="accent-color:var(--ac)">'+esc(rL(r))+'</label>').join('')+'</div></div>';
+      const roleSelect=modal.querySelector('select[id*="role"],select[id*="ar"]');
+      if(roleSelect){
+        const parentFg=roleSelect.closest('.fg');
+        if(parentFg){parentFg.insertAdjacentHTML('afterend',html);}
+        else{modal.insertAdjacentHTML('beforeend',html);}
+      }else{
+        modal.insertAdjacentHTML('beforeend',html);
+      }
+    },50);
+  };
+})();
+
+// Wrap saveAcc (add) to capture extraRoles
+(function(){
+  if(typeof window.saveAcc!=='function')return;
+  const origSave=window.saveAcc;
+  window.saveAcc=function(){
+    const extraRolesEl=document.getElementById('acc-extra-roles');
+    let extraRoles=[];
+    if(extraRolesEl){
+      extraRolesEl.querySelectorAll('input[type="checkbox"]:checked').forEach(cb=>{extraRoles.push(cb.value);});
+    }
+    origSave.apply(this,arguments);
+    if(extraRoles.length){
+      // The original just pushed the new account — find it and add extraRoles
+      const accounts=DB.get('accounts')||[];
+      // The most recent one will be at the end
+      if(accounts.length){
+        accounts[accounts.length-1].extraRoles=extraRoles;
+        DB.set('accounts',accounts);
+      }
+    }
+  };
+})();
+
+// ─── INJECT NEW IMPORT BUTTON + 🎭 ROLES BUTTON INTO TEACHERS PAGE ────
+
+(function(){
+  if(typeof window.rTeachers!=='function')return;
+  const origRT=window.rTeachers;
+  window.rTeachers=function(){
+    origRT.apply(this,arguments);
+    if(CU.role!=='superadmin')return;
+    setTimeout(()=>{
+      // 1) Add "Import + Create Accounts" button
+      const importBtn=Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Import CSV'));
+      if(importBtn&&!document.getElementById('imp-tch-acc-btn')){
+        const newBtn=document.createElement('button');
+        newBtn.id='imp-tch-acc-btn';
+        newBtn.className='btn bs bsm';
+        newBtn.textContent='👥 Import + Create Accounts';
+        newBtn.title='Import teachers from CSV AND create login accounts in one step';
+        newBtn.onclick=impTchAccM;
+        importBtn.parentNode.insertBefore(newBtn,importBtn.nextSibling);
+      }
+      
+      // 2) For each teacher row in the table, inject a 🎭 Roles button if a matching account exists
+      injectRolesButtonsIntoTeachersTable();
+    },50);
+  };
+})();
+
+function injectRolesButtonsIntoTeachersTable(){
+  const accounts=DB.get('accounts')||[];
+  const tchTbl=document.getElementById('tchw');
+  if(!tchTbl)return;
+  const rows=tchTbl.querySelectorAll('tbody tr');
+  rows.forEach(row=>{
+    // Skip if already injected
+    if(row.querySelector('.tch-roles-btn'))return;
+    const nameCell=row.querySelector('td:nth-child(2) strong');
+    if(!nameCell)return;
+    const teacherName=nameCell.textContent.trim().toLowerCase();
+    // Find matching account (by full name)
+    const acc=accounts.find(a=>{
+      const fn=((a.firstName||'')+' '+(a.lastName||'')).trim().toLowerCase();
+      return fn===teacherName;
+    });
+    const actionsCell=row.querySelector('td:last-child');
+    if(!actionsCell)return;
+    if(acc){
+      const extraCount=(acc.extraRoles||[]).length;
+      const btn=document.createElement('button');
+      btn.className='btn bs bxs tch-roles-btn';
+      btn.style.cssText='margin-left:4px';
+      btn.title=extraCount?'Has '+extraCount+' extra role(s) · Click to manage':'Assign additional role(s) like Quality Supervisor';
+      btn.innerHTML='🎭 Roles'+(extraCount?' <span style="background:var(--ac);color:#fff;padding:1px 5px;border-radius:8px;font-size:9px;margin-left:3px">'+extraCount+'</span>':'');
+      btn.onclick=()=>quickAssignExtraRoleM(acc.id);
+      actionsCell.appendChild(btn);
+    }else{
+      // No account exists — show a disabled hint
+      const span=document.createElement('span');
+      span.className='tch-roles-btn';
+      span.style.cssText='font-size:10px;color:var(--tx3);margin-left:4px;font-style:italic';
+      span.title='No login account exists for this teacher — create one via Staff Accounts page or Import + Create Accounts';
+      span.textContent='(no account)';
+      actionsCell.appendChild(span);
+    }
+  });
+  
+  // Also re-inject when search filter changes the table
+  const fltInput=document.getElementById('tchq');
+  if(fltInput&&!fltInput.dataset.rolesHook){
+    fltInput.dataset.rolesHook='1';
+    const origInput=fltInput.oninput;
+    fltInput.oninput=function(){
+      if(origInput)origInput.apply(this,arguments);
+      setTimeout(injectRolesButtonsIntoTeachersTable,50);
+    };
+  }
+}
+
+// Also inject into the Staff Accounts page — even more useful there since accounts is where roles live
+(function(){
+  if(typeof window.rAccounts!=='function')return;
+  const origRA=window.rAccounts;
+  window.rAccounts=function(){
+    origRA.apply(this,arguments);
+    if(CU.role!=='superadmin')return;
+    setTimeout(injectRolesButtonsIntoAccountsTable,60);
+  };
+})();
+
+function injectRolesButtonsIntoAccountsTable(){
+  // Find the accounts table — it's the main table on the accounts page
+  const tables=document.querySelectorAll('#pc table');
+  if(!tables.length)return;
+  const tbl=tables[0]; // first table is the accounts list
+  const accounts=DB.get('accounts')||[];
+  // Map account by visible username column (first td after edit button)
+  const rows=tbl.querySelectorAll('tbody tr');
+  rows.forEach(row=>{
+    if(row.querySelector('.acc-roles-btn'))return;
+    // Try to find username in the row — usually in a code/mono cell
+    const allCells=row.querySelectorAll('td');
+    let username='';
+    allCells.forEach(c=>{
+      const code=c.querySelector('code');
+      if(code&&!username)username=code.textContent.trim();
+    });
+    if(!username)return;
+    const acc=accounts.find(a=>a.username===username);
+    if(!acc||acc.role==='superadmin')return; // skip superadmin
+    const actionsCell=allCells[allCells.length-1];
+    if(!actionsCell)return;
+    const extraCount=(acc.extraRoles||[]).length;
+    const btn=document.createElement('button');
+    btn.className='btn bs bxs acc-roles-btn';
+    btn.style.cssText='margin-left:4px';
+    btn.title=extraCount?'Has '+extraCount+' extra role(s) · Click to manage':'Assign additional role(s)';
+    btn.innerHTML='🎭'+(extraCount?' <span style="background:var(--ac);color:#fff;padding:1px 5px;border-radius:8px;font-size:9px;margin-left:2px">'+extraCount+'</span>':'');
+    btn.onclick=()=>quickAssignExtraRoleM(acc.id);
+    actionsCell.appendChild(btn);
+  });
+}
+
 </script>
 </body>
 </html>
