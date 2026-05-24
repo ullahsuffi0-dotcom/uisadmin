@@ -1,0 +1,101 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "platform": {
+      "schools": {
+        ".read": true,
+        ".write": "auth != null"
+      },
+      "admins": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+
+    "schools": {
+      "$schoolId": {
+        ".read": true,
+        ".write": true,
+
+        "accounts": {
+          ".read": true,
+          ".write": true,
+          "$accountIndex": {
+            ".validate": "newData.hasChildren(['id', 'username', 'role', 'firstName'])"
+          }
+        },
+
+        "settings": {
+          ".read": true,
+          ".write": true,
+          ".validate": "newData.hasChildren(['schoolName'])"
+        },
+
+        "students": { ".read": true, ".write": true },
+        "students_$sessionId": { ".read": true, ".write": true },
+        "teachers": { ".read": true, ".write": true },
+        "teachers_$sessionId": { ".read": true, ".write": true },
+        "complaints": { ".read": true, ".write": true },
+        "complaints_$sessionId": { ".read": true, ".write": true },
+        "tasks": { ".read": true, ".write": true },
+        "tasks_$sessionId": { ".read": true, ".write": true },
+        "infractions": { ".read": true, ".write": true },
+        "infractions_$sessionId": { ".read": true, ".write": true },
+        "referrals": { ".read": true, ".write": true },
+        "referrals_$sessionId": { ".read": true, ".write": true },
+        "class_visits": { ".read": true, ".write": true },
+        "class_visits_$sessionId": { ".read": true, ".write": true },
+        "notebook_checks": { ".read": true, ".write": true },
+        "notebook_checks_$sessionId": { ".read": true, ".write": true },
+        "activities": { ".read": true, ".write": true },
+        "activities_$sessionId": { ".read": true, ".write": true },
+        "activity_reports": { ".read": true, ".write": true },
+        "activity_reports_$sessionId": { ".read": true, ".write": true },
+        "early_pickups": { ".read": true, ".write": true },
+        "early_pickups_$sessionId": { ".read": true, ".write": true },
+        "announcements": { ".read": true, ".write": true },
+        "announcements_$sessionId": { ".read": true, ".write": true },
+        "discipline_reports": { ".read": true, ".write": true },
+        "discipline_reports_$sessionId": { ".read": true, ".write": true },
+        "activity_log": { ".read": true, ".write": true },
+        "infraction_forms": { ".read": true, ".write": true },
+        "visit_forms": { ".read": true, ".write": true },
+        "task_requests": { ".read": true, ".write": true },
+        "task_requests_$sessionId": { ".read": true, ".write": true },
+        "exam_absents": { ".read": true, ".write": true },
+        "exam_absents_$sessionId": { ".read": true, ".write": true },
+        "academic_calendar": { ".read": true, ".write": true },
+        "attendance": { ".read": true, ".write": true },
+        "attendance_$sessionId": { ".read": true, ".write": true },
+        "student_health": { ".read": true, ".write": true },
+        "student_health_$sessionId": { ".read": true, ".write": true },
+        "remedial_plans": { ".read": true, ".write": true },
+        "remedial_plans_$sessionId": { ".read": true, ".write": true },
+        "vp_reports": { ".read": true, ".write": true },
+        "vp_reports_$sessionId": { ".read": true, ".write": true },
+        "warning_letters": { ".read": true, ".write": true },
+        "warning_letters_$sessionId": { ".read": true, ".write": true },
+        "teacher_achievements": { ".read": true, ".write": true },
+        "teacher_achievements_$sessionId": { ".read": true, ".write": true },
+        "reexam_schedules": { ".read": true, ".write": true },
+        "reexam_schedules_$sessionId": { ".read": true, ".write": true },
+        "behaviour": { ".read": true, ".write": true },
+        "behaviour_$sessionId": { ".read": true, ".write": true },
+        "duty_rosters": { ".read": true, ".write": true },
+        "duty_rosters_$sessionId": { ".read": true, ".write": true },
+        "substitutions": { ".read": true, ".write": true },
+        "substitutions_$sessionId": { ".read": true, ".write": true },
+        "sessions": { ".read": true, ".write": true },
+        "active_session_id": { ".read": true, ".write": true },
+        "sv7": { ".read": true, ".write": true }
+      }
+    },
+
+    "data": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

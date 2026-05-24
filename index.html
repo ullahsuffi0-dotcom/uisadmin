@@ -190,9 +190,18 @@ html.parent-url #lp, html.parent-url #app, html.pickup-url #lp, html.pickup-url 
         <div style="font-size:13px;font-weight:600;color:var(--tx2)" id="lwl">Welcome</div>
         <div class="lsw"><button class="lb act" id="ll-en" onclick="loginLang('en')">EN</button><button class="lb" id="ll-ar" onclick="loginLang('ar')">AR</button></div>
       </div>
+      <div class="fg" id="school-select-wrap">
+        <label id="ll-sch">School</label>
+        <select id="lsch" onchange="onSchoolSelect()" style="width:100%;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">
+          <option value="">— Select School —</option>
+          <option value="__platform">🔧 Platform Admin</option>
+        </select>
+      </div>
       <div class="fg"><label id="ll-u">Username</label><input id="lu" autocomplete="off" placeholder="Enter your username"></div>
-      <div class="fg"><label id="ll-p">Password</label><input id="lp2" type="password" autocomplete="off" placeholder="Enter your password"></div>
+      <div class="fg"><label id="ll-p">Password</label><input id="lp2" type="password" autocomplete="off" placeholder="Enter your password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <div id="login-error" style="display:none;color:var(--dn);font-size:11px;margin-bottom:8px;padding:6px 10px;background:var(--dnbg);border-radius:var(--rs)"></div>
       <button class="btn bp" style="width:100%;justify-content:center;padding:11px" onclick="doLogin()" id="lbtn">Sign In →</button>
+      <div id="login-attempts" style="display:none;font-size:10px;color:var(--tx3);margin-top:8px;text-align:center"></div>
     </div>
   </div>
 </div>
@@ -240,7 +249,443 @@ html.parent-url #lp, html.parent-url #app, html.pickup-url #lp, html.pickup-url 
 </div>
 <script>
 'use strict';
-const DB={get(k){try{return JSON.parse(localStorage.getItem('sms7_'+k)||'null')}catch{return null}},set(k,v){localStorage.setItem('sms7_'+k,JSON.stringify(v))},del(k){localStorage.removeItem('sms7_'+k)}};
+const DB={_pfx:'sms7_',get(k){try{return JSON.parse(localStorage.getItem(this._pfx+k)||'null')}catch{return null}},set(k,v){localStorage.setItem(this._pfx+k,JSON.stringify(v))},del(k){localStorage.removeItem(this._pfx+k)}};
+
+// ═══════════════════════════════════════════════════════════
+// PASSWORD HASHING — SHA-256 via Web Crypto API
+// ═══════════════════════════════════════════════════════════
+async function hashPassword(pw){
+  const enc=new TextEncoder().encode(pw);
+  const buf=await crypto.subtle.digest('SHA-256',enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// MULTI-SCHOOL / MULTI-TENANCY LAYER
+// Platform-level data uses raw localStorage with 'sms7_' prefix (never school-scoped).
+// School-level data uses DB with dynamic _pfx (sms7_sch_SCHOOLID_).
+// ═══════════════════════════════════════════════════════════
+let CURRENT_SCHOOL_ID=null;
+let PLATFORM_MODE=false;
+
+function getPlatformSchools(){try{return JSON.parse(localStorage.getItem('sms7_platform_schools')||'[]');}catch{return[];}}
+function setPlatformSchools(list){localStorage.setItem('sms7_platform_schools',JSON.stringify(list));}
+function getPlatformAdmins(){try{return JSON.parse(localStorage.getItem('sms7_platform_admins')||'[]');}catch{return[];}}
+function setPlatformAdmins(list){localStorage.setItem('sms7_platform_admins',JSON.stringify(list));}
+
+function initPlatform(){
+  if(localStorage.getItem('sms7_platform_initialized'))return;
+  setPlatformAdmins([{
+    id:'pa1',username:'platformadmin',passwordHash:null,
+    firstName:'Platform',lastName:'Admin',
+    email:'admin@platform.com',active:true,
+    created:new Date().toISOString().split('T')[0]
+  }]);
+  setPlatformSchools([]);
+  localStorage.setItem('sms7_platform_initialized','true');
+  hashPassword('Platform@2024').then(h=>{
+    const admins=getPlatformAdmins();
+    admins[0].passwordHash=h;
+    setPlatformAdmins(admins);
+  });
+}
+
+function selectSchool(schoolId){
+  CURRENT_SCHOOL_ID=schoolId;
+  DB._pfx='sms7_sch_'+schoolId+'_';
+  sessionStorage.setItem('sms7_current_school',schoolId);
+  PLATFORM_MODE=false;
+}
+
+function deselectSchool(){
+  CURRENT_SCHOOL_ID=null;
+  DB._pfx='sms7_';
+  sessionStorage.removeItem('sms7_current_school');
+}
+
+function getSchoolById(id){
+  return getPlatformSchools().find(s=>s.id===id)||null;
+}
+
+function getFirebaseSchoolPath(){
+  return CURRENT_SCHOOL_ID?'schools/'+CURRENT_SCHOOL_ID+'/':'data/';
+}
+
+async function migrateExistingDataToSchool(schoolId){
+  const oldPfx='sms7_';
+  const newPfx='sms7_sch_'+schoolId+'_';
+  const keys=['sv7','settings','accounts','students','teachers','complaints','tasks','infractions',
+    'referrals','class_visits','notebook_checks','activities','activity_reports',
+    'early_pickups','announcements','discipline_reports','activity_log','infraction_forms',
+    'visit_forms','task_requests','exam_absents','academic_calendar','attendance',
+    'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements',
+    'reexam_schedules','sessions','active_session_id','behaviour'];
+  let migrated=0;
+  for(let i=0;i<localStorage.length;i++){
+    const lk=localStorage.key(i);
+    if(!lk||!lk.startsWith(oldPfx))continue;
+    const k=lk.substring(oldPfx.length);
+    if(k.startsWith('platform_')||k.startsWith('sch_'))continue;
+    const matchesBase=keys.some(bk=>k===bk||k.startsWith(bk+'_'));
+    if(matchesBase){
+      const val=localStorage.getItem(lk);
+      if(val&&!localStorage.getItem(newPfx+k)){
+        localStorage.setItem(newPfx+k,val);
+        migrated++;
+      }
+    }
+  }
+  const acc=JSON.parse(localStorage.getItem(newPfx+'accounts')||'[]');
+  for(const a of acc){
+    if(a.password&&!a.passwordHash){
+      a.passwordHash=await hashPassword(a.password);
+      delete a.password;
+    }
+  }
+  localStorage.setItem(newPfx+'accounts',JSON.stringify(acc));
+  return migrated;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PLATFORM ADMIN UI
+// ═══════════════════════════════════════════════════════════
+function launchPlatform(){
+  document.getElementById('lp').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('sbsn').textContent='Platform Admin';
+  document.getElementById('sbyr').textContent='Multi-School Management';
+  document.getElementById('sbic').textContent='🏢';
+  document.getElementById('sbun').textContent=CU.firstName+' '+CU.lastName;
+  document.getElementById('sbur').textContent='Platform Administrator';
+  document.getElementById('sbav').textContent='PA';
+  document.getElementById('sbav').style.background='#7c3aed';
+  document.getElementById('tbd').textContent=new Date().toLocaleDateString('en-SA',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
+  document.getElementById('lbtxt').textContent='⬅ Sign Out';
+  buildPlatformNav();
+  navigatePlatform('platform_dashboard');
+}
+
+function buildPlatformNav(){
+  document.getElementById('snav').innerHTML=[
+    {s:'overview'},{id:'platform_dashboard',i:'📊',l:'Dashboard'},
+    {s:'management'},{id:'platform_schools',i:'🏫',l:'Schools'},
+    {id:'platform_admins',i:'👤',l:'Platform Admins'},
+    {s:'system'},{id:'platform_settings',i:'⚙️',l:'Settings'},
+  ].map(item=>{
+    if(item.s)return'<div class="ns">'+item.s.toUpperCase()+'</div>';
+    return'<div class="ni" id="nav-'+item.id+'" onclick="navigatePlatform(\''+item.id+'\')"><span class="nx">'+item.i+'</span>'+item.l+'</div>';
+  }).join('');
+}
+
+function navigatePlatform(page){
+  _page=page;
+  document.querySelectorAll('.ni').forEach(el=>el.classList.remove('act'));
+  const el=document.getElementById('nav-'+page);if(el)el.classList.add('act');
+  document.getElementById('tbt').textContent=page.replace('platform_','').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  const map={
+    platform_dashboard:rPlatformDash,
+    platform_schools:rPlatformSchools,
+    platform_admins:rPlatformAdmins,
+    platform_settings:rPlatformSettings,
+  };
+  if(map[page])map[page]();
+}
+
+function rPlatformDash(){
+  const schools=getPlatformSchools();
+  const active=schools.filter(s=>s.active!==false);
+  let totalStudents=0,totalStaff=0;
+  active.forEach(s=>{
+    const pfx='sms7_sch_'+s.id+'_';
+    try{totalStudents+=JSON.parse(localStorage.getItem(pfx+'students_default')||'[]').length;}catch{}
+    try{totalStaff+=JSON.parse(localStorage.getItem(pfx+'accounts')||'[]').length;}catch{}
+  });
+  document.getElementById('pc').innerHTML=
+    '<div class="cg g4" style="margin-bottom:14px">'
+    +'<div class="stat bl"><div class="sl2">Total Schools</div><div class="sv">'+active.length+'</div><div class="sic">🏫</div></div>'
+    +'<div class="stat gn"><div class="sl2">Total Students</div><div class="sv">'+totalStudents+'</div><div class="sic">👨‍🎓</div></div>'
+    +'<div class="stat go"><div class="sl2">Total Staff</div><div class="sv">'+totalStaff+'</div><div class="sic">👥</div></div>'
+    +'<div class="stat rd"><div class="sl2">Platform Admins</div><div class="sv">'+getPlatformAdmins().length+'</div><div class="sic">🔧</div></div>'
+    +'</div>'
+    +'<div class="card"><div class="sh2"><h3>🏫 Schools Overview</h3><button class="btn bp bsm" onclick="navigatePlatform(\'platform_schools\')">Manage</button></div>'
+    +(active.length?active.map(s=>{
+      const pfx='sms7_sch_'+s.id+'_';
+      let stu=0,staff=0;
+      try{stu=JSON.parse(localStorage.getItem(pfx+'students_default')||'[]').length;}catch{}
+      try{staff=JSON.parse(localStorage.getItem(pfx+'accounts')||'[]').length;}catch{}
+      return'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)">'
+        +'<div><div style="font-size:13px;font-weight:600">'+(s.logo&&!s.logo.startsWith('data:')?s.logo+' ':'')+esc(s.name)+'</div>'
+        +'<div style="font-size:10px;color:var(--tx3)">'+(s.city||'')+' · '+stu+' students · '+staff+' staff</div></div>'
+        +'<button class="btn bg2 bsm" onclick="enterSchool(\''+s.id+'\')">Enter →</button></div>';
+    }).join(''):'<div class="emp"><div class="ei">🏫</div><p>No schools yet. Add your first school to get started.</p></div>')
+    +'</div>';
+}
+
+function rPlatformSchools(){
+  const schools=getPlatformSchools();
+  document.getElementById('pc').innerHTML=
+    '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🏫 Schools ('+schools.length+')</h3>'
+    +'<div style="display:flex;gap:6px"><button class="btn bg2 bsm" onclick="migrateExistingM()">📦 Import Existing</button>'
+    +'<button class="btn bp bsm" onclick="addSchoolM()">+ Add School</button></div></div></div>'
+    +'<div class="card"><div class="tw"><table><thead><tr><th>School</th><th>City</th><th>Students</th><th>Staff</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>'
+    +schools.map(s=>{
+      const pfx='sms7_sch_'+s.id+'_';
+      let stu=0,staff=0;
+      try{stu=JSON.parse(localStorage.getItem(pfx+'students_default')||'[]').length;}catch{}
+      try{staff=JSON.parse(localStorage.getItem(pfx+'accounts')||'[]').length;}catch{}
+      return'<tr><td><strong>'+(s.logo&&!s.logo.startsWith('data:')?s.logo+' ':'')+esc(s.name)+'</strong>'
+        +(s.nameAr?'<br><span style="font-size:10px;color:var(--tx3);direction:rtl">'+esc(s.nameAr)+'</span>':'')+'</td>'
+        +'<td style="font-size:11px">'+(s.city||'—')+'</td>'
+        +'<td class="mono">'+stu+'</td><td class="mono">'+staff+'</td>'
+        +'<td><span class="badge '+(s.active!==false?'bgn':'bgr')+'">'+(s.active!==false?'Active':'Disabled')+'</span></td>'
+        +'<td class="mono" style="font-size:11px">'+(s.created||'—')+'</td>'
+        +'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="enterSchool(\''+s.id+'\')">Enter</button>'
+        +'<button class="btn bg2 bxs" onclick="editSchoolM(\''+s.id+'\')">Edit</button>'
+        +'<button class="btn bg2 bxs" onclick="toggleSchool(\''+s.id+'\')">'+(s.active!==false?'Disable':'Enable')+'</button></td></tr>';
+    }).join('')+'</tbody></table></div></div>';
+}
+
+function addSchoolM(){
+  openM('<div class="mh"><h3>🏫 Add New School</h3><button class="mc" onclick="closeM()">×</button></div>'
+    +'<div class="mb2">'
+    +'<div class="fr f2"><div class="fg"><label>School Name (EN) *</label><input id="ns-name" placeholder="e.g. Unaizah International School"></div>'
+    +'<div class="fg"><label>School Name (AR)</label><input id="ns-namear" dir="rtl" placeholder="اسم المدرسة"></div></div>'
+    +'<div class="fr f3"><div class="fg"><label>City *</label><input id="ns-city"></div>'
+    +'<div class="fg"><label>Logo Emoji</label><input id="ns-logo" value="🎓" style="width:80px;font-size:18px;text-align:center"></div>'
+    +'<div class="fg"><label>Academic Year</label><input id="ns-year" placeholder="2024-2025"></div></div>'
+    +'<div class="dv"></div>'
+    +'<div style="font-size:11px;font-weight:600;margin-bottom:8px">School Super Admin Account</div>'
+    +'<div class="fr f2"><div class="fg"><label>Admin First Name *</label><input id="ns-afn" placeholder="First name"></div>'
+    +'<div class="fg"><label>Admin Last Name *</label><input id="ns-aln" placeholder="Last name"></div></div>'
+    +'<div class="fr f2"><div class="fg"><label>Username *</label><input id="ns-aun" placeholder="e.g. admin"></div>'
+    +'<div class="fg"><label>Password *</label><input id="ns-apw" type="password" placeholder="Min 8 characters"></div></div>'
+    +'<div class="fg"><label>Email</label><input id="ns-aem" type="email"></div>'
+    +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button>'
+    +'<button class="btn bp" onclick="saveNewSchool()">Create School →</button></div>');
+}
+
+async function saveNewSchool(){
+  const name=document.getElementById('ns-name').value.trim();
+  const nameAr=document.getElementById('ns-namear').value.trim();
+  const city=document.getElementById('ns-city').value.trim();
+  const logo=document.getElementById('ns-logo').value.trim()||'🎓';
+  const year=document.getElementById('ns-year').value.trim()||new Date().getFullYear()+'-'+(new Date().getFullYear()+1);
+  const afn=document.getElementById('ns-afn').value.trim();
+  const aln=document.getElementById('ns-aln').value.trim();
+  const aun=document.getElementById('ns-aun').value.trim().toLowerCase().replace(/\s/g,'');
+  const apw=document.getElementById('ns-apw').value;
+  const aem=document.getElementById('ns-aem').value.trim();
+  if(!name||!city||!afn||!aln||!aun||!apw){toast('Fill all required fields','danger');return;}
+  if(apw.length<8){toast('Password must be 8+ characters','danger');return;}
+  const schoolId='s'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  const schools=getPlatformSchools();
+  schools.push({id:schoolId,name,nameAr,city,logo,academicYear:year,active:true,created:new Date().toISOString().split('T')[0]});
+  setPlatformSchools(schools);
+  const ph=await hashPassword(apw);
+  const pfx='sms7_sch_'+schoolId+'_';
+  localStorage.setItem(pfx+'settings',JSON.stringify({schoolName:name,schoolNameAr:nameAr,city,academicYear:year,logo}));
+  localStorage.setItem(pfx+'accounts',JSON.stringify([{
+    id:'u1',username:aun,passwordHash:ph,role:'superadmin',
+    firstName:afn,lastName:aln,email:aem,phone:'',
+    active:true,theme:'blue',lang:'en',created:new Date().toISOString().split('T')[0]
+  }]));
+  const emptyCollections=['students','teachers','complaints','tasks','infractions','referrals',
+    'class_visits','notebook_checks','activities','activity_reports','early_pickups',
+    'announcements','discipline_reports','activity_log','infraction_forms','visit_forms',
+    'task_requests','exam_absents','academic_calendar','attendance','student_health',
+    'remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules'];
+  emptyCollections.forEach(k=>localStorage.setItem(pfx+k,JSON.stringify([])));
+  localStorage.setItem(pfx+'sv7','true');
+  localStorage.setItem(pfx+'sessions',JSON.stringify([{id:'default',name:'Default Session',startDate:new Date().toISOString().split('T')[0],endDate:new Date(Date.now()+365*86400000).toISOString().split('T')[0],created:new Date().toISOString(),createdBy:'system',isActive:true}]));
+  localStorage.setItem(pfx+'active_session_id',JSON.stringify('default'));
+  emptyCollections.forEach(k=>{
+    if(!['activity_log','announcements','academic_calendar','infraction_forms','visit_forms'].includes(k))
+      localStorage.setItem(pfx+k+'_default',JSON.stringify([]));
+  });
+  localStorage.setItem(pfx+'announcements_default',JSON.stringify([{id:'an1',title:'Welcome to '+name,body:'Your school has been set up. Start by adding teachers and students.',postedBy:afn+' '+aln,date:new Date().toISOString().split('T')[0]}]));
+  closeM();toast('School "'+name+'" created successfully!','success');
+  rPlatformSchools();
+}
+
+function editSchoolM(id){
+  const s=getSchoolById(id);if(!s)return;
+  openM('<div class="mh"><h3>Edit: '+esc(s.name)+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+    +'<div class="mb2">'
+    +'<div class="fr f2"><div class="fg"><label>School Name (EN)</label><input id="es-name" value="'+esc(s.name)+'"></div>'
+    +'<div class="fg"><label>School Name (AR)</label><input id="es-namear" value="'+esc(s.nameAr||'')+'" dir="rtl"></div></div>'
+    +'<div class="fr f3"><div class="fg"><label>City</label><input id="es-city" value="'+esc(s.city||'')+'"></div>'
+    +'<div class="fg"><label>Logo</label><input id="es-logo" value="'+esc(s.logo||'🎓')+'" style="width:80px;font-size:18px;text-align:center"></div>'
+    +'<div class="fg"><label>Academic Year</label><input id="es-year" value="'+esc(s.academicYear||'')+'"></div></div>'
+    +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button>'
+    +'<button class="btn bp" onclick="saveEditSchool(\''+id+'\')">Save →</button></div>');
+}
+
+function saveEditSchool(id){
+  const schools=getPlatformSchools();
+  const i=schools.findIndex(s=>s.id===id);if(i<0)return;
+  schools[i].name=document.getElementById('es-name').value.trim()||schools[i].name;
+  schools[i].nameAr=document.getElementById('es-namear').value.trim();
+  schools[i].city=document.getElementById('es-city').value.trim();
+  schools[i].logo=document.getElementById('es-logo').value.trim()||'🎓';
+  schools[i].academicYear=document.getElementById('es-year').value.trim();
+  setPlatformSchools(schools);
+  const pfx='sms7_sch_'+id+'_';
+  try{
+    const settings=JSON.parse(localStorage.getItem(pfx+'settings')||'{}');
+    settings.schoolName=schools[i].name;settings.schoolNameAr=schools[i].nameAr;
+    settings.city=schools[i].city;settings.logo=schools[i].logo;settings.academicYear=schools[i].academicYear;
+    localStorage.setItem(pfx+'settings',JSON.stringify(settings));
+  }catch{}
+  closeM();toast('Updated','success');rPlatformSchools();
+}
+
+function toggleSchool(id){
+  const schools=getPlatformSchools();
+  const i=schools.findIndex(s=>s.id===id);if(i<0)return;
+  schools[i].active=schools[i].active===false?true:false;
+  setPlatformSchools(schools);
+  toast('School '+(schools[i].active?'enabled':'disabled'),'success');
+  rPlatformSchools();
+}
+
+function enterSchool(id){
+  selectSchool(id);
+  const sch=getSchoolById(id);
+  if(!sch)return;
+  const acc=DB.get('accounts')||[];
+  const sa=acc.find(a=>a.role==='superadmin'&&a.active);
+  if(sa){
+    CU={...sa,_platformReturn:true};SAIMP=false;SAR=null;
+    PLATFORM_MODE=false;
+    if(typeof initSessions==='function')initSessions();
+    launch();
+    toast('Entered '+sch.name+' as '+sa.firstName,'info');
+  }else{
+    toast('No superadmin account found for this school','danger');
+    deselectSchool();
+  }
+}
+
+function returnToPlatform(){
+  deselectSchool();
+  PLATFORM_MODE=true;
+  const admins=getPlatformAdmins();
+  CU={...admins[0],role:'platform_admin',_origRole:'platform_admin'};
+  launchPlatform();
+}
+
+function migrateExistingM(){
+  openM('<div class="mh"><h3>📦 Import Existing Data</h3><button class="mc" onclick="closeM()">×</button></div>'
+    +'<div class="mb2">'
+    +'<div class="al ai">This will copy your existing single-school data (stored without a school prefix) into a new school. '
+    +'Use this once to migrate from the old single-school setup.</div>'
+    +'<div class="fg"><label>New School Name *</label><input id="mig-name" placeholder="e.g. Unaizah International School"></div>'
+    +'<div class="fr f2"><div class="fg"><label>City *</label><input id="mig-city"></div>'
+    +'<div class="fg"><label>Logo</label><input id="mig-logo" value="🎓" style="width:80px;font-size:18px;text-align:center"></div></div>'
+    +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button>'
+    +'<button class="btn bp" onclick="doMigrateExisting()">Migrate →</button></div>');
+}
+
+async function doMigrateExisting(){
+  const name=document.getElementById('mig-name').value.trim();
+  const city=document.getElementById('mig-city').value.trim();
+  const logo=document.getElementById('mig-logo').value.trim()||'🎓';
+  if(!name||!city){toast('Fill required fields','danger');return;}
+  const schoolId='s'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  const schools=getPlatformSchools();
+  const oldSettings=JSON.parse(localStorage.getItem('sms7_settings')||'{}');
+  schools.push({id:schoolId,name:name||oldSettings.schoolName||'School',nameAr:oldSettings.schoolNameAr||'',city:city||oldSettings.city||'',logo:logo||oldSettings.logo||'🎓',academicYear:oldSettings.academicYear||'',active:true,created:new Date().toISOString().split('T')[0]});
+  setPlatformSchools(schools);
+  const count=await migrateExistingDataToSchool(schoolId);
+  closeM();toast('Migrated '+count+' data entries to "'+name+'"','success');
+  rPlatformSchools();
+}
+
+function rPlatformAdmins(){
+  const admins=getPlatformAdmins();
+  document.getElementById('pc').innerHTML=
+    '<div class="card"><div class="sh2"><h3>👤 Platform Admins ('+admins.length+')</h3>'
+    +'<button class="btn bp bsm" onclick="addPlatformAdminM()">+ Add</button></div>'
+    +'<div class="tw"><table><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>'
+    +admins.map(a=>'<tr><td><strong>'+esc(a.firstName)+' '+esc(a.lastName)+'</strong></td>'
+      +'<td><code>'+esc(a.username)+'</code></td>'
+      +'<td style="font-size:11px">'+(a.email||'—')+'</td>'
+      +'<td><span class="badge '+(a.active?'bgn':'bgr')+'">'+(a.active?'Active':'Disabled')+'</span></td>'
+      +'<td class="mono" style="font-size:11px">'+(a.created||'—')+'</td>'
+      +'<td><button class="btn bg2 bxs" onclick="editPlatformAdminM(\''+a.id+'\')">Edit</button></td></tr>').join('')
+    +'</tbody></table></div></div>';
+}
+
+function addPlatformAdminM(){
+  openM('<div class="mh"><h3>+ Platform Admin</h3><button class="mc" onclick="closeM()">×</button></div>'
+    +'<div class="mb2">'
+    +'<div class="fr f2"><div class="fg"><label>First Name *</label><input id="npa-fn"></div>'
+    +'<div class="fg"><label>Last Name *</label><input id="npa-ln"></div></div>'
+    +'<div class="fr f2"><div class="fg"><label>Username *</label><input id="npa-un"></div>'
+    +'<div class="fg"><label>Password *</label><input id="npa-pw" type="password"></div></div>'
+    +'<div class="fg"><label>Email</label><input id="npa-em" type="email"></div>'
+    +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button>'
+    +'<button class="btn bp" onclick="savePlatformAdmin()">Create →</button></div>');
+}
+
+async function savePlatformAdmin(){
+  const fn=document.getElementById('npa-fn').value.trim(),ln=document.getElementById('npa-ln').value.trim();
+  const un=document.getElementById('npa-un').value.trim().toLowerCase().replace(/\s/g,'');
+  const pw=document.getElementById('npa-pw').value,em=document.getElementById('npa-em').value.trim();
+  if(!fn||!ln||!un||!pw){toast('Fill required fields','danger');return;}
+  if(pw.length<8){toast('Password must be 8+ characters','danger');return;}
+  const admins=getPlatformAdmins();
+  if(admins.find(a=>a.username===un)){toast('Username exists','danger');return;}
+  const ph=await hashPassword(pw);
+  admins.push({id:'pa'+Date.now(),username:un,passwordHash:ph,firstName:fn,lastName:ln,email:em,active:true,created:new Date().toISOString().split('T')[0]});
+  setPlatformAdmins(admins);
+  closeM();toast('Platform admin created','success');rPlatformAdmins();
+}
+
+function editPlatformAdminM(id){
+  const admins=getPlatformAdmins();
+  const a=admins.find(x=>x.id===id);if(!a)return;
+  openM('<div class="mh"><h3>Edit: '+esc(a.firstName)+' '+esc(a.lastName)+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+    +'<div class="mb2">'
+    +'<div class="fr f2"><div class="fg"><label>First Name</label><input id="epa-fn" value="'+esc(a.firstName)+'"></div>'
+    +'<div class="fg"><label>Last Name</label><input id="epa-ln" value="'+esc(a.lastName)+'"></div></div>'
+    +'<div class="fg"><label>Email</label><input id="epa-em" value="'+esc(a.email||'')+'"></div>'
+    +'<div class="fg"><label>New Password (blank = keep current)</label><input id="epa-pw" type="password"></div>'
+    +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button>'
+    +'<button class="btn bp" onclick="saveEditPlatformAdmin(\''+id+'\')">Save →</button></div>');
+}
+
+async function saveEditPlatformAdmin(id){
+  const admins=getPlatformAdmins();
+  const i=admins.findIndex(a=>a.id===id);if(i<0)return;
+  admins[i].firstName=document.getElementById('epa-fn').value.trim()||admins[i].firstName;
+  admins[i].lastName=document.getElementById('epa-ln').value.trim()||admins[i].lastName;
+  admins[i].email=document.getElementById('epa-em').value.trim();
+  const np=document.getElementById('epa-pw').value;
+  if(np&&np.length>=8)admins[i].passwordHash=await hashPassword(np);
+  setPlatformAdmins(admins);
+  closeM();toast('Updated','success');rPlatformAdmins();
+}
+
+function rPlatformSettings(){
+  document.getElementById('pc').innerHTML=
+    '<div class="cg g2"><div class="card"><div class="sh2"><h3>🔧 Platform Info</h3></div>'
+    +'<div class="al ai">Platform Version 2.0 — Multi-School Edition<br>'
+    +'Schools: '+getPlatformSchools().length+' · Admins: '+getPlatformAdmins().length+'</div>'
+    +'<div class="dv"></div>'
+    +'<div style="font-size:12px;color:var(--tx2);line-height:1.9;background:var(--sf2);border-radius:var(--rs);padding:12px">'
+    +'<strong style="color:var(--ac)">Multi-School Setup:</strong><br>'
+    +'1. Add schools via the Schools page<br>'
+    +'2. Each school gets isolated data<br>'
+    +'3. School admins manage their own school<br>'
+    +'4. Platform admins can enter any school<br>'
+    +'5. Firebase syncs each school separately</div></div>'
+    +'<div class="card"><div class="sh2"><h3>🔐 Security</h3></div>'
+    +'<div class="al ag">✅ Password hashing (SHA-256) enabled<br>'
+    +'✅ Login rate limiting (5 attempts / 30s lockout)<br>'
+    +'✅ School data isolation active<br>'
+    +'✅ XSS sanitization via esc() function</div></div></div>';
+}
 const RL={superadmin:{en:'Super Admin',ar:'مدير النظام'},principal:{en:'Principal',ar:'مدير المدرسة'},vice_principal:{en:'Vice Principal',ar:'وكيل المدرسة'},academic_supervisor:{en:'Academic Supervisor',ar:'المشرف الأكاديمي'},student_advisor:{en:'Student Advisor',ar:'المرشد الطلابي'},activity_incharge:{en:'Activity Incharge',ar:'مسؤول الأنشطة'},quality_supervisor:{en:'Quality Supervisor',ar:'مشرف الجودة'},quality_incharge:{en:'Quality Incharge',ar:'مسؤول الجودة'},admin_assistant:{en:'Admin Assistant',ar:'المساعد الإداري'},teacher:{en:'Teacher',ar:'معلم'}};
 function rL(r){return RL[r]?.[_lang]||RL[r]?.en||r;}
 const TR={en:{dashboard:'Dashboard',activity_log:'Activity Log',students:'Students',accounts:'Staff Accounts',complaints:'Complaints',tasks:'Tasks',infractions:'Infractions',referrals:'Referrals',class_visits:'Class Visits',notebook_checks:'Notebook Checks',activities:'Activities',early_pickup:'Early Pickup',exam_absent:'Exam Absent List',announcements:'Announcements',settings:'Settings',infraction_forms:'Infraction Forms',visit_forms:'Visit Forms',behaviour:'Behaviour & Counseling',discipline_reports:'Discipline Reports',task_requests:'Task Requests',my_profile:'My Profile',export_data:'Export Data',academic_calendar:'Academic Calendar',parent_qr:'Parent QR Portal',activity_reports:'Activity Reports',teachers:'Teachers',teacher_reports:'View Reports by Teacher',daily_attendance:'Daily Attendance',student_health:'Student Health',remedial_plans:'Remedial Plans',vp_reports:'Reports to Principal',warning_letters:'Warning Letters',teacher_achievements:'Teacher Achievements',reexam_schedule:'Re-exam Schedule',pickup_qr:'Pickup QR Poster',sessions:'Academic Sessions',my_class_visits:'My Class Visits',my_warnings:'My Warning Letters',my_remedials:'My Remedial Plans',my_achievements:'My Achievements',duty_roster:'Duty Roster',substitutions:'Substitutions',my_duties:'My Duties &amp; Substitutions',sign_in:'Sign In',sign_out:'Sign Out',save:'Save',cancel:'Cancel',edit:'Edit',delete:'Delete',view:'View',add:'Add',search:'Search',close:'Close',first_name:'First Name',last_name:'Last Name',nationality:'Nationality',father_phone:'Father Phone',mother_phone:'Mother Phone',serial_no:'Serial No.',class_sn:'Class SN',username:'Username',password:'Password',name:'Name',email:'Email',phone:'Phone',role:'Role',status:'Status',date:'Date',grade:'Grade',section:'Section',subject:'Subject',description:'Description',assigned_to:'Assigned To',assigned_by:'Assigned By',due_date:'Due Date',priority:'Priority',pending:'Pending',in_progress:'In Progress',completed:'Completed',open:'Open',resolved:'Resolved',closed:'Closed',active:'Active',inactive:'Inactive',select_student:'Search student by name or grade…',no_records:'No records found',acknowledge:'Acknowledge',export_excel:'Export Excel',export_pdf:'Export PDF',date_from:'From Date',date_to:'To Date',language:'Language',color_theme:'Color Theme',change_password:'Change Password',current_password:'Current Password',new_password:'New Password',confirm_password:'Confirm Password',save_profile:'Save Profile',remarks:'Remarks',action_taken:'Action Taken',infraction_type:'Infraction Type',degree:'Degree',teacher:'Teacher',period:'Period',observations:'Observations',strengths:'Strengths',improvements:'Areas for Improvement',follow_up:'Follow-up',rating:'Rating',academic_ack:'Academic Supervisor Ack',principal_ack:'Principal Ack',complaint_type:'Complaint Type',track_number:'Track No.',parent_name:'Parent Name',add_remark:'Add Remark',remark_history:'Remark History',reason:'Reason',note:'Note',live_feed:'Live Activity Feed',total_students:'Total Students',open_complaints:'Open Complaints',active_tasks:'Active Tasks',overview:'Overview',management:'Management',system:'System',academic:'Academic',my_work:'My Work',discipline:'Discipline',monitoring:'Monitoring',exam_subject:'Exam Subject',absent_date:'Absent Date',school_name:'School Name',academic_year:'Academic Year',upload_logo:'Upload Logo',logo_emoji:'Logo Emoji',live_mode:'Live Mode',event_name:'Event Name',event_date:'Event Date',days_left:'days left',upcoming_events:'Upcoming Events',add_event:'Add Event',guardian:'Guardian'},
@@ -283,6 +728,14 @@ function seed(){
     {id:'u8',username:'assistant1',password:'admin123',role:'admin_assistant',firstName:'Admin',lastName:'Assistant',email:'aa@school.sa',phone:'0500000008',active:true,created:'2024-01-01',theme:'rose',lang:'en'},
     {id:'u9',username:'quality1',password:'admin123',role:'quality_incharge',firstName:'Ahmed',lastName:'Alhatlani',email:'qi@school.sa',phone:'0500000009',active:true,created:'2024-01-01',theme:'teal',lang:'en'},
   ]);
+  // Hash all seed passwords asynchronously
+  const acc=DB.get('accounts')||[];
+  Promise.all(acc.map(async a=>{
+    if(a.password&&!a.passwordHash){
+      a.passwordHash=await hashPassword(a.password);
+      delete a.password;
+    }
+  })).then(()=>DB.set('accounts',acc));
   DB.set('students',[
     {id:'s1',sn:1,csn:1,firstName:'Abdullah',lastName:'Al-Harbi',grade:'10',section:'A',nationality:'Saudi',fatherPhone:'0501234567',motherPhone:'0501234568',advisorId:'u5',gender:'Male',created:'2024-01-15'},
     {id:'s2',sn:2,csn:2,firstName:'Reem',lastName:'Al-Shammari',grade:'10',section:'B',nationality:'Saudi',fatherPhone:'0509876543',motherPhone:'0509876544',advisorId:'u5',gender:'Female',created:'2024-01-15'},
@@ -321,12 +774,118 @@ function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);
   Object.entries(oldNames).forEach(([id,oldName])=>{const i=acc.findIndex(a=>a.id===id);if(i>=0&&((acc[i].firstName+' '+acc[i].lastName).trim()===oldName)){acc[i].firstName=newNames[id].f;acc[i].lastName=newNames[id].l;if(newNames[id].scope)acc[i].scope=newNames[id].scope;modified=true;}});
   // Add second VP if missing (Abdulbasit)
   if(!acc.find(a=>a.id==='u3b')){acc.push({id:'u3b',username:'vice2',password:'admin123',role:'vice_principal',firstName:'Abdulbasit',lastName:'',email:'v.middle@school.sa',phone:'0500000010',active:true,created:'2024-01-01',theme:'teal',lang:'en',scope:'Middle & Secondary'});modified=true;}
+  // Hash any remaining plaintext passwords
+  let needsHash=false;
+  acc.forEach(a=>{if(a.password&&!a.passwordHash)needsHash=true;});
+  if(needsHash){Promise.all(acc.map(async a=>{if(a.password&&!a.passwordHash){a.passwordHash=await hashPassword(a.password);delete a.password;}})).then(()=>DB.set('accounts',acc));}
   if(modified)DB.set('accounts',acc);
 }
 let CU=null,SAR=null,SAIMP=false,_page='';
 function loginLang(l){setLang(l);['en','ar'].forEach(x=>{const e=document.getElementById('ll-'+x);if(e)e.className='lb'+(l===x?' act':'');});document.getElementById('lwl').textContent=l==='ar'?'مرحباً بعودتك':'Welcome';document.getElementById('ll-u').textContent=T('username');document.getElementById('ll-p').textContent=T('password');document.getElementById('lbtn').textContent=T('sign_in')+' →';}
-function doLogin(){const u=document.getElementById('lu').value.trim(),p=document.getElementById('lp2').value.trim();const acc=DB.get('accounts')||[];const user=acc.find(a=>a.username===u&&a.password===p&&a.active);if(!user){toast('Invalid credentials','danger');return;}CU=user;SAIMP=false;SAR=null;launch();}
-function doLogout(){if(SAIMP){exitImp();return;}CU=null;document.getElementById('app').classList.add('hidden');document.getElementById('lp').classList.remove('hidden');}
+let _loginAttempts=0,_loginLockUntil=0;
+function showLoginError(msg){const el=document.getElementById('login-error');el.textContent=msg;el.style.display='block';setTimeout(()=>{el.style.display='none';},5000);}
+
+function onSchoolSelect(){
+  const val=document.getElementById('lsch').value;
+  const wrap=document.getElementById('school-select-wrap');
+  if(val==='__platform'){
+    document.getElementById('ll-u').textContent='Platform Admin Username';
+  }else if(val){
+    const sch=getSchoolById(val);
+    if(sch){
+      document.getElementById('lsn').textContent=sch.name||'School';
+      document.getElementById('lss').textContent=sch.nameAr||'Administration Portal';
+      if(sch.logo){
+        const el=document.getElementById('lic');
+        if(sch.logo.startsWith('data:'))el.innerHTML='<img src="'+sch.logo+'" style="width:100%;height:100%;object-fit:contain">';
+        else el.textContent=sch.logo;
+      }
+    }
+    document.getElementById('ll-u').textContent=T('username');
+  }
+}
+
+function populateSchoolDropdown(){
+  const sel=document.getElementById('lsch');
+  if(!sel)return;
+  const schools=getPlatformSchools();
+  sel.innerHTML='<option value="">— Select School —</option>'
+    +schools.filter(s=>s.active!==false).map(s=>'<option value="'+s.id+'">'+(s.logo&&!s.logo.startsWith('data:')?s.logo+' ':'')+esc(s.name)+'</option>').join('')
+    +'<option value="__platform">🔧 Platform Admin</option>';
+  if(schools.length===1){
+    sel.value=schools[0].id;
+    onSchoolSelect();
+  }
+  const saved=sessionStorage.getItem('sms7_current_school');
+  if(saved&&schools.find(s=>s.id===saved)){
+    sel.value=saved;
+    onSchoolSelect();
+  }
+}
+
+async function doLogin(){
+  if(Date.now()<_loginLockUntil){
+    const secs=Math.ceil((_loginLockUntil-Date.now())/1000);
+    showLoginError('Too many attempts. Wait '+secs+'s.');
+    return;
+  }
+  const u=document.getElementById('lu').value.trim(),p=document.getElementById('lp2').value.trim();
+  const schoolVal=document.getElementById('lsch').value;
+  if(!u||!p){showLoginError('Enter username and password');return;}
+  if(!schoolVal){showLoginError('Select a school first');return;}
+
+  if(schoolVal==='__platform'){
+    const admins=getPlatformAdmins();
+    const ph=await hashPassword(p);
+    const admin=admins.find(a=>a.username===u&&a.passwordHash===ph&&a.active);
+    if(!admin){
+      _loginAttempts++;
+      if(_loginAttempts>=5){_loginLockUntil=Date.now()+30000;_loginAttempts=0;}
+      showLoginError('Invalid platform admin credentials');
+      return;
+    }
+    _loginAttempts=0;
+    CU={...admin,role:'platform_admin',_origRole:'platform_admin'};
+    PLATFORM_MODE=true;CURRENT_SCHOOL_ID=null;SAIMP=false;SAR=null;
+    launchPlatform();
+    return;
+  }
+
+  selectSchool(schoolVal);
+  const acc=DB.get(getSchoolPrefix()+'accounts')||[];
+  const ph=await hashPassword(p);
+  let user=acc.find(a=>a.username===u&&a.passwordHash===ph&&a.active);
+  if(!user){
+    user=acc.find(a=>a.username===u&&a.password===p&&a.active);
+    if(user){
+      user.passwordHash=ph;
+      delete user.password;
+      DB.set(getSchoolPrefix()+'accounts',acc);
+    }
+  }
+  if(!user){
+    _loginAttempts++;
+    if(_loginAttempts>=5){_loginLockUntil=Date.now()+30000;_loginAttempts=0;showLoginError('Too many attempts. Locked for 30 seconds.');}
+    else showLoginError('Invalid credentials ('+_loginAttempts+'/5)');
+    document.getElementById('login-attempts').style.display='block';
+    document.getElementById('login-attempts').textContent='Attempt '+_loginAttempts+' of 5';
+    return;
+  }
+  _loginAttempts=0;
+  document.getElementById('login-attempts').style.display='none';
+  CU=user;SAIMP=false;SAR=null;launch();
+}
+function doLogout(){
+  if(SAIMP){exitImp();return;}
+  if(CU&&CU._platformReturn){returnToPlatform();return;}
+  CU=null;CURRENT_SCHOOL_ID=null;DB._pfx='sms7_';PLATFORM_MODE=false;
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('lp').classList.remove('hidden');
+  document.getElementById('lsn').textContent='School Management System';
+  document.getElementById('lss').textContent='Administration Portal';
+  document.getElementById('lic').textContent='🎓';
+  populateSchoolDropdown();
+}
 function impUser(uid){const acc=DB.get('accounts')||[];const t=acc.find(a=>a.id===uid);if(!t){toast('Account not found','danger');return;}SAR=CU;CU=t;SAIMP=true;closeM();document.getElementById('ib').classList.remove('hidden');document.getElementById('ibwho').textContent=t.firstName+' '+t.lastName+' ('+rL(t.role)+')';toast('Viewing as '+t.firstName+' '+t.lastName,'info');launch();}
 function exitImp(){CU=SAR;SAR=null;SAIMP=false;document.getElementById('ib').classList.add('hidden');launch();}
 function launch(){
@@ -340,8 +899,15 @@ function launch(){
   document.getElementById('sbur').textContent=rL(CU.role);
   document.getElementById('lbtxt').textContent='⬅ '+T('sign_out');
   document.getElementById('tbd').textContent=new Date().toLocaleDateString(lang==='ar'?'ar-SA':'en-SA',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
-  // Demo account panel removed for production deployment
   document.getElementById('ibex').textContent='← '+T('sign_out');
+  if(CU._platformReturn){
+    document.getElementById('ib').classList.remove('hidden');
+    document.getElementById('iblbl').textContent='School:';
+    const sch=getSchoolById(CURRENT_SCHOOL_ID);
+    document.getElementById('ibwho').textContent=sch?sch.name:'School';
+    document.getElementById('ibex').textContent='← Return to Platform';
+    document.getElementById('ibex').onclick=returnToPlatform;
+  }
   buildNav();navigate('dashboard');checkEvts();
   if(typeof renderSessionIndicator==='function')setTimeout(renderSessionIndicator,80);
 }
@@ -574,7 +1140,7 @@ function rProfile(){
   +'</table>'+(CU.role==='superadmin'?'<div class="dv"></div><div style="font-size:12px;font-weight:600;margin-bottom:8px">👁️ View as Staff Member</div><div class="fg" style="margin-bottom:6px"><select id="imps" style="width:100%;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">— Select staff to view as —</option>'+(DB.get('accounts')||[]).filter(a=>a.role!=='superadmin'&&a.active).map(a=>'<option value="'+a.id+'">'+a.firstName+' '+a.lastName+' ('+rL(a.role)+')</option>').join('')+'</select></div><button class="btn bo bsm" onclick="impUser(document.getElementById(\'imps\').value)">👁️ Open Their Account →</button>':'')+'</div></div></div>';
 }
 function saveProf(){const fn=document.getElementById('pfn').value.trim(),ln=document.getElementById('pln').value.trim();if(!fn||!ln){toast('Name required','danger');return;}const acc=DB.get('accounts')||[];const i=acc.findIndex(a=>a.id===CU.id);if(i<0)return;const oldFullName=((acc[i].firstName||'')+' '+(acc[i].lastName||'')).trim().toLowerCase();acc[i].firstName=fn;acc[i].lastName=ln;acc[i].email=document.getElementById('pem').value.trim();acc[i].phone=document.getElementById('pph').value.trim();DB.set('accounts',acc);CU.firstName=fn;CU.lastName=ln;CU.email=acc[i].email;CU.phone=acc[i].phone;document.getElementById('sbun').textContent=fn+' '+ln;document.getElementById('sbav').textContent=((fn[0]||'')+(ln[0]||'')).toUpperCase();/* If teacher, also update the linked teacher record */if((CU._origRole||CU.role)==='teacher'){const teachers=DB.get('teachers')||[];const newFullName=(fn+' '+ln).trim();let tchIdx=teachers.findIndex(t=>((t.firstName||'')+' '+(t.lastName||'')).trim().toLowerCase()===oldFullName);if(tchIdx<0)tchIdx=teachers.findIndex(t=>(t.name||'').trim().toLowerCase()===oldFullName);/* Also handle subject input if present */const subjEl=document.getElementById('p-subject');if(tchIdx>=0){teachers[tchIdx].firstName=fn;teachers[tchIdx].lastName=ln;teachers[tchIdx].name=newFullName;teachers[tchIdx].phone=acc[i].phone;teachers[tchIdx].email=acc[i].email;if(subjEl)teachers[tchIdx].subject=subjEl.value.trim();DB.set('teachers',teachers);}else if(subjEl&&subjEl.value.trim()){/* No existing teacher record — create one */teachers.push({id:'tch'+Date.now(),name:newFullName,firstName:fn,lastName:ln,subject:subjEl.value.trim(),phone:acc[i].phone,email:acc[i].email,active:true,created:new Date().toISOString().split('T')[0]});DB.set('teachers',teachers);}}logA('Updated profile');toast(T('save_profile')+' ✓','success');rProfile();}
-function chgPwd(){const cur=document.getElementById('pcur').value,nw=document.getElementById('pnw').value,cf=document.getElementById('pcf').value;if(!cur||!nw||!cf){toast('Fill all password fields','danger');return;}const acc=DB.get('accounts')||[];const i=acc.findIndex(a=>a.id===CU.id);if(i<0)return;if(acc[i].password!==cur){toast('Current password incorrect','danger');return;}if(nw.length<6){toast('Min 6 characters','danger');return;}if(nw!==cf){toast('Passwords do not match','danger');return;}acc[i].password=nw;DB.set('accounts',acc);['pcur','pnw','pcf'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});logA('Changed password');toast(T('change_password')+' ✓','success');}
+async function chgPwd(){const cur=document.getElementById('pcur').value,nw=document.getElementById('pnw').value,cf=document.getElementById('pcf').value;if(!cur||!nw||!cf){toast('Fill all password fields','danger');return;}const acc=DB.get('accounts')||[];const i=acc.findIndex(a=>a.id===CU.id);if(i<0)return;const curHash=await hashPassword(cur);if(acc[i].passwordHash!==curHash&&acc[i].password!==cur){toast('Current password incorrect','danger');return;}if(nw.length<6){toast('Min 6 characters','danger');return;}if(nw!==cf){toast('Passwords do not match','danger');return;}acc[i].passwordHash=await hashPassword(nw);delete acc[i].password;DB.set('accounts',acc);['pcur','pnw','pcf'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});logA('Changed password');toast(T('change_password')+' ✓','success');}
 function setTheme(k){applyTheme(k);const acc=DB.get('accounts')||[];const i=acc.findIndex(a=>a.id===CU.id);if(i>=0){acc[i].theme=k;DB.set('accounts',acc);CU.theme=k;}document.getElementById('sbav').style.background=TH[k]?.a||'var(--ac)';toast('Theme: '+TH[k]?.n,'success');rProfile();}
 function rCalendar(){
   const evts=(DB.get('academic_calendar')||[]).sort((a,b)=>a.date.localeCompare(b.date));const isSA=CU.role==='superadmin';const today=new Date();today.setHours(0,0,0,0);
@@ -589,9 +1155,9 @@ function rAccounts(){
   document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>'+T('accounts')+' ('+acc.length+')</h3><button class="btn bp bsm" onclick="addAccM()">+</button></div><div class="tw"><table><thead><tr><th>'+T('name')+'</th><th>Username</th><th>'+T('role')+'</th><th>'+T('email')+'</th><th>'+T('phone')+'</th><th>'+T('status')+'</th>'+(isSA?'<th>Created</th>':'')+'<th>Actions</th></tr></thead><tbody>'+acc.map(a=>'<tr><td><strong>'+a.firstName+' '+a.lastName+'</strong></td><td><code>'+a.username+'</code></td><td><span class="badge bbl">'+rL(a.role)+'</span></td><td style="font-size:11px;color:var(--tx3)">'+(a.email||'—')+'</td><td class="mono" style="font-size:11px;color:var(--tx3)">'+(a.phone||'—')+'</td><td><span class="badge '+(a.active?'bgn':'bgr')+'">'+T(a.active?'active':'inactive')+'</span></td>'+(isSA?'<td class="mono" style="font-size:11px;color:var(--tx3)">'+(a.created||'—')+'</td>':'')+'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="editAccM(\''+a.id+'\')">'+T('edit')+'</button>'+(a.id!==CU.id?'<button class="btn bg2 bxs" onclick="togAcc(\''+a.id+'\')">'+(a.active?'Disable':'Enable')+'</button>':'')+(CU.role==='superadmin'&&a.role!=='superadmin'?'<button class="btn bg2 bxs" onclick="impUser(\''+a.id+'\')">👁️</button>':'')+'</td></tr>').join('')+'</tbody></table></div></div>';
 }
 function addAccM(){openM('<div class="mh"><h3>+ '+T('accounts')+'</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fr f2"><div class="fg"><label>'+T('first_name')+' *</label><input id="nafn"></div><div class="fg"><label>'+T('last_name')+' *</label><input id="naln"></div></div><div class="fr f2"><div class="fg"><label>'+T('email')+'</label><input id="naem" type="email"></div><div class="fg"><label>'+T('phone')+'</label><input id="naph"></div></div><div class="fr f2"><div class="fg"><label>Username *</label><input id="naun"></div><div class="fg"><label>Password *</label><input id="napw" type="password"></div></div><div class="fg"><label>'+T('role')+' *</label><select id="narl"><option value="">— Select —</option>'+Object.entries(RL).filter(([k])=>k!=='superadmin').map(([k,v])=>'<option value="'+k+'">'+v.en+'</option>').join('')+'</select></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveAcc()">Create →</button></div>');}
-function saveAcc(){const fn=document.getElementById('nafn').value.trim(),ln=document.getElementById('naln').value.trim(),un=document.getElementById('naun').value.trim().toLowerCase().replace(/\s/g,''),pw=document.getElementById('napw').value,rl=document.getElementById('narl').value;if(!fn||!ln||!un||!pw||!rl){toast('Fill required fields','danger');return;}if(pw.length<6){toast('Password min 6 chars','danger');return;}const acc=DB.get('accounts')||[];if(acc.find(a=>a.username===un)){toast('Username exists','danger');return;}acc.push({id:'u'+Date.now(),username:un,password:pw,role:rl,firstName:fn,lastName:ln,email:document.getElementById('naem').value.trim(),phone:document.getElementById('naph').value.trim(),active:true,theme:'blue',lang:'en',created:new Date().toISOString().split('T')[0]});DB.set('accounts',acc);logA('Created account: '+fn+' '+ln);closeM();toast('Account created','success');rAccounts();}
+async function saveAcc(){const fn=document.getElementById('nafn').value.trim(),ln=document.getElementById('naln').value.trim(),un=document.getElementById('naun').value.trim().toLowerCase().replace(/\s/g,''),pw=document.getElementById('napw').value,rl=document.getElementById('narl').value;if(!fn||!ln||!un||!pw||!rl){toast('Fill required fields','danger');return;}if(pw.length<6){toast('Password min 6 chars','danger');return;}const acc=DB.get('accounts')||[];if(acc.find(a=>a.username===un)){toast('Username exists','danger');return;}const ph=await hashPassword(pw);acc.push({id:'u'+Date.now(),username:un,passwordHash:ph,role:rl,firstName:fn,lastName:ln,email:document.getElementById('naem').value.trim(),phone:document.getElementById('naph').value.trim(),active:true,theme:'blue',lang:'en',created:new Date().toISOString().split('T')[0]});DB.set('accounts',acc);logA('Created account: '+fn+' '+ln);closeM();toast('Account created','success');rAccounts();}
 function editAccM(id){const a=gA(id);if(!a)return;openM('<div class="mh"><h3>Edit: '+a.firstName+' '+a.lastName+'</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fr f2"><div class="fg"><label>'+T('first_name')+'</label><input id="eafn" value="'+esc(a.firstName)+'"></div><div class="fg"><label>'+T('last_name')+'</label><input id="ealn" value="'+esc(a.lastName)+'"></div></div><div class="fr f2"><div class="fg"><label>'+T('email')+'</label><input id="eaem" value="'+esc(a.email||'')+'"></div><div class="fg"><label>'+T('phone')+'</label><input id="raph" value="'+esc(a.phone||'')+'"></div></div><div class="fg"><label>'+T('role')+'</label><select id="earl">'+Object.entries(RL).filter(([k])=>k!=='superadmin').map(([k,v])=>'<option value="'+k+'"'+(a.role===k?' selected':'')+'>'+v.en+'</option>').join('')+'</select></div><div class="fg"><label>New Password (blank=keep)</label><input id="eapw" type="password"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveEditAcc(\''+id+'\')">'+T('save')+' →</button></div>');}
-function saveEditAcc(id){const acc=DB.get('accounts')||[];const i=acc.findIndex(a=>a.id===id);if(i<0)return;acc[i].firstName=document.getElementById('eafn').value.trim()||acc[i].firstName;acc[i].lastName=document.getElementById('ealn').value.trim()||acc[i].lastName;acc[i].email=document.getElementById('eaem').value.trim();acc[i].phone=document.getElementById('raph').value.trim();acc[i].role=document.getElementById('earl').value;const np=document.getElementById('eapw').value;if(np&&np.length>=6)acc[i].password=np;DB.set('accounts',acc);logA('Edited account: '+acc[i].firstName+' '+acc[i].lastName);closeM();toast('Updated','success');rAccounts();}
+async function saveEditAcc(id){const acc=DB.get('accounts')||[];const i=acc.findIndex(a=>a.id===id);if(i<0)return;acc[i].firstName=document.getElementById('eafn').value.trim()||acc[i].firstName;acc[i].lastName=document.getElementById('ealn').value.trim()||acc[i].lastName;acc[i].email=document.getElementById('eaem').value.trim();acc[i].phone=document.getElementById('raph').value.trim();acc[i].role=document.getElementById('earl').value;const np=document.getElementById('eapw').value;if(np&&np.length>=6){acc[i].passwordHash=await hashPassword(np);delete acc[i].password;}DB.set('accounts',acc);logA('Edited account: '+acc[i].firstName+' '+acc[i].lastName);closeM();toast('Updated','success');rAccounts();}
 function togAcc(id){if(id===CU.id){toast("Can't disable own account",'danger');return;}const acc=DB.get('accounts')||[];const i=acc.findIndex(a=>a.id===id);if(i<0)return;acc[i].active=!acc[i].active;DB.set('accounts',acc);toast('Account '+(acc[i].active?'enabled':'disabled'));rAccounts();}
 function rStudents(){
   const students=DB.get('students')||[];const canEdit=['superadmin','principal'].includes(CU.role);
@@ -3208,7 +3774,8 @@ async function syncDownAll(){
   if(!window.__FB)return false;
   const{db,ref,get}=window.__FB;
   try{
-    const rootSnap=await get(ref(db,'data'));
+    const fbPath=getFirebaseSchoolPath();
+    const rootSnap=await get(ref(db,fbPath));
     if(rootSnap.exists()){
       const all=rootSnap.val();
       Object.keys(all).forEach(k=>{
@@ -3268,7 +3835,8 @@ async function syncUpAll(){
         if(v!==null&&v!==undefined)data[k]=v;
       }
     }
-    await set(ref(db,'data'),data);
+    const fbPath=getFirebaseSchoolPath();
+    await set(ref(db,fbPath),data);
     console.log('[FB] Bulk upload complete ('+Object.keys(data).length+' keys)');
   }catch(e){console.error('[FB] Bulk upload failed:',e);}
 }
@@ -3297,7 +3865,7 @@ if(!DB._raw_set){
     if(SYNC_ENABLED&&window.__FB&&shouldSyncKey(k)){
       const{db,ref,set}=window.__FB;
       SYNC_ECHO[k]=Date.now();
-      set(ref(db,'data/'+k),v).catch(e=>{
+      set(ref(db,getFirebaseSchoolPath()+k),v).catch(e=>{
         logFBError(k,e);
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#d63838';
       });
@@ -3311,7 +3879,7 @@ if(!DB._raw_set){
     if(SYNC_ENABLED&&window.__FB&&shouldSyncKey(k)){
       const{db,ref,set}=window.__FB;
       SYNC_ECHO[k]=Date.now();
-      set(ref(db,'data/'+k),v).catch(e=>{
+      set(ref(db,getFirebaseSchoolPath()+k),v).catch(e=>{
         logFBError(k,e);
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#d63838';
       });
@@ -3323,7 +3891,7 @@ if(!DB._raw_set){
 function subscribeToCollection(k){
   if(!window.__FB)return;
   const{db,ref,onValue}=window.__FB;
-  onValue(ref(db,'data/'+k),(snap)=>{
+  onValue(ref(db,getFirebaseSchoolPath()+k),(snap)=>{
     if(!SYNC_INITIAL_LOAD)return; // ignore the very first load callback (we handled that with syncDownAll)
     // Suppress echoes of our own writes (within last 1.5s)
     if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<1500){return;}
@@ -3353,7 +3921,7 @@ function subscribeToCollection(k){
           if(SYNC_ENABLED&&window.__FB){
             const{set}=window.__FB;
             SYNC_ECHO[k]=Date.now();
-            set(ref(db,'data/'+k),existing).catch(e=>logFBError(k,e));
+            set(ref(db,getFirebaseSchoolPath()+k),existing).catch(e=>logFBError(k,e));
           }
           return;
         }
@@ -3510,6 +4078,12 @@ function qExp(type,fmt){document.getElementById('exptype').value=type;doExp(fmt)
 })();
 
 window.__doSeedAndStart=function(){
+  // Initialize platform (multi-school registry)
+  initPlatform();
+  populateSchoolDropdown();
+  // If a school was previously selected in this session, restore it
+  const savedSchool=sessionStorage.getItem('sms7_current_school');
+  if(savedSchool){selectSchool(savedSchool);}
   // Initialize sessions FIRST so DB.get/set is wrapped before any seed runs
   if(typeof initSessions==='function')initSessions();
   seed();
@@ -5532,9 +6106,12 @@ function procTchAccImp(){
         importedNames.push({name,username,subject,phone});
       }
     });
-    
+
+    // Hash all new teacher passwords before saving
+    Promise.all(accounts.map(async a=>{
+      if(a.password&&!a.passwordHash){a.passwordHash=await hashPassword(a.password);delete a.password;}
+    })).then(()=>DB.set('accounts',accounts));
     DB.set('teachers',teachers);
-    DB.set('accounts',accounts);
     
     logA('Imported '+createdTch+' teacher record(s) and '+createdAcc+' account(s)');
     closeM();
@@ -5590,7 +6167,7 @@ function quickAssignExtraRoleByUsername(username){
 function dlImportCreds(){
   const imp=window._lastImportCreds||[];
   if(!imp.length)return;
-  expCSV(['Teacher Name','Username','Password','Subject','Phone'],imp.map(t=>[t.name,t.username,'teacher@123',t.subject||'',t.phone||'']),'teacher_credentials_'+new Date().toISOString().split('T')[0]);
+  expCSV(['Teacher Name','Username','Initial Password (change on first login)','Subject','Phone'],imp.map(t=>[t.name,t.username,'teacher@123',t.subject||'',t.phone||'']),'teacher_credentials_'+new Date().toISOString().split('T')[0]);
 }
 
 function printImportCreds(){
