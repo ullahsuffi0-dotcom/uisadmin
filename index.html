@@ -132,26 +132,28 @@ code{font-family:'JetBrains Mono',monospace;background:var(--sf2);padding:2px 6p
 .mono{font-family:'JetBrains Mono',monospace}
 @media print{#sb,#tb,#tr,.no-print,.ib,.ep{display:none!important}#app{display:block}#ct{overflow:visible}body{background:#fff;color:#000}}
 </style>
+<style>
+/* Immediately hide login/app for parent or pickup URL params, BEFORE JS runs */
+html.parent-url #lp, html.parent-url #app, html.pickup-url #lp, html.pickup-url #app { display: none !important; }
+</style>
 <script type="module">
-// Firebase SDK v10 modular imports
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import { getDatabase, ref, set, get, onValue, child, onDisconnect, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCOJeLPPdrQUX2xWgorAdX26R4LyaT2W98",
-  authDomain: "unaizahinternational.firebaseapp.com",
-  databaseURL: "https://unaizahinternational-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "unaizahinternational",
-  storageBucket: "unaizahinternational.firebasestorage.app",
-  messagingSenderId: "340754093496",
-  appId: "1:340754093496:web:40b5331c560f80a6e6eb4d"
+  apiKey: "AIzaSyC6M7UWMUW5SpXLoncaLudrpni-uVuZZ64",
+  authDomain: "szm-admin-system.firebaseapp.com",
+  databaseURL: "https://szm-admin-system-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "szm-admin-system",
+  storageBucket: "szm-admin-system.firebasestorage.app",
+  messagingSenderId: "419035701319",
+  appId: "1:419035701319:web:5ba88e76d42e0ee5c2d162"
 };
 
 const fbApp = initializeApp(firebaseConfig);
 const fbDB = getDatabase(fbApp);
 window.__FB = { app: fbApp, db: fbDB, ref, set, get, onValue, child, onDisconnect, serverTimestamp, ready: false };
 
-// Connection status tracking
 const connRef = ref(fbDB, '.info/connected');
 onValue(connRef, (snap) => {
   const connected = snap.val() === true;
@@ -159,10 +161,6 @@ onValue(connRef, (snap) => {
   if (typeof updateSyncStatus === 'function') updateSyncStatus(connected);
 });
 </script>
-<style>
-/* Immediately hide login/app for parent or pickup URL params, BEFORE JS runs */
-html.parent-url #lp, html.parent-url #app, html.pickup-url #lp, html.pickup-url #app { display: none !important; }
-</style>
 <script>
 // Run immediately at parse time — before login panel renders to user
 (function(){
@@ -312,6 +310,7 @@ function getSchoolById(id){
 function getFirebaseSchoolPath(){
   return CURRENT_SCHOOL_ID?'schools/'+CURRENT_SCHOOL_ID+'/':'data/';
 }
+
 
 async function migrateExistingDataToSchool(schoolId){
   const oldPfx='sms7_';
@@ -681,7 +680,7 @@ function rPlatformSettings(){
     +'2. Each school gets isolated data<br>'
     +'3. School admins manage their own school<br>'
     +'4. Platform admins can enter any school<br>'
-    +'5. Firebase syncs each school separately</div></div>'
+    +'5. Cloud sync keeps all devices updated</div></div>'
     +'<div class="card"><div class="sh2"><h3>🔐 Security</h3></div>'
     +'<div class="al ag">✅ Password hashing (SHA-256) enabled<br>'
     +'✅ Login rate limiting (5 attempts / 30s lockout)<br>'
@@ -3703,62 +3702,52 @@ function shareReexamGo(id,phone,parent){
 // Falls back to pure localStorage if Firebase fails to load.
 // ═══════════════════════════════════════════════════════════
 
-// Collections that get synced across devices.
-// Session-scoped collections automatically sync ALL their session-suffixed buckets too.
 const SYNC_KEYS = [
   'settings','accounts','students','teachers','complaints','tasks','infractions',
   'referrals','class_visits','notebook_checks','activities','activity_reports',
   'early_pickups','announcements','discipline_reports','activity_log','infraction_forms',
   'visit_forms','task_requests','exam_absents','academic_calendar','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
-  'sessions','active_session_id','behaviour'
+  'sessions','active_session_id','behaviour','duty_rosters','substitutions'
 ];
 
-// Helper: is a key a session-scoped storage key like "students_default" or "students_s2024a"?
-// We sync these too. Pattern: <scoped_collection>_<sessionId>
 function isSessionScopedKey(k){
   if(!Array.isArray(window.SESSION_SCOPED_KEYS||SESSION_SCOPED_KEYS))return false;
   const scopedList=window.SESSION_SCOPED_KEYS||SESSION_SCOPED_KEYS;
-  for(const sk of scopedList){
-    if(k.startsWith(sk+'_'))return true;
-  }
+  for(const sk of scopedList){if(k.startsWith(sk+'_'))return true;}
   return false;
 }
 
-function shouldSyncKey(k){
-  return SYNC_KEYS.includes(k)||isSessionScopedKey(k);
-}
+function shouldSyncKey(k){return SYNC_KEYS.includes(k)||isSessionScopedKey(k);}
 
-// Pages that should auto-refresh when their data changes from another device
 const AUTO_REFRESH_MAP = {
-  students: ['rStudents'], teachers: ['rTeachers','rTeacherReports','rTeacherAchievements'],
-  accounts: ['rAccounts'], complaints: ['rComplaints','rDash'], tasks: ['rTasks','rDash'],
-  infractions: ['rInfractions'], referrals: ['rReferrals'], class_visits: ['rClassVisits','rTeacherReports'],
-  notebook_checks: ['rNbChecks'], activities: ['rActivities'], activity_reports: ['rActivityReports'],
-  early_pickups: ['rPickup'], announcements: ['rAnnouncements','rDash'],
-  discipline_reports: ['rDiscipline'], activity_log: ['rActLog','rDash'],
-  task_requests: ['rTaskReqs'], exam_absents: ['rExamAbsent'], academic_calendar: ['rCalendar'],
-  attendance: ['rAttendance'], student_health: ['rStudentHealth'], remedial_plans: ['rRemedial'],
-  vp_reports: ['rVPReports'], warning_letters: ['rWarnings'],
-  teacher_achievements: ['rTeacherAchievements'], settings: ['rSettings'],
-  reexam_schedules: ['rReexam'],
-  duty_rosters: ['rDutyRoster','rMyDuties'], substitutions: ['rSubstitutions','rMyDuties'],
-  sessions: ['rSessions'], active_session_id: ['rSessions']
+  students:['rStudents'],teachers:['rTeachers','rTeacherReports','rTeacherAchievements'],
+  accounts:['rAccounts'],complaints:['rComplaints','rDash'],tasks:['rTasks','rDash'],
+  infractions:['rInfractions'],referrals:['rReferrals'],class_visits:['rClassVisits','rTeacherReports'],
+  notebook_checks:['rNbChecks'],activities:['rActivities'],activity_reports:['rActivityReports'],
+  early_pickups:['rPickup'],announcements:['rAnnouncements','rDash'],
+  discipline_reports:['rDiscipline'],activity_log:['rActLog','rDash'],
+  task_requests:['rTaskReqs'],exam_absents:['rExamAbsent'],academic_calendar:['rCalendar'],
+  attendance:['rAttendance'],student_health:['rStudentHealth'],remedial_plans:['rRemedial'],
+  vp_reports:['rVPReports'],warning_letters:['rWarnings'],
+  teacher_achievements:['rTeacherAchievements'],settings:['rSettings'],
+  reexam_schedules:['rReexam'],
+  duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
+  sessions:['rSessions'],active_session_id:['rSessions']
 };
 
-let SYNC_ENABLED = false;
-let SYNC_INITIAL_LOAD = false;
-let SYNC_ECHO = {}; // remember our own writes so we don't infinite-loop on snapshots
+let SYNC_ENABLED=false;
+let SYNC_INITIAL_LOAD=false;
+let SYNC_ECHO={};
 
 function updateSyncStatus(connected){
   const dot=document.getElementById('syncdot'),txt=document.getElementById('synctext'),ind=document.getElementById('syncind');
   if(!dot||!txt)return;
-  if(!window.__FB){dot.style.background='#9aa3b6';txt.textContent='Local';if(ind)ind.title='Firebase not loaded — using local storage only';return;}
-  if(connected){dot.style.background='#10a169';txt.textContent='Synced';if(ind)ind.title='Connected to Firebase — changes sync across all devices';}
-  else{dot.style.background='#dd6b20';txt.textContent='Offline';if(ind)ind.title='Offline — changes saved locally and will sync when reconnected';}
+  if(!window.__FB){dot.style.background='#9aa3b6';txt.textContent='Local';if(ind)ind.title='No cloud sync — using local storage only';return;}
+  if(connected){dot.style.background='#10a169';txt.textContent='Synced';if(ind)ind.title='Connected — changes sync across all devices';}
+  else{dot.style.background='#dd6b20';txt.textContent='Offline';if(ind)ind.title='Offline — changes saved locally, will sync when reconnected';}
 }
 
-// Wait for Firebase SDK to load (it's async via type=module)
 function waitForFirebase(maxMs){
   return new Promise(resolve=>{
     const start=Date.now();
@@ -3771,7 +3760,6 @@ function waitForFirebase(maxMs){
   });
 }
 
-// Pull all collections from Firebase into localStorage on first load
 async function syncDownAll(){
   if(!window.__FB)return false;
   const{db,ref,get}=window.__FB;
@@ -3782,16 +3770,13 @@ async function syncDownAll(){
       const all=rootSnap.val();
       Object.keys(all).forEach(k=>{
         if(shouldSyncKey(k)&&all[k]!==null&&all[k]!==undefined){
-          // Firebase stores arrays as objects with numeric keys when sparse — normalize
           let v=all[k];
           if(v&&typeof v==='object'&&!Array.isArray(v)){
-            // If all keys are numeric, treat as array
             const keys=Object.keys(v);
             if(keys.length>0&&keys.every(kk=>/^\d+$/.test(kk))){
               const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
             }
           }
-          // Same safeguard as live sync: don't let cloud overwrite a richer local list during initial pull
           const APPEND_ONLY=['early_pickups','complaints','tasks','infractions','referrals',
             'class_visits','notebook_checks','activities','activity_reports','exam_absents',
             'reexam_schedules','daily_attendance','student_health','remedial_plans','vp_reports',
@@ -3800,67 +3785,43 @@ async function syncDownAll(){
           if(APPEND_ONLY.includes(baseKey)&&Array.isArray(v)){
             try{
               const existing=JSON.parse(localStorage.getItem('sms7_'+k)||'[]');
-              if(Array.isArray(existing)&&existing.length>v.length){
-                console.warn('[FB] Initial sync: kept richer local '+k+' ('+existing.length+' records vs cloud '+v.length+'). Will push local up.');
-                return; // skip overwriting
-              }
+              if(Array.isArray(existing)&&existing.length>v.length)return;
             }catch(e){}
           }
           localStorage.setItem('sms7_'+k,JSON.stringify(v));
         }
       });
-      console.log('[FB] Initial sync complete — '+Object.keys(all).length+' collections loaded from cloud');
       return true;
-    }else{
-      console.log('[FB] Empty database — first run. Will upload local data on next write.');
-      return false;
-    }
-  }catch(e){console.error('[FB] Initial sync failed:',e);return false;}
+    }else{return false;}
+  }catch(e){console.error('[Sync] Initial pull failed:',e);return false;}
 }
 
-// Push entire local DB up to Firebase (used for first-time seeding)
 async function syncUpAll(){
   if(!window.__FB)return;
   const{db,ref,set}=window.__FB;
   try{
     const data={};
-    // Use raw access since DB.get is session-wrapped
     const rawGet=DB._raw_get||DB.get.bind(DB);
     SYNC_KEYS.forEach(k=>{const v=rawGet(k);if(v!==null&&v!==undefined)data[k]=v;});
-    // Also include all session-scoped buckets currently in localStorage
     for(let i=0;i<localStorage.length;i++){
       const lkey=localStorage.key(i);
       if(!lkey||!lkey.startsWith('sms7_'))continue;
       const k=lkey.substring(5);
-      if(isSessionScopedKey(k)){
-        const v=rawGet(k);
-        if(v!==null&&v!==undefined)data[k]=v;
-      }
+      if(isSessionScopedKey(k)){const v=rawGet(k);if(v!==null&&v!==undefined)data[k]=v;}
     }
     const fbPath=getFirebaseSchoolPath();
     await set(ref(db,fbPath),data);
-    console.log('[FB] Bulk upload complete ('+Object.keys(data).length+' keys)');
-  }catch(e){console.error('[FB] Bulk upload failed:',e);}
+  }catch(e){console.error('[Sync] Upload failed:',e);}
 }
 
-// Track which keys have failed so we don't spam the console
 const FB_FAILED_KEYS=new Set();
 function logFBError(k,e){
-  // Only show one warning per key to avoid console spam
   if(FB_FAILED_KEYS.has(k))return;
   FB_FAILED_KEYS.add(k);
-  if(e.message&&e.message.toLowerCase().includes('permission')){
-    console.warn('[FB] Permission denied for "'+k+'". Check your Realtime Database rules at https://console.firebase.google.com — they should allow read/write for your data path.');
-  }else{
-    console.warn('[FB] Write failed for '+k+':',e.message);
-  }
+  console.warn('[Sync] Write failed for '+k+':',e.message);
 }
 
-// Override DB._raw_set (the underlying storage layer) so we capture the ACTUAL key
-// being written (e.g. "students_default") not the logical key ("students").
-// This way session-scoped writes get pushed to Firebase under their real key.
 if(!DB._raw_set){
-  // _raw_set hasn't been set up yet — use DB.set directly (no session wrapping)
   const _origDBset=DB.set.bind(DB);
   DB.set=function(k,v){
     _origDBset(k,v);
@@ -3874,7 +3835,6 @@ if(!DB._raw_set){
     }
   };
 }else{
-  // _raw_set exists (sessions module already wrapped DB.set). Wrap _raw_set instead.
   const _origRawSet=DB._raw_set;
   DB._raw_set=function(k,v){
     _origRawSet(k,v);
@@ -3889,37 +3849,29 @@ if(!DB._raw_set){
   };
 }
 
-// Subscribe to real-time changes from other devices
 function subscribeToCollection(k){
   if(!window.__FB)return;
   const{db,ref,onValue}=window.__FB;
   onValue(ref(db,getFirebaseSchoolPath()+k),(snap)=>{
-    if(!SYNC_INITIAL_LOAD)return; // ignore the very first load callback (we handled that with syncDownAll)
-    // Suppress echoes of our own writes (within last 1.5s)
-    if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<1500){return;}
+    if(!SYNC_INITIAL_LOAD)return;
+    if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<1500)return;
     let v=snap.val();
     if(v===null||v===undefined)return;
-    // Normalize array-as-object
     if(v&&typeof v==='object'&&!Array.isArray(v)){
       const keys=Object.keys(v);
       if(keys.length>0&&keys.every(kk=>/^\d+$/.test(kk))){
         const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
       }
     }
-    // SAFEGUARD: For collections that should only grow (records, not rosters), refuse to overwrite
-    // a non-empty local list with an empty cloud list. This prevents "wash away" if another device
-    // pushed up stale/empty data due to a fresh init or browser data wipe.
-    const APPEND_ONLY_COLLECTIONS=['early_pickups','complaints','tasks','infractions','referrals',
+    const APPEND_ONLY=['early_pickups','complaints','tasks','infractions','referrals',
       'class_visits','notebook_checks','activities','activity_reports','exam_absents',
       'reexam_schedules','daily_attendance','student_health','remedial_plans','vp_reports',
       'warning_letters','teacher_achievements','behaviour','discipline','substitutions','activity_log'];
     const baseKey=isSessionScopedKey(k)?k.replace(/_[^_]+$/,''):k;
-    if(APPEND_ONLY_COLLECTIONS.includes(baseKey)&&Array.isArray(v)){
+    if(APPEND_ONLY.includes(baseKey)&&Array.isArray(v)){
       try{
         const existing=JSON.parse(localStorage.getItem('sms7_'+k)||'[]');
         if(Array.isArray(existing)&&existing.length>v.length){
-          console.warn('[FB] Refused to overwrite '+k+' ('+existing.length+' local records) with shorter cloud version ('+v.length+' records). This protects against accidental data loss. Local data kept.');
-          // Push our local data UP to cloud to restore it for everyone
           if(SYNC_ENABLED&&window.__FB){
             const{set}=window.__FB;
             SYNC_ECHO[k]=Date.now();
@@ -3927,86 +3879,56 @@ function subscribeToCollection(k){
           }
           return;
         }
-      }catch(e){/* if parsing fails, proceed with overwrite */}
+      }catch(e){}
     }
     localStorage.setItem('sms7_'+k,JSON.stringify(v));
-    // For session-scoped keys, only refresh if the key matches the ACTIVE session (otherwise we'd refresh with stale data)
     let logicalKey=k;
     if(isSessionScopedKey(k)){
-      // Extract the logical collection name (e.g. "students_default" → "students")
       const activeSid=window.__activeSessionId||(typeof getActiveSessionId==='function'?getActiveSessionId():'default');
       const expectedSuffix='_'+activeSid;
-      if(!k.endsWith(expectedSuffix))return; // ignore changes to inactive sessions
+      if(!k.endsWith(expectedSuffix))return;
       logicalKey=k.substring(0,k.length-expectedSuffix.length);
     }
-    // If user is currently viewing a page that displays this data, refresh it
     const renderers=AUTO_REFRESH_MAP[logicalKey]||[];
-    if(renderers.includes('r'+capitalize(_page||''))||renderers.some(r=>r==='r'+pageToRendererName(_page))){
+    const curPage='r'+(_page||'').split('_').map(p=>p.charAt(0).toUpperCase()+p.slice(1)).join('');
+    if(renderers.includes(curPage)){
       try{
         const fnName=renderers.find(r=>typeof window[r]==='function');
         if(fnName){
-          // Briefly flash the sync dot blue to indicate incoming change
           const dot=document.getElementById('syncdot');
           if(dot){const orig=dot.style.background;dot.style.background='#3d6ee0';setTimeout(()=>{dot.style.background=orig||'#10a169';},400);}
           window[fnName]();
         }
-      }catch(e){console.warn('[FB] Re-render failed:',e);}
+      }catch(e){}
     }
-    // Always refresh dashboard counters in background if user is viewing dashboard
     if(_page==='dashboard'&&typeof rDash==='function'){try{rDash();}catch(e){}}
   });
 }
 
-function pageToRendererName(page){
-  if(!page)return '';
-  return page.split('_').map(p=>p.charAt(0).toUpperCase()+p.slice(1)).join('');
-}
-
-function capitalize(s){return s?s.charAt(0).toUpperCase()+s.slice(1):'';}
-
-// Boot sequence: wait for Firebase → sync down → run seed/migrate → enable sync → subscribe
 async function bootFirebaseSync(){
   updateSyncStatus(false);
   const ok=await waitForFirebase(4000);
   if(!ok){
-    console.warn('[FB] Firebase SDK did not load within 4s — running in local-only mode');
     updateSyncStatus(false);
     if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}
     return;
   }
-  console.log('[FB] SDK loaded. Pulling initial data from cloud…');
   const hadData=await syncDownAll();
-  // Now that we've pulled cloud data (if any), run seed/migrate.
-  // seed() checks for 'sv7' flag — if cloud already had data, sv7 will be set, so seed skips.
-  // migrate() ensures all collections exist for backward compatibility.
   if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}
   SYNC_INITIAL_LOAD=true;
   SYNC_ENABLED=true;
-  // If cloud was empty and we have local data (e.g., first-ever boot just seeded demo data, or local edits prior to Firebase setup), push it up
-  if(!hadData){
-    console.log('[FB] Cloud empty — uploading initial dataset to seed the cloud.');
-    await syncUpAll();
-  }
-  // Subscribe to real-time updates for every collection
+  if(!hadData)await syncUpAll();
   SYNC_KEYS.forEach(k=>subscribeToCollection(k));
-  // Subscribe to all session-scoped buckets currently in localStorage
   const subscribed=new Set(SYNC_KEYS);
   for(let i=0;i<localStorage.length;i++){
     const lkey=localStorage.key(i);
     if(!lkey||!lkey.startsWith('sms7_'))continue;
     const k=lkey.substring(5);
-    if(isSessionScopedKey(k)&&!subscribed.has(k)){
-      subscribeToCollection(k);
-      subscribed.add(k);
-    }
+    if(isSessionScopedKey(k)&&!subscribed.has(k)){subscribeToCollection(k);subscribed.add(k);}
   }
-  // Also subscribe when new session-scoped buckets appear (after switching/creating session, the page reloads anyway)
-  console.log('[FB] Real-time sync active for '+subscribed.size+' collections (incl. session-scoped)');
-  // Re-render the current page so it picks up freshly synced data (in case of remote updates)
   if(typeof navigate==='function'&&_page){try{navigate(_page);}catch(e){}}
 }
 
-// Kick it off after a brief delay so the rest of the app initializes first
 setTimeout(()=>{bootFirebaseSync();},300);
 
 function rActivities(){const acts=DB.get('activities')||[];const canC=['superadmin','principal','vice_principal','activity_incharge'].includes(CU.role);const sb={Upcoming:'bbl',Ongoing:'btl',Completed:'bgn',Cancelled:'brd'};document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('activities')+' ('+acts.length+')</h3>'+(canC?'<button class="btn bp bsm" onclick="addActM()">+</button>':'')+'</div></div>'+acts.map(a=>'<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div style="display:flex;gap:5px;align-items:center;margin-bottom:3px"><strong>'+a.title+'</strong><span class="badge '+(sb[a.status]||'bgr')+'">'+a.status+'</span></div><div style="font-size:11px;color:var(--tx3)">📅 '+a.date+' · 📍 '+(a.venue||'TBD')+' · 👥 '+(a.participants||'All')+' · 👤 '+a.inchargeName+'</div><div style="font-size:12px;color:var(--tx2);margin-top:3px">'+(a.description||'')+'</div>'+((a.updates||[]).length?'<div style="margin-top:5px;padding:7px;background:var(--sf2);border-radius:var(--rs);font-size:11px;color:var(--tx3)">Latest: '+a.updates[a.updates.length-1].text+'</div>':'')+'</div><button class="btn bg2 bsm" onclick="manAct(\''+a.id+'\')">Manage</button></div></div>').join('')||'<div class="card"><div class="emp"><div class="ei">🏃</div><p>'+T('no_records')+'</p></div></div>';}
@@ -4038,7 +3960,7 @@ function addDrM(){openM('<div class="mh"><h3>🗂️ New Discipline Report</h3><
 function saveDr(){const t=document.getElementById('drt').value.trim(),d=document.getElementById('drd').value.trim();if(!t||!d){toast('Fill required fields','danger');return;}const rpts=DB.get('discipline_reports')||[];rpts.push({id:nid('dr'),title:t,grade:document.getElementById('drg').value,section:document.getElementById('drs').value,teacher:document.getElementById('drtc').value,description:d,actionTaken:document.getElementById('dra').value,date:document.getElementById('drdt').value,createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,principalAck:'',created:new Date().toISOString()});DB.set('discipline_reports',rpts);logA('Discipline report: "'+t+'"');closeM();toast('Submitted','success');rDiscipline();}
 function ackDr(id){openM('<div class="mh"><h3>🎯 Acknowledgment</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>'+T('note')+'</label><textarea id="drpk"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bo" onclick="saveDrAck(\''+id+'\')">Acknowledge →</button></div>');}
 function saveDrAck(id){const rpts=DB.get('discipline_reports')||[];const i=rpts.findIndex(r=>r.id===id);if(i<0)return;rpts[i].principalAck=document.getElementById('drpk').value;DB.set('discipline_reports',rpts);logA('Acknowledged discipline report: "'+rpts[i].title+'"');closeM();toast('Acknowledged','success');rDiscipline();}
-function rSettings(){const s=DB.get('settings')||{};const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="cg g2"><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🏫 School Information</h3></div><div class="fr f2"><div class="fg"><label>School Name (EN)</label><input id="ssn" value="'+esc(s.schoolName||'')+'"></div><div class="fg"><label>اسم المدرسة</label><input id="ssar" value="'+esc(s.schoolNameAr||'')+'" dir="rtl"></div></div><div class="fr f2"><div class="fg"><label>City</label><input id="scy" value="'+esc(s.city||'')+'"></div><div class="fg"><label>'+T('academic_year')+'</label><input id="say" value="'+esc(s.academicYear||'')+'"></div></div><div class="fr f2"><div class="fg"><label>'+T('phone')+'</label><input id="sph" value="'+esc(s.phone||'')+'"></div><div class="fg"><label>'+T('email')+'</label><input id="sem" value="'+esc(s.email||'')+'"></div></div><button class="btn bp" onclick="saveSettings()">'+T('save')+' & Apply →</button></div>'+(isSA?'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🖼️ School Logo</h3></div><div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:14px"><div id="logoprev" style="width:64px;height:64px;border-radius:12px;border:2px solid var(--bd);display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--sf2);font-size:26px">'+(s.logo&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'🎓'))+'</div><div style="flex:1"><div class="fg" style="margin-bottom:8px"><label>'+T('upload_logo')+'</label><input type="file" id="logof" accept="image/*" onchange="prevLogo()" style="padding:6px"></div><div class="fg"><label>'+T('logo_emoji')+'</label><input id="logoem" value="'+(!s.logo||s.logo.startsWith('data:')?'🎓':s.logo)+'" style="width:80px;font-size:20px;text-align:center"></div></div></div><button class="btn bp" onclick="saveLogo()">Save Logo →</button></div>':'')+(isSA?'<div class="card"><div class="sh2"><h3>🔐 Production Status</h3></div><div class="al ag" style="margin-bottom:0">✅ <strong>Live Mode Active</strong> — Demo credentials are permanently hidden from the login screen for production deployment. Staff log in with their personal usernames only.</div></div>':'')+'</div><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>📊 System Stats</h3></div><table style="font-size:12px;width:100%">'+[['Students',(DB.get('students')||[]).length],['Teachers',(DB.get('teachers')||[]).length],['Staff Accounts',(DB.get('accounts')||[]).length],['Complaints',(DB.get('complaints')||[]).length],['Tasks',(DB.get('tasks')||[]).length],['Infractions',(DB.get('infractions')||[]).length],['Referrals',(DB.get('referrals')||[]).length],['Class Visits',(DB.get('class_visits')||[]).length],['Notebook Checks',(DB.get('notebook_checks')||[]).length],['Activities',(DB.get('activities')||[]).length],['Activity Reports',(DB.get('activity_reports')||[]).length],['Exam Absents',(DB.get('exam_absents')||[]).length]].map(([k,v])=>'<tr><td style="color:var(--tx3);padding:6px 0;border-bottom:1px solid var(--bd)">'+k+'</td><td style="font-weight:500;text-align:right;border-bottom:1px solid var(--bd)">'+v+'</td></tr>').join('')+'</table></div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🚀 Deploy & Go Live</h3></div><div style="font-size:12px;color:var(--tx2);line-height:1.9;background:var(--sf2);border-radius:var(--rs);padding:12px"><strong style="color:var(--ac)">Quick Deploy (5 min):</strong><br>1. Save this file as <code>index.html</code><br>2. Go to <a href="https://app.netlify.com/drop" target="_blank" style="color:var(--ac)">app.netlify.com/drop</a><br>3. Drag the file in<br>4. Get live URL<br><br><strong style="color:var(--ac)">Multi-device sync (Firebase):</strong><br>1. <a href="https://console.firebase.google.com" target="_blank" style="color:var(--ac)">console.firebase.google.com</a><br>2. Create project → Realtime Database<br>3. Copy config → Replace in HTML<br>4. All devices sync ✅</div></div>'+(isSA?'<div class="card"><div class="sh2"><h3>🗄️ Backup & Restore</h3></div><div style="display:flex;flex-direction:column;gap:8px"><button class="btn bg2 bsm" onclick="expAll()">📥 Export Full Backup</button><button class="btn bg2 bsm" onclick="impAllM()">📤 Restore from Backup</button><button class="btn bd3 bsm" onclick="if(confirm(\'RESET ALL DATA?\'))resetAll()">⚠️ Factory Reset</button></div></div>':'')+'</div></div>';}
+function rSettings(){const s=DB.get('settings')||{};const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="cg g2"><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🏫 School Information</h3></div><div class="fr f2"><div class="fg"><label>School Name (EN)</label><input id="ssn" value="'+esc(s.schoolName||'')+'"></div><div class="fg"><label>اسم المدرسة</label><input id="ssar" value="'+esc(s.schoolNameAr||'')+'" dir="rtl"></div></div><div class="fr f2"><div class="fg"><label>City</label><input id="scy" value="'+esc(s.city||'')+'"></div><div class="fg"><label>'+T('academic_year')+'</label><input id="say" value="'+esc(s.academicYear||'')+'"></div></div><div class="fr f2"><div class="fg"><label>'+T('phone')+'</label><input id="sph" value="'+esc(s.phone||'')+'"></div><div class="fg"><label>'+T('email')+'</label><input id="sem" value="'+esc(s.email||'')+'"></div></div><button class="btn bp" onclick="saveSettings()">'+T('save')+' & Apply →</button></div>'+(isSA?'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🖼️ School Logo</h3></div><div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:14px"><div id="logoprev" style="width:64px;height:64px;border-radius:12px;border:2px solid var(--bd);display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--sf2);font-size:26px">'+(s.logo&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'🎓'))+'</div><div style="flex:1"><div class="fg" style="margin-bottom:8px"><label>'+T('upload_logo')+'</label><input type="file" id="logof" accept="image/*" onchange="prevLogo()" style="padding:6px"></div><div class="fg"><label>'+T('logo_emoji')+'</label><input id="logoem" value="'+(!s.logo||s.logo.startsWith('data:')?'🎓':s.logo)+'" style="width:80px;font-size:20px;text-align:center"></div></div></div><button class="btn bp" onclick="saveLogo()">Save Logo →</button></div>':'')+(isSA?'<div class="card"><div class="sh2"><h3>🔐 Production Status</h3></div><div class="al ag" style="margin-bottom:0">✅ <strong>Live Mode Active</strong> — Demo credentials are permanently hidden from the login screen for production deployment. Staff log in with their personal usernames only.</div></div>':'')+'</div><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>📊 System Stats</h3></div><table style="font-size:12px;width:100%">'+[['Students',(DB.get('students')||[]).length],['Teachers',(DB.get('teachers')||[]).length],['Staff Accounts',(DB.get('accounts')||[]).length],['Complaints',(DB.get('complaints')||[]).length],['Tasks',(DB.get('tasks')||[]).length],['Infractions',(DB.get('infractions')||[]).length],['Referrals',(DB.get('referrals')||[]).length],['Class Visits',(DB.get('class_visits')||[]).length],['Notebook Checks',(DB.get('notebook_checks')||[]).length],['Activities',(DB.get('activities')||[]).length],['Activity Reports',(DB.get('activity_reports')||[]).length],['Exam Absents',(DB.get('exam_absents')||[]).length]].map(([k,v])=>'<tr><td style="color:var(--tx3);padding:6px 0;border-bottom:1px solid var(--bd)">'+k+'</td><td style="font-weight:500;text-align:right;border-bottom:1px solid var(--bd)">'+v+'</td></tr>').join('')+'</table></div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🚀 Deploy & Go Live</h3></div><div style="font-size:12px;color:var(--tx2);line-height:1.9;background:var(--sf2);border-radius:var(--rs);padding:12px"><strong style="color:var(--ac)">Quick Deploy (5 min):</strong><br>1. Save this file as <code>index.html</code><br>2. Go to <a href="https://app.netlify.com/drop" target="_blank" style="color:var(--ac)">app.netlify.com/drop</a><br>3. Drag the file in<br>4. Get live URL<br><br><strong style="color:var(--ac)">Or GitHub Pages:</strong><br>1. Push index.html to a GitHub repo<br>2. Settings → Pages → Deploy from main<br>3. Get live URL ✅</div></div>'+(isSA?'<div class="card"><div class="sh2"><h3>🗄️ Backup & Restore</h3></div><div style="display:flex;flex-direction:column;gap:8px"><button class="btn bg2 bsm" onclick="expAll()">📥 Export Full Backup</button><button class="btn bg2 bsm" onclick="impAllM()">📤 Restore from Backup</button><button class="btn bd3 bsm" onclick="if(confirm(\'RESET ALL DATA?\'))resetAll()">⚠️ Factory Reset</button></div></div>':'')+'</div></div>';}
 function saveSettings(){const s=DB.get('settings')||{};Object.assign(s,{schoolName:document.getElementById('ssn').value,schoolNameAr:document.getElementById('ssar').value,city:document.getElementById('scy').value,academicYear:document.getElementById('say').value,phone:document.getElementById('sph').value,email:document.getElementById('sem').value});DB.set('settings',s);applyBrand(s);logA('Updated school settings');toast('Settings saved & applied','success');}
 function prevLogo(){const file=document.getElementById('logof').files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{document.getElementById('logoprev').innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:contain">';};reader.readAsDataURL(file);}
 function saveLogo(){const file=document.getElementById('logof').files[0],emoji=document.getElementById('logoem').value;if(file){const reader=new FileReader();reader.onload=e=>{const s=DB.get('settings')||{};s.logo=e.target.result;DB.set('settings',s);applyBrand(s);logA('Updated school logo (image)');toast('Logo saved','success');};reader.readAsDataURL(file);}else if(emoji){const s=DB.get('settings')||{};s.logo=emoji;DB.set('settings',s);applyBrand(s);logA('Updated school logo: '+emoji);toast('Logo saved','success');}}
@@ -4067,10 +3989,9 @@ function doExp(fmt){
   if(fmt==='csv')expCSV(cfg.h,rows,fn);else expPDF(title,cfg.h,rows);
 }
 function qExp(type,fmt){document.getElementById('exptype').value=type;doExp(fmt);}
-// Boot: detect parent-portal URL parameters EARLY (before Firebase), so users scanning a QR
+// Boot: detect parent-portal URL parameters EARLY so users scanning a QR
 // see the public form immediately instead of the admin login flash.
-// Note: we still let seed()/migrate() run so DB has settings (school name, logo)
-// and we still let Firebase boot so parent submissions reach the cloud.
+// Note: we still let seed()/migrate() run so DB has settings (school name, logo).
 (function(){
   try{
     const p=new URLSearchParams(window.location.search);
@@ -4103,12 +4024,11 @@ window.__doSeedAndStart=async function(){
   // After login screen renders, refresh session indicator
   if(typeof renderSessionIndicator==='function')setTimeout(renderSessionIndicator,500);
 };
-// If Firebase script is going to load, the firebase boot will call __doSeedAndStart after pulling cloud data
+// Boot: Firebase sync will call __doSeedAndStart after pulling cloud data.
+// Fallback to local-only if Firebase doesn't load within 5s.
 if(typeof window.__FB!=='undefined'||document.querySelector('script[type="module"]')){
-  // Firebase mode — wait briefly, then if firebase didn't take over, fall back to local seed
   setTimeout(()=>{if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}},5000);
 }else{
-  // Pure local mode
   window.__doSeedAndStart();
   window.__seedDone=true;
 }
@@ -5437,7 +5357,7 @@ function pickClassDutyTch(idx,name){
 
 function saveRoster(){
   let r=window._workingRoster;
-  // FALLBACK: if working roster is somehow missing (e.g. Firebase sync cleared it), rebuild from current DB state for this date
+  // FALLBACK: if working roster is somehow missing, rebuild from current DB state for this date
   // This guarantees Save always works.
   if(!r){
     const date=window._rosterDate;
