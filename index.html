@@ -273,21 +273,23 @@ function setPlatformSchools(list){localStorage.setItem('sms7_platform_schools',J
 function getPlatformAdmins(){try{return JSON.parse(localStorage.getItem('sms7_platform_admins')||'[]');}catch{return[];}}
 function setPlatformAdmins(list){localStorage.setItem('sms7_platform_admins',JSON.stringify(list));}
 
-function initPlatform(){
+async function initPlatform(){
+  const admins=getPlatformAdmins();
+  // Fix any admin with missing passwordHash (race condition recovery)
+  if(admins.length>0&&!admins[0].passwordHash){
+    admins[0].passwordHash=await hashPassword('Platform@2024');
+    setPlatformAdmins(admins);
+  }
   if(localStorage.getItem('sms7_platform_initialized'))return;
+  const h=await hashPassword('Platform@2024');
   setPlatformAdmins([{
-    id:'pa1',username:'platformadmin',passwordHash:null,
+    id:'pa1',username:'platformadmin',passwordHash:h,
     firstName:'Platform',lastName:'Admin',
     email:'admin@platform.com',active:true,
     created:new Date().toISOString().split('T')[0]
   }]);
   setPlatformSchools([]);
   localStorage.setItem('sms7_platform_initialized','true');
-  hashPassword('Platform@2024').then(h=>{
-    const admins=getPlatformAdmins();
-    admins[0].passwordHash=h;
-    setPlatformAdmins(admins);
-  });
 }
 
 function selectSchool(schoolId){
@@ -4077,9 +4079,9 @@ function qExp(type,fmt){document.getElementById('exptype').value=type;doExp(fmt)
   }catch(e){}
 })();
 
-window.__doSeedAndStart=function(){
+window.__doSeedAndStart=async function(){
   // Initialize platform (multi-school registry)
-  initPlatform();
+  await initPlatform();
   populateSchoolDropdown();
   // If a school was previously selected in this session, restore it
   const savedSchool=sessionStorage.getItem('sms7_current_school');
