@@ -560,6 +560,21 @@ async function saveNewSchool(){
       localStorage.setItem(pfx+k+'_default',JSON.stringify([]));
   });
   localStorage.setItem(pfx+'announcements_default',JSON.stringify([{id:'an1',title:'Welcome to '+name,body:'Your school has been set up. Start by adding teachers and students.',postedBy:afn+' '+aln,date:new Date().toISOString().split('T')[0]}]));
+  // Push all new school data to Firebase so other devices can access it
+  if(window.__FB&&window.__FB.db){
+    try{
+      const{db,ref,set}=window.__FB;
+      const fbPath='schools/'+schoolId+'/';
+      const data={};
+      for(let i=0;i<localStorage.length;i++){
+        const lk=localStorage.key(i);
+        if(!lk||!lk.startsWith(pfx))continue;
+        const k=lk.substring(pfx.length);
+        try{data[k]=JSON.parse(localStorage.getItem(lk));}catch(e){data[k]=localStorage.getItem(lk);}
+      }
+      set(ref(db,fbPath),data).catch(e=>console.error('[School Create] Firebase push failed:',e));
+    }catch(e){console.error('[School Create] Firebase push error:',e);}
+  }
   closeM();toast('School "'+name+'" created successfully!','success');
   rPlatformSchools();
 }
