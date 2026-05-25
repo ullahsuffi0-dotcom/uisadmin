@@ -3843,11 +3843,11 @@ async function syncDownAll(){
           const baseKey=isSessionScopedKey(k)?k.replace(/_[^_]+$/,''):k;
           if(APPEND_ONLY.includes(baseKey)&&Array.isArray(v)){
             try{
-              const existing=JSON.parse(localStorage.getItem('sms7_'+k)||'[]');
+              const existing=JSON.parse(localStorage.getItem(DB._pfx+k)||'[]');
               if(Array.isArray(existing)&&existing.length>v.length)return;
             }catch(e){}
           }
-          localStorage.setItem('sms7_'+k,JSON.stringify(v));
+          localStorage.setItem(DB._pfx+k,JSON.stringify(v));
         }
       });
       return true;
@@ -3864,8 +3864,8 @@ async function syncUpAll(){
     SYNC_KEYS.forEach(k=>{const v=rawGet(k);if(v!==null&&v!==undefined)data[k]=v;});
     for(let i=0;i<localStorage.length;i++){
       const lkey=localStorage.key(i);
-      if(!lkey||!lkey.startsWith('sms7_'))continue;
-      const k=lkey.substring(5);
+      if(!lkey||!lkey.startsWith(DB._pfx))continue;
+      const k=lkey.substring(DB._pfx.length);
       if(isSessionScopedKey(k)){const v=rawGet(k);if(v!==null&&v!==undefined)data[k]=v;}
     }
     const fbPath=getFirebaseSchoolPath();
@@ -3911,6 +3911,7 @@ if(!DB._raw_set){
 function subscribeToCollection(k){
   if(!window.__FB)return;
   const{db,ref,onValue}=window.__FB;
+  const _pfx=DB._pfx;
   onValue(ref(db,getFirebaseSchoolPath()+k),(snap)=>{
     if(!SYNC_INITIAL_LOAD)return;
     if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<1500)return;
@@ -3929,7 +3930,7 @@ function subscribeToCollection(k){
     const baseKey=isSessionScopedKey(k)?k.replace(/_[^_]+$/,''):k;
     if(APPEND_ONLY.includes(baseKey)&&Array.isArray(v)){
       try{
-        const existing=JSON.parse(localStorage.getItem('sms7_'+k)||'[]');
+        const existing=JSON.parse(localStorage.getItem(_pfx+k)||'[]');
         if(Array.isArray(existing)&&existing.length>v.length){
           if(SYNC_ENABLED&&window.__FB){
             const{set}=window.__FB;
@@ -3940,7 +3941,7 @@ function subscribeToCollection(k){
         }
       }catch(e){}
     }
-    localStorage.setItem('sms7_'+k,JSON.stringify(v));
+    localStorage.setItem(_pfx+k,JSON.stringify(v));
     let logicalKey=k;
     if(isSessionScopedKey(k)){
       const activeSid=window.__activeSessionId||(typeof getActiveSessionId==='function'?getActiveSessionId():'default');
@@ -4011,8 +4012,8 @@ async function bootFirebaseSync(){
   const subscribed=new Set(SYNC_KEYS);
   for(let i=0;i<localStorage.length;i++){
     const lkey=localStorage.key(i);
-    if(!lkey||!lkey.startsWith('sms7_'))continue;
-    const k=lkey.substring(5);
+    if(!lkey||!lkey.startsWith(DB._pfx))continue;
+    const k=lkey.substring(DB._pfx.length);
     if(isSessionScopedKey(k)&&!subscribed.has(k)){subscribeToCollection(k);subscribed.add(k);}
   }
   // Subscribe to platform-level changes (schools added/removed from other devices)
@@ -5066,7 +5067,7 @@ function delSession(id){
   // Delete all session-scoped data
   SESSION_SCOPED_KEYS.forEach(k=>{
     DB._raw_set(k+'_'+id,null);
-    try{localStorage.removeItem('sms7_'+k+'_'+id);}catch(e){}
+    try{localStorage.removeItem(DB._pfx+k+'_'+id);}catch(e){}
   });
   const filtered=sessions.filter(x=>x.id!==id);
   DB._raw_set('sessions',filtered);
