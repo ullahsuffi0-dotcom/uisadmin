@@ -1030,7 +1030,7 @@ function toast(msg,type='info'){const el=document.createElement('div');el.classN
 function openM(html,lg=false){document.getElementById('mr').innerHTML='<div class="mb" onclick="if(event.target===this)closeM()"><div class="mo'+(lg?' ml':'')+'">'+html+'</div></div>';}
 function closeM(){document.getElementById('mr').innerHTML='';}
 function nid(p){return p+Date.now()+Math.random().toString(36).slice(2,5);}
-function logA(action){const l=DB.get('activity_log')||[];l.unshift({user:CU.firstName+' '+CU.lastName,role:rL(CU.role),roleKey:CU.role,action,time:new Date().toISOString()});if(l.length>300)l.pop();DB.set('activity_log',l);}
+function logA(action){if(!CU)return;const l=DB.get('activity_log')||[];l.unshift({user:(CU.firstName||'')+' '+(CU.lastName||''),role:rL(CU.role),roleKey:CU.role,action,time:new Date().toISOString()});if(l.length>300)l.pop();DB.set('activity_log',l);}
 function fN(s){return((s.firstName||'')+' '+(s.lastName||'')).trim();}
 function gS(id){return(DB.get('students')||[]).find(s=>s.id===id);}
 function gA(id){return(DB.get('accounts')||[]).find(a=>a.id===id);}
