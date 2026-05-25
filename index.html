@@ -4030,17 +4030,7 @@ async function syncDownAll(){
               const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
             }
           }
-          const APPEND_ONLY=['early_pickups','complaints','tasks','infractions','referrals',
-            'class_visits','notebook_checks','activities','activity_reports','exam_absents',
-            'reexam_schedules','daily_attendance','student_health','remedial_plans','vp_reports',
-            'warning_letters','teacher_achievements','behaviour','discipline','substitutions','activity_log'];
-          const baseKey=isSessionScopedKey(k)?k.replace(/_[^_]+$/,''):k;
-          if(APPEND_ONLY.includes(baseKey)&&Array.isArray(v)){
-            try{
-              const existing=JSON.parse(localStorage.getItem(DB._pfx+k)||'[]');
-              if(Array.isArray(existing)&&existing.length>v.length)return;
-            }catch(e){}
-          }
+          // Always accept Firebase data as source of truth (last-write-wins)
           localStorage.setItem(DB._pfx+k,JSON.stringify(v));
         }
       });
@@ -4134,24 +4124,7 @@ function subscribeToCollection(k){
         const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
       }
     }
-    const APPEND_ONLY=['early_pickups','complaints','tasks','infractions','referrals',
-      'class_visits','notebook_checks','activities','activity_reports','exam_absents',
-      'reexam_schedules','daily_attendance','student_health','remedial_plans','vp_reports',
-      'warning_letters','teacher_achievements','behaviour','discipline','substitutions','activity_log'];
-    const baseKey=isSessionScopedKey(k)?k.replace(/_[^_]+$/,''):k;
-    if(APPEND_ONLY.includes(baseKey)&&Array.isArray(v)){
-      try{
-        const existing=JSON.parse(localStorage.getItem(_pfx+k)||'[]');
-        if(Array.isArray(existing)&&existing.length>v.length){
-          if(SYNC_ENABLED&&window.__FB){
-            const{set}=window.__FB;
-            SYNC_ECHO[k]=Date.now();
-            set(ref(db,getFirebaseSchoolPath()+k),existing).catch(e=>logFBError(k,e));
-          }
-          return;
-        }
-      }catch(e){}
-    }
+    // Always accept Firebase data as source of truth (last-write-wins)
     localStorage.setItem(_pfx+k,JSON.stringify(v));
     let logicalKey=k;
     if(isSessionScopedKey(k)){
