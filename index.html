@@ -3970,16 +3970,12 @@ async function bootFirebaseSync(){
     return;
   }
   // Pull platform data (schools list, admins) from Firebase FIRST
-  const hadPlatform=await syncPlatformFromFirebase();
-  // If Firebase has no platform data but local does, push it up (migration from pre-sync installs)
-  if(!hadPlatform){
-    const localSchools=getPlatformSchools();
-    const localAdmins=getPlatformAdmins();
-    if(localSchools.length>0||localAdmins.length>0){
-      syncPlatformToFirebase('platform_schools',localSchools);
-      syncPlatformToFirebase('platform_admins',localAdmins);
-    }
-  }
+  await syncPlatformFromFirebase();
+  // Always ensure local platform data is pushed up if Firebase is missing it
+  const localSchools=getPlatformSchools();
+  const localAdmins=getPlatformAdmins();
+  if(localSchools.length>0){syncPlatformToFirebase('platform_schools',localSchools);}
+  if(localAdmins.length>0){syncPlatformToFirebase('platform_admins',localAdmins);}
   const hadData=await syncDownAll();
   if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}
   SYNC_INITIAL_LOAD=true;
