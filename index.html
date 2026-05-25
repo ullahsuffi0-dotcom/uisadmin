@@ -605,8 +605,9 @@ function toggleSchool(id){
   rPlatformSchools();
 }
 
-function enterSchool(id){
+async function enterSchool(id){
   selectSchool(id);
+  if(typeof resyncForSchool==='function')await resyncForSchool();
   const sch=getSchoolById(id);
   if(!sch)return;
   const acc=DB.get('accounts')||[];
@@ -909,7 +910,9 @@ async function doLogin(){
   }
 
   selectSchool(schoolVal);
-  const acc=DB.get(getSchoolPrefix()+'accounts')||[];
+  // Re-sync from Firebase for this school's data path
+  if(typeof resyncForSchool==='function')await resyncForSchool();
+  const acc=DB.get('accounts')||[];
   const ph=await hashPassword(p);
   let user=acc.find(a=>a.username===u&&a.passwordHash===ph&&a.active);
   if(!user){
@@ -917,7 +920,7 @@ async function doLogin(){
     if(user){
       user.passwordHash=ph;
       delete user.password;
-      DB.set(getSchoolPrefix()+'accounts',acc);
+      DB.set('accounts',acc);
     }
   }
   if(!user){
@@ -3959,6 +3962,29 @@ function subscribeToCollection(k){
     }
     if(_page==='dashboard'&&typeof rDash==='function'){try{rDash();}catch(e){}}
   });
+}
+
+// Re-sync when user selects a school (subscriptions pointed to wrong path before login)
+let _fbSubscriptions=[];
+async function resyncForSchool(){
+  if(!window.__FB||!window.__FB.db||!CURRENT_SCHOOL_ID)return;
+  // Pull this school's data from Firebase
+  await syncDownAll();
+  // Push local data up if Firebase is empty for this school
+  const{db,ref,get}=window.__FB;
+  try{
+    const snap=await get(ref(db,getFirebaseSchoolPath()));
+    if(!snap.exists())await syncUpAll();
+  }catch(e){}
+  // Re-subscribe to this school's Firebase path
+  SYNC_KEYS.forEach(k=>subscribeToCollection(k));
+  const subscribed=new Set(SYNC_KEYS);
+  for(let i=0;i<localStorage.length;i++){
+    const lkey=localStorage.key(i);
+    if(!lkey||!lkey.startsWith(DB._pfx))continue;
+    const k=lkey.substring(DB._pfx.length);
+    if(isSessionScopedKey(k)&&!subscribed.has(k)){subscribeToCollection(k);subscribed.add(k);}
+  }
 }
 
 async function bootFirebaseSync(){
