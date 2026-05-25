@@ -267,9 +267,62 @@ let CURRENT_SCHOOL_ID=null;
 let PLATFORM_MODE=false;
 
 function getPlatformSchools(){try{return JSON.parse(localStorage.getItem('sms7_platform_schools')||'[]');}catch{return[];}}
-function setPlatformSchools(list){localStorage.setItem('sms7_platform_schools',JSON.stringify(list));}
+function setPlatformSchools(list){
+  localStorage.setItem('sms7_platform_schools',JSON.stringify(list));
+  syncPlatformToFirebase('platform_schools',list);
+}
 function getPlatformAdmins(){try{return JSON.parse(localStorage.getItem('sms7_platform_admins')||'[]');}catch{return[];}}
-function setPlatformAdmins(list){localStorage.setItem('sms7_platform_admins',JSON.stringify(list));}
+function setPlatformAdmins(list){
+  localStorage.setItem('sms7_platform_admins',JSON.stringify(list));
+  syncPlatformToFirebase('platform_admins',list);
+}
+
+// Sync platform data to Firebase so it works across devices
+function syncPlatformToFirebase(key,value){
+  if(!window.__FB||!window.__FB.db)return;
+  try{
+    const{db,ref,set}=window.__FB;
+    set(ref(db,'platform/'+key),value).catch(e=>console.warn('[Platform sync] Write failed:',e.message));
+  }catch(e){}
+}
+
+// Pull platform data from Firebase on boot (before initPlatform)
+async function syncPlatformFromFirebase(){
+  if(!window.__FB||!window.__FB.db)return false;
+  try{
+    const{db,ref,get}=window.__FB;
+    const snap=await get(ref(db,'platform'));
+    if(snap.exists()){
+      const data=snap.val();
+      if(data.platform_schools){
+        localStorage.setItem('sms7_platform_schools',JSON.stringify(data.platform_schools));
+      }
+      if(data.platform_admins){
+        localStorage.setItem('sms7_platform_admins',JSON.stringify(data.platform_admins));
+        localStorage.setItem('sms7_platform_initialized','true');
+      }
+      return true;
+    }
+    return false;
+  }catch(e){console.warn('[Platform sync] Pull failed:',e.message);return false;}
+}
+
+// Subscribe to live platform changes from other devices
+function subscribePlatformSync(){
+  if(!window.__FB||!window.__FB.db)return;
+  const{db,ref,onValue}=window.__FB;
+  ['platform_schools','platform_admins'].forEach(key=>{
+    onValue(ref(db,'platform/'+key),(snap)=>{
+      const v=snap.val();
+      if(v===null||v===undefined)return;
+      localStorage.setItem('sms7_'+key,JSON.stringify(v));
+      // Refresh school dropdown if schools changed
+      if(key==='platform_schools'&&typeof populateSchoolDropdown==='function'){
+        try{populateSchoolDropdown();}catch(e){}
+      }
+    });
+  });
+}
 
 async function initPlatform(){
   const admins=getPlatformAdmins();
@@ -280,13 +333,16 @@ async function initPlatform(){
   }
   if(localStorage.getItem('sms7_platform_initialized'))return;
   const h=await hashPassword('Platform@2024');
-  setPlatformAdmins([{
+  const defaultAdmins=[{
     id:'pa1',username:'platformadmin',passwordHash:h,
     firstName:'Platform',lastName:'Admin',
     email:'admin@platform.com',active:true,
     created:new Date().toISOString().split('T')[0]
-  }]);
-  setPlatformSchools([]);
+  }];
+  localStorage.setItem('sms7_platform_admins',JSON.stringify(defaultAdmins));
+  syncPlatformToFirebase('platform_admins',defaultAdmins);
+  localStorage.setItem('sms7_platform_schools',JSON.stringify([]));
+  syncPlatformToFirebase('platform_schools',[]);
   localStorage.setItem('sms7_platform_initialized','true');
 }
 
@@ -3913,6 +3969,8 @@ async function bootFirebaseSync(){
     if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}
     return;
   }
+  // Pull platform data (schools list, admins) from Firebase FIRST
+  await syncPlatformFromFirebase();
   const hadData=await syncDownAll();
   if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}
   SYNC_INITIAL_LOAD=true;
@@ -3926,6 +3984,8 @@ async function bootFirebaseSync(){
     const k=lkey.substring(5);
     if(isSessionScopedKey(k)&&!subscribed.has(k)){subscribeToCollection(k);subscribed.add(k);}
   }
+  // Subscribe to platform-level changes (schools added/removed from other devices)
+  subscribePlatformSync();
   if(typeof navigate==='function'&&_page){try{navigate(_page);}catch(e){}}
 }
 
