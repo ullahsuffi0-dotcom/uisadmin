@@ -354,14 +354,14 @@ async function initPlatform(){
 function selectSchool(schoolId){
   CURRENT_SCHOOL_ID=schoolId;
   DB._pfx='sms7_sch_'+schoolId+'_';
-  sessionStorage.setItem('sms7_current_school',schoolId);
+  localStorage.setItem('sms7_current_school',schoolId);
   PLATFORM_MODE=false;
 }
 
 function deselectSchool(){
   CURRENT_SCHOOL_ID=null;
   DB._pfx='sms7_';
-  sessionStorage.removeItem('sms7_current_school');
+  localStorage.removeItem('sms7_current_school');
 }
 
 function getSchoolById(id){
@@ -905,7 +905,7 @@ function populateSchoolDropdown(){
     sel.value=schools[0].id;
     onSchoolSelect();
   }
-  const saved=sessionStorage.getItem('sms7_current_school');
+  const saved=localStorage.getItem('sms7_current_school');
   if(saved&&schools.find(s=>s.id===saved)){
     sel.value=saved;
     onSchoolSelect();
@@ -937,7 +937,7 @@ async function doLogin(){
     CU={...admin,role:'platform_admin',_origRole:'platform_admin'};
     PLATFORM_MODE=true;CURRENT_SCHOOL_ID=null;SAIMP=false;SAR=null;
     // Persist login session
-    sessionStorage.setItem('sms7_session',JSON.stringify({userId:admin.id,school:'__platform'}));
+    localStorage.setItem('sms7_session',JSON.stringify({userId:admin.id,school:'__platform'}));
     launchPlatform();
     return;
   }
@@ -968,7 +968,7 @@ async function doLogin(){
   document.getElementById('login-attempts').style.display='none';
   CU=user;SAIMP=false;SAR=null;
   // Persist login session
-  sessionStorage.setItem('sms7_session',JSON.stringify({userId:user.id,school:schoolVal}));
+  localStorage.setItem('sms7_session',JSON.stringify({userId:user.id,school:schoolVal}));
   launch();
 }
 function doLogout(){
@@ -976,8 +976,8 @@ function doLogout(){
   if(CU&&CU._platformReturn){returnToPlatform();return;}
   CU=null;CURRENT_SCHOOL_ID=null;DB._pfx='sms7_';PLATFORM_MODE=false;
   // Clear persisted login session
-  sessionStorage.removeItem('sms7_session');
-  sessionStorage.removeItem('sms7_current_school');
+  localStorage.removeItem('sms7_session');
+  localStorage.removeItem('sms7_current_school');
   document.getElementById('app').classList.add('hidden');
   document.getElementById('lp').classList.remove('hidden');
   document.getElementById('lsn').textContent='School Management System';
@@ -4125,7 +4125,9 @@ function subscribeToCollection(k){
     if(!SYNC_INITIAL_LOAD)return;
     if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<1500)return;
     let v=snap.val();
-    if(v===null||v===undefined)return;
+    // When all items are deleted, Firebase removes the node (val()===null)
+    // We must write empty array to localStorage so deletions sync properly
+    if(v===null||v===undefined){v=[];}
     if(v&&typeof v==='object'&&!Array.isArray(v)){
       const keys=Object.keys(v);
       if(keys.length>0&&keys.every(kk=>/^\d+$/.test(kk))){
@@ -4182,14 +4184,15 @@ async function resyncForSchool(){
   // Re-subscribe to this school's Firebase path
   const subscribed=new Set();
   // Subscribe to non-session-scoped keys (settings, accounts, etc.)
+  const _scopedKeys=(typeof SESSION_SCOPED_KEYS!=='undefined')?SESSION_SCOPED_KEYS:[];
   SYNC_KEYS.forEach(k=>{
-    if(!(window.SESSION_SCOPED_KEYS||[]).includes(k)){
+    if(!_scopedKeys.includes(k)){
       subscribeToCollection(k);subscribed.add(k);
     }
   });
   // Proactively subscribe to session-scoped keys with active session suffix
   const sid=window.__activeSessionId||(typeof getActiveSessionId==='function'?getActiveSessionId():'default');
-  (window.SESSION_SCOPED_KEYS||[]).forEach(k=>{
+  _scopedKeys.forEach(k=>{
     const sessionKey=k+'_'+sid;
     subscribeToCollection(sessionKey);subscribed.add(sessionKey);
   });
@@ -4231,23 +4234,26 @@ async function bootFirebaseSync(){
     if(localSchools.length>0){syncPlatformToFirebase('platform_schools',localSchools);}
     if(localAdmins.length>0){syncPlatformToFirebase('platform_admins',localAdmins);}
   }
+  // Await __doSeedAndStart so session is restored (CURRENT_SCHOOL_ID set) before subscriptions
+  if(!window.__seedDone){await window.__doSeedAndStart();window.__seedDone=true;}
+  // Re-read school path after session restore
   const hadData=await syncDownAll();
   console.log('[Sync] Boot: hadData='+hadData+', school='+CURRENT_SCHOOL_ID+', path='+getFirebaseSchoolPath());
-  if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}
   SYNC_INITIAL_LOAD=true;
   SYNC_ENABLED=true;
   // Only push data up if we have a school context — don't push to data/ blindly
   if(!hadData&&CURRENT_SCHOOL_ID)await syncUpAll();
   // Subscribe to non-session-scoped keys
   const subscribed=new Set();
+  const _bScopedKeys=(typeof SESSION_SCOPED_KEYS!=='undefined')?SESSION_SCOPED_KEYS:[];
   SYNC_KEYS.forEach(k=>{
-    if(!(window.SESSION_SCOPED_KEYS||[]).includes(k)){
+    if(!_bScopedKeys.includes(k)){
       subscribeToCollection(k);subscribed.add(k);
     }
   });
   // Proactively subscribe to session-scoped keys with active session suffix
   const bSid=window.__activeSessionId||(typeof getActiveSessionId==='function'?getActiveSessionId():'default');
-  (window.SESSION_SCOPED_KEYS||[]).forEach(k=>{
+  _bScopedKeys.forEach(k=>{
     const sessionKey=k+'_'+bSid;
     subscribeToCollection(sessionKey);subscribed.add(sessionKey);
   });
@@ -4341,7 +4347,7 @@ window.__doSeedAndStart=async function(){
   await initPlatform();
   populateSchoolDropdown();
   // If a school was previously selected in this session, restore it
-  const savedSchool=sessionStorage.getItem('sms7_current_school');
+  const savedSchool=localStorage.getItem('sms7_current_school');
   if(savedSchool){selectSchool(savedSchool);}
   // Initialize sessions FIRST so DB.get/set is wrapped before any seed runs
   if(typeof initSessions==='function')initSessions();
@@ -4359,7 +4365,7 @@ window.__doSeedAndStart=async function(){
   }else{
     // Restore login session if user was previously logged in
     try{
-      const sess=JSON.parse(sessionStorage.getItem('sms7_session')||'null');
+      const sess=JSON.parse(localStorage.getItem('sms7_session')||'null');
       if(sess&&sess.userId&&sess.school){
         if(sess.school==='__platform'){
           const admins=getPlatformAdmins();
@@ -4388,9 +4394,9 @@ window.__doSeedAndStart=async function(){
   if(typeof renderSessionIndicator==='function')setTimeout(renderSessionIndicator,500);
 };
 // Boot: Firebase sync will call __doSeedAndStart after pulling cloud data.
-// Fallback to local-only if Firebase doesn't load within 5s.
+// Fallback to local-only if Firebase doesn't load within 12s (gives bootFirebaseSync enough time).
 if(typeof window.__FB!=='undefined'||document.querySelector('script[type="module"]')){
-  setTimeout(()=>{if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}},5000);
+  setTimeout(()=>{if(!window.__seedDone){console.warn('[Boot] Fallback — starting without full sync');window.__doSeedAndStart();window.__seedDone=true;}},12000);
 }else{
   window.__doSeedAndStart();
   window.__seedDone=true;
