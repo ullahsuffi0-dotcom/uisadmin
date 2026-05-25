@@ -4078,10 +4078,20 @@ if(!DB._raw_set){
   const _origDBset=DB.set.bind(DB);
   DB.set=function(k,v){
     _origDBset(k,v);
+    if(!SYNC_ENABLED){
+      // Retry: if Firebase is available but SYNC_ENABLED was never set, auto-enable
+      if(window.__FB&&window.__FB.db&&CURRENT_SCHOOL_ID){
+        console.warn('[Sync] Auto-enabling SYNC — was disabled but Firebase is ready');
+        SYNC_ENABLED=true;SYNC_INITIAL_LOAD=true;
+      }
+    }
     if(SYNC_ENABLED&&window.__FB&&shouldSyncKey(k)){
       const{db,ref,set}=window.__FB;
       SYNC_ECHO[k]=Date.now();
-      set(ref(db,getFirebaseSchoolPath()+k),v).catch(e=>{
+      const path=getFirebaseSchoolPath()+k;
+      set(ref(db,path),v).then(()=>{
+        const dot=document.getElementById('syncdot');if(dot)dot.style.background='#1dcd6c';
+      }).catch(e=>{
         logFBError(k,e);
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#d63838';
       });
@@ -4091,10 +4101,17 @@ if(!DB._raw_set){
   const _origRawSet=DB._raw_set;
   DB._raw_set=function(k,v){
     _origRawSet(k,v);
+    if(!SYNC_ENABLED&&window.__FB&&window.__FB.db&&CURRENT_SCHOOL_ID){
+      console.warn('[Sync] Auto-enabling SYNC via _raw_set');
+      SYNC_ENABLED=true;SYNC_INITIAL_LOAD=true;
+    }
     if(SYNC_ENABLED&&window.__FB&&shouldSyncKey(k)){
       const{db,ref,set}=window.__FB;
       SYNC_ECHO[k]=Date.now();
-      set(ref(db,getFirebaseSchoolPath()+k),v).catch(e=>{
+      const path=getFirebaseSchoolPath()+k;
+      set(ref(db,path),v).then(()=>{
+        const dot=document.getElementById('syncdot');if(dot)dot.style.background='#1dcd6c';
+      }).catch(e=>{
         logFBError(k,e);
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#d63838';
       });
@@ -4163,14 +4180,24 @@ function subscribeToCollection(k){
 let _fbSubscriptions=[];
 async function resyncForSchool(){
   if(!window.__FB||!window.__FB.db||!CURRENT_SCHOOL_ID)return;
+  console.log('[Sync] resyncForSchool: school='+CURRENT_SCHOOL_ID+', path='+getFirebaseSchoolPath());
   // Pull this school's data from Firebase
-  await syncDownAll();
+  const hadData=await syncDownAll();
+  console.log('[Sync] syncDownAll returned hadData='+hadData);
   // Push local data up if Firebase is empty for this school
   const{db,ref,get}=window.__FB;
   try{
     const snap=await get(ref(db,getFirebaseSchoolPath()));
-    if(!snap.exists())await syncUpAll();
-  }catch(e){}
+    if(!snap.exists()){
+      console.log('[Sync] Firebase empty for school, pushing local data up');
+      await syncUpAll();
+    }
+  }catch(e){console.warn('[Sync] resync check failed:',e);}
+  // CRITICAL: ensure sync is enabled after school login
+  SYNC_INITIAL_LOAD=true;
+  SYNC_ENABLED=true;
+  updateSyncStatus(true);
+  console.log('[Sync] SYNC_ENABLED=true, SYNC_INITIAL_LOAD=true');
   // Re-subscribe to this school's Firebase path
   SYNC_KEYS.forEach(k=>subscribeToCollection(k));
   const subscribed=new Set(SYNC_KEYS);
@@ -4180,14 +4207,25 @@ async function resyncForSchool(){
     const k=lkey.substring(DB._pfx.length);
     if(isSessionScopedKey(k)&&!subscribed.has(k)){subscribeToCollection(k);subscribed.add(k);}
   }
+  console.log('[Sync] Subscribed to '+subscribed.size+' keys for school '+CURRENT_SCHOOL_ID);
 }
 
 async function bootFirebaseSync(){
   updateSyncStatus(false);
-  const ok=await waitForFirebase(4000);
+  const ok=await waitForFirebase(8000);
   if(!ok){
     updateSyncStatus(false);
+    console.warn('[Sync] Firebase not ready after 8s — will retry on login');
     if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}
+    // Retry in background — Firebase module might load late
+    setTimeout(async()=>{
+      if(!SYNC_ENABLED&&window.__FB&&window.__FB.db){
+        console.log('[Sync] Late Firebase retry triggered');
+        await syncPlatformFromFirebase();
+        SYNC_INITIAL_LOAD=true;SYNC_ENABLED=true;
+        updateSyncStatus(true);
+      }
+    },5000);
     return;
   }
   // Pull platform data (schools list, admins) from Firebase FIRST
@@ -4201,10 +4239,12 @@ async function bootFirebaseSync(){
     if(localAdmins.length>0){syncPlatformToFirebase('platform_admins',localAdmins);}
   }
   const hadData=await syncDownAll();
+  console.log('[Sync] Boot: hadData='+hadData+', school='+CURRENT_SCHOOL_ID+', path='+getFirebaseSchoolPath());
   if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}
   SYNC_INITIAL_LOAD=true;
   SYNC_ENABLED=true;
-  if(!hadData)await syncUpAll();
+  // Only push data up if we have a school context — don't push to data/ blindly
+  if(!hadData&&CURRENT_SCHOOL_ID)await syncUpAll();
   SYNC_KEYS.forEach(k=>subscribeToCollection(k));
   const subscribed=new Set(SYNC_KEYS);
   for(let i=0;i<localStorage.length;i++){
@@ -4213,6 +4253,8 @@ async function bootFirebaseSync(){
     const k=lkey.substring(DB._pfx.length);
     if(isSessionScopedKey(k)&&!subscribed.has(k)){subscribeToCollection(k);subscribed.add(k);}
   }
+  console.log('[Sync] Boot complete: SYNC_ENABLED=true, subscribed='+subscribed.size+' keys');
+  updateSyncStatus(true);
   // Subscribe to platform-level changes (schools added/removed from other devices)
   subscribePlatformSync();
   if(typeof navigate==='function'&&_page){try{navigate(_page);}catch(e){}}
