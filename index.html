@@ -200,6 +200,7 @@ onValue(connRef, (snap) => {
       <div id="login-error" style="display:none;color:var(--dn);font-size:11px;margin-bottom:8px;padding:6px 10px;background:var(--dnbg);border-radius:var(--rs)"></div>
       <button class="btn bp" style="width:100%;justify-content:center;padding:11px" onclick="doLogin()" id="lbtn">Sign In →</button>
       <div id="login-attempts" style="display:none;font-size:10px;color:var(--tx3);margin-top:8px;text-align:center"></div>
+      <div style="text-align:center;margin-top:10px"><a href="#" onclick="forgotPasswordModal();return false;" style="font-size:12px;color:var(--ac);text-decoration:none" id="ll-forgot">🔑 Forgot Password?</a></div>
     </div>
   </div>
 </div>
@@ -294,8 +295,12 @@ async function syncPlatformFromFirebase(){
     const snap=await get(ref(db,'platform'));
     if(snap.exists()){
       const data=snap.val();
+      // Always overwrite local with Firebase truth — clear stale local data
       if(data.platform_schools){
         localStorage.setItem('sms7_platform_schools',JSON.stringify(data.platform_schools));
+      }else{
+        // Firebase has no schools — clear any stale local schools
+        localStorage.setItem('sms7_platform_schools',JSON.stringify([]));
       }
       if(data.platform_admins){
         localStorage.setItem('sms7_platform_admins',JSON.stringify(data.platform_admins));
@@ -314,8 +319,8 @@ function subscribePlatformSync(){
   ['platform_schools','platform_admins'].forEach(key=>{
     onValue(ref(db,'platform/'+key),(snap)=>{
       const v=snap.val();
-      if(v===null||v===undefined)return;
-      localStorage.setItem('sms7_'+key,JSON.stringify(v));
+      // If Firebase value is null (deleted), clear local data too
+      localStorage.setItem('sms7_'+key,JSON.stringify(v||[]));
       // Refresh school dropdown if schools changed
       if(key==='platform_schools'&&typeof populateSchoolDropdown==='function'){
         try{populateSchoolDropdown();}catch(e){}
@@ -971,6 +976,121 @@ function doLogout(){
   document.getElementById('lic').textContent='🎓';
   populateSchoolDropdown();
 }
+
+/* ─── Forgot Password / Email-based Password Reset ─── */
+function forgotPasswordModal(){
+  const schoolSel=document.getElementById('lsch');
+  const schoolOpts=schoolSel?[...schoolSel.options].filter(o=>o.value).map(o=>'<option value="'+o.value+'">'+o.textContent+'</option>').join(''):'';
+  openM('<div class="mh"><h3>🔑 Reset Password</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai" style="margin-bottom:12px">Enter your username and the email linked to your account. If they match, you can set a new password.</div>'
+  +'<div class="fg"><label>School / Platform</label><select id="rst-sch" style="width:100%;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><option value="">— Select —</option>'+schoolOpts+'</select></div>'
+  +'<div class="fg"><label>Username *</label><input id="rst-user" placeholder="Enter your username"></div>'
+  +'<div class="fg"><label>Linked Email *</label><input id="rst-email" type="email" placeholder="Enter the email on your account"></div>'
+  +'<div id="rst-step2" style="display:none">'
+  +'<div class="al ag" style="margin-bottom:10px">✅ Identity verified! Set your new password below.</div>'
+  +'<div class="fg"><label>New Password *</label><input id="rst-newpw" type="password" placeholder="Min 6 characters"></div>'
+  +'<div class="fg"><label>Confirm Password *</label><input id="rst-cfpw" type="password" placeholder="Repeat new password"></div>'
+  +'</div>'
+  +'<div id="rst-err" style="display:none;color:var(--dn);font-size:11px;margin-bottom:8px;padding:6px 10px;background:var(--dnbg);border-radius:var(--rs)"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button>'
+  +'<button class="btn bp" id="rst-btn" onclick="verifyResetEmail()">Verify Email →</button></div>');
+}
+
+async function verifyResetEmail(){
+  const sch=document.getElementById('rst-sch').value;
+  const user=document.getElementById('rst-user').value.trim().toLowerCase();
+  const email=document.getElementById('rst-email').value.trim().toLowerCase();
+  const errEl=document.getElementById('rst-err');
+  errEl.style.display='none';
+
+  if(!sch||!user||!email){
+    errEl.textContent='Please fill all fields and select a school.';errEl.style.display='block';return;
+  }
+
+  let account=null;
+  if(sch==='__platform'){
+    // Platform admin reset
+    const admins=getPlatformAdmins();
+    account=admins.find(a=>a.username===user&&(a.email||'').toLowerCase()===email&&a.active);
+    if(!account){errEl.textContent='No matching platform admin found. Check username and email.';errEl.style.display='block';return;}
+    // Show step 2
+    document.getElementById('rst-step2').style.display='block';
+    document.getElementById('rst-btn').textContent='Reset Password →';
+    document.getElementById('rst-btn').setAttribute('onclick','doResetPassword()');
+    window.__resetTarget={type:'platform',username:user,email:email};
+  }else{
+    // School account reset — need to load school data from Firebase
+    const oldPfx=DB._pfx;
+    DB._pfx='sms7_sch_'+sch+'_';
+    // Try to sync from Firebase first
+    if(window.__FB&&window.__FB.db){
+      try{
+        const{db,ref,get}=window.__FB;
+        const snap=await get(ref(db,'schools/'+sch+'/accounts'));
+        if(snap.exists()){
+          localStorage.setItem(DB._pfx+'accounts',JSON.stringify(snap.val()));
+        }
+      }catch(e){console.warn('Reset: Firebase fetch failed',e);}
+    }
+    const acc=JSON.parse(localStorage.getItem(DB._pfx+'accounts')||'[]');
+    account=acc.find(a=>a.username===user&&(a.email||'').toLowerCase()===email&&a.active);
+    DB._pfx=oldPfx;
+    if(!account){errEl.textContent='No matching account found. Make sure your email is linked to your account and check your username.';errEl.style.display='block';return;}
+    // Show step 2
+    document.getElementById('rst-step2').style.display='block';
+    document.getElementById('rst-btn').textContent='Reset Password →';
+    document.getElementById('rst-btn').setAttribute('onclick','doResetPassword()');
+    window.__resetTarget={type:'school',schoolId:sch,username:user,email:email};
+  }
+}
+
+async function doResetPassword(){
+  const nw=document.getElementById('rst-newpw').value;
+  const cf=document.getElementById('rst-cfpw').value;
+  const errEl=document.getElementById('rst-err');
+  errEl.style.display='none';
+
+  if(!nw||!cf){errEl.textContent='Enter and confirm your new password.';errEl.style.display='block';return;}
+  if(nw.length<6){errEl.textContent='Password must be at least 6 characters.';errEl.style.display='block';return;}
+  if(nw!==cf){errEl.textContent='Passwords do not match.';errEl.style.display='block';return;}
+
+  const target=window.__resetTarget;
+  if(!target){errEl.textContent='Session expired. Please start over.';errEl.style.display='block';return;}
+
+  const newHash=await hashPassword(nw);
+
+  if(target.type==='platform'){
+    const admins=getPlatformAdmins();
+    const i=admins.findIndex(a=>a.username===target.username&&(a.email||'').toLowerCase()===target.email);
+    if(i<0){errEl.textContent='Account not found. Please start over.';errEl.style.display='block';return;}
+    admins[i].passwordHash=newHash;
+    delete admins[i].password;
+    localStorage.setItem('sms7_platform_admins',JSON.stringify(admins));
+    syncPlatformToFirebase('platform_admins',admins);
+    closeM();
+    toast('Password reset successfully! You can now log in.','success');
+  }else{
+    const pfx='sms7_sch_'+target.schoolId+'_';
+    const acc=JSON.parse(localStorage.getItem(pfx+'accounts')||'[]');
+    const i=acc.findIndex(a=>a.username===target.username&&(a.email||'').toLowerCase()===target.email);
+    if(i<0){errEl.textContent='Account not found. Please start over.';errEl.style.display='block';return;}
+    acc[i].passwordHash=newHash;
+    delete acc[i].password;
+    localStorage.setItem(pfx+'accounts',JSON.stringify(acc));
+    // Push to Firebase
+    if(window.__FB&&window.__FB.db){
+      try{
+        const{db,ref,set}=window.__FB;
+        set(ref(db,'schools/'+target.schoolId+'/accounts'),acc).catch(e=>console.warn('Reset push failed:',e));
+      }catch(e){}
+    }
+    closeM();
+    toast('Password reset successfully! You can now log in with your new password.','success');
+  }
+  window.__resetTarget=null;
+}
 function impUser(uid){const acc=DB.get('accounts')||[];const t=acc.find(a=>a.id===uid);if(!t){toast('Account not found','danger');return;}SAR=CU;CU=t;SAIMP=true;closeM();document.getElementById('ib').classList.remove('hidden');document.getElementById('ibwho').textContent=t.firstName+' '+t.lastName+' ('+rL(t.role)+')';toast('Viewing as '+t.firstName+' '+t.lastName,'info');launch();}
 function exitImp(){CU=SAR;SAR=null;SAIMP=false;document.getElementById('ib').classList.add('hidden');launch();}
 function launch(){
@@ -1217,7 +1337,7 @@ function rProfile(){
   
   const teacherSubjectField=((CU._origRole||CU.role)==='teacher')?'<div class="fg"><label>📚 '+T('subject')+'<br><span style="font-size:10px;font-weight:400;color:var(--tx3)">Your teaching subject (used in autocompletes and reports)</span></label><input id="p-subject" value="'+esc(myTeacher?.subject||'')+'" placeholder="e.g. Mathematics"></div>':'';
   
-  document.getElementById('pc').innerHTML='<div class="cg g2"><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>👤 '+T('my_profile')+'</h3></div><div style="font-size:11px;color:var(--tx3);margin-bottom:11px">Update your name and contact details. Changes apply across all your records (class visits, achievements, duty roster).</div><div class="fr f2"><div class="fg"><label>'+T('first_name')+' *</label><input id="pfn" value="'+esc(CU.firstName||'')+'"></div><div class="fg"><label>'+T('last_name')+' *</label><input id="pln" value="'+esc(CU.lastName||'')+'"></div></div><div class="fr f2"><div class="fg"><label>'+T('email')+'</label><input id="pem" type="email" value="'+esc(CU.email||'')+'"></div><div class="fg"><label>'+T('phone')+'</label><input id="pph" value="'+esc(CU.phone||'')+'"></div></div>'+teacherSubjectField+'<button class="btn bp" onclick="saveProf()">'+T('save_profile')+' →</button></div><div class="card"><div class="sh2"><h3>🔑 '+T('change_password')+'</h3></div><div class="fg"><label>'+T('current_password')+'</label><input id="pcur" type="password"></div><div class="fr f2"><div class="fg"><label>'+T('new_password')+'</label><input id="pnw" type="password"></div><div class="fg"><label>'+T('confirm_password')+'</label><input id="pcf" type="password"></div></div><button class="btn bg2" onclick="chgPwd()">'+T('change_password')+' →</button></div></div>'
+  document.getElementById('pc').innerHTML='<div class="cg g2"><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>👤 '+T('my_profile')+'</h3></div><div style="font-size:11px;color:var(--tx3);margin-bottom:11px">Update your name and contact details. Changes apply across all your records (class visits, achievements, duty roster).</div><div class="fr f2"><div class="fg"><label>'+T('first_name')+' *</label><input id="pfn" value="'+esc(CU.firstName||'')+'"></div><div class="fg"><label>'+T('last_name')+' *</label><input id="pln" value="'+esc(CU.lastName||'')+'"></div></div><div class="fr f2"><div class="fg"><label>'+T('email')+' <span style="font-size:10px;color:var(--ac);font-weight:400">🔑 Used for password reset</span></label><input id="pem" type="email" value="'+esc(CU.email||'')+'" placeholder="Link your email to enable password reset"></div><div class="fg"><label>'+T('phone')+'</label><input id="pph" value="'+esc(CU.phone||'')+'"></div></div>'+(!(CU.email)||CU.email.trim()===''?'<div class="al ad" style="margin-bottom:12px">⚠️ <strong>No email linked!</strong> Link your email above to enable password reset if you forget your password.</div>':'<div class="al ag" style="margin-bottom:12px">✅ Email linked: <strong>'+esc(CU.email)+'</strong> — you can use this to reset your password from the login page.</div>')+''+teacherSubjectField+'<button class="btn bp" onclick="saveProf()">'+T('save_profile')+' →</button></div><div class="card"><div class="sh2"><h3>🔑 '+T('change_password')+'</h3></div><div class="fg"><label>'+T('current_password')+'</label><input id="pcur" type="password"></div><div class="fr f2"><div class="fg"><label>'+T('new_password')+'</label><input id="pnw" type="password"></div><div class="fg"><label>'+T('confirm_password')+'</label><input id="pcf" type="password"></div></div><button class="btn bg2" onclick="chgPwd()">'+T('change_password')+' →</button></div></div>'
   +'<div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🎨 '+T('color_theme')+'</h3></div><div style="font-size:12px;color:var(--tx2);margin-bottom:10px">Choose your personal color theme (only applies to your account):</div><div class="tsw">'+Object.entries(TH).map(([k,v])=>'<div title="'+v.n+'" onclick="setTheme(\''+k+'\')" class="sw'+((CU.theme||'blue')===k?' act':'')+'" style="background:'+v.a+'"></div>').join('')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:8px">Current: <strong style="color:var(--ac)">'+(TH[CU.theme||'blue']?.n||'Blue')+'</strong></div></div>'
   +'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🌐 '+T('language')+'</h3></div><div style="display:flex;gap:8px"><button onclick="setUL(\'en\')" class="btn '+((CU.lang||'en')==='en'?'bp':'bg2')+'">🇬🇧 English</button><button onclick="setUL(\'ar\')" class="btn '+(CU.lang==='ar'?'bp':'bg2')+'">🇸🇦 العربية</button></div><div style="font-size:11px;color:var(--tx3);margin-top:8px">Language preference is saved to your account only.</div></div>'
   +'<div class="card"><div class="sh2"><h3>ℹ️ Account Info</h3></div><table style="font-size:12px;width:100%">'
@@ -4045,12 +4165,15 @@ async function bootFirebaseSync(){
     return;
   }
   // Pull platform data (schools list, admins) from Firebase FIRST
-  await syncPlatformFromFirebase();
-  // Always ensure local platform data is pushed up if Firebase is missing it
-  const localSchools=getPlatformSchools();
-  const localAdmins=getPlatformAdmins();
-  if(localSchools.length>0){syncPlatformToFirebase('platform_schools',localSchools);}
-  if(localAdmins.length>0){syncPlatformToFirebase('platform_admins',localAdmins);}
+  const hadPlatformData=await syncPlatformFromFirebase();
+  // Only push local platform data if Firebase had NOTHING (first-ever boot)
+  // Never overwrite Firebase with stale local data
+  if(!hadPlatformData){
+    const localSchools=getPlatformSchools();
+    const localAdmins=getPlatformAdmins();
+    if(localSchools.length>0){syncPlatformToFirebase('platform_schools',localSchools);}
+    if(localAdmins.length>0){syncPlatformToFirebase('platform_admins',localAdmins);}
+  }
   const hadData=await syncDownAll();
   if(!window.__seedDone){window.__doSeedAndStart();window.__seedDone=true;}
   SYNC_INITIAL_LOAD=true;
