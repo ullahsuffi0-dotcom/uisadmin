@@ -539,13 +539,23 @@ async function saveNewSchool(){
   schools.push({id:schoolId,name,nameAr,city,logo,academicYear:year,active:true,created:new Date().toISOString().split('T')[0]});
   setPlatformSchools(schools);
   const ph=await hashPassword(apw);
+  const defPh=await hashPassword('Admin@2024');
   const pfx='sms7_sch_'+schoolId+'_';
+  const today=new Date().toISOString().split('T')[0];
   localStorage.setItem(pfx+'settings',JSON.stringify({schoolName:name,schoolNameAr:nameAr,city,academicYear:year,logo}));
-  localStorage.setItem(pfx+'accounts',JSON.stringify([{
-    id:'u1',username:aun,passwordHash:ph,role:'superadmin',
-    firstName:afn,lastName:aln,email:aem,phone:'',
-    active:true,theme:'blue',lang:'en',created:new Date().toISOString().split('T')[0]
-  }]));
+  // Create default admin staff accounts for all roles
+  const defaultAccounts=[
+    {id:'u1',username:aun,passwordHash:ph,role:'superadmin',firstName:afn,lastName:aln,email:aem,phone:'',active:true,theme:'blue',lang:'en',created:today},
+    {id:'u'+Date.now()+'p',username:'principal',passwordHash:defPh,role:'principal',firstName:'Principal',lastName:name,email:'',phone:'',active:true,theme:'blue',lang:'en',created:today},
+    {id:'u'+Date.now()+'vp',username:'vice_principal',passwordHash:defPh,role:'vice_principal',firstName:'Vice Principal',lastName:name,email:'',phone:'',active:true,theme:'blue',lang:'en',created:today},
+    {id:'u'+Date.now()+'as',username:'academic_supervisor',passwordHash:defPh,role:'academic_supervisor',firstName:'Academic Supervisor',lastName:name,email:'',phone:'',active:true,theme:'blue',lang:'en',created:today},
+    {id:'u'+Date.now()+'sa',username:'student_advisor',passwordHash:defPh,role:'student_advisor',firstName:'Student Advisor',lastName:name,email:'',phone:'',active:true,theme:'blue',lang:'en',created:today},
+    {id:'u'+Date.now()+'ai',username:'activity_incharge',passwordHash:defPh,role:'activity_incharge',firstName:'Activity Incharge',lastName:name,email:'',phone:'',active:true,theme:'blue',lang:'en',created:today},
+    {id:'u'+Date.now()+'qs',username:'quality_supervisor',passwordHash:defPh,role:'quality_supervisor',firstName:'Quality Supervisor',lastName:name,email:'',phone:'',active:true,theme:'blue',lang:'en',created:today},
+    {id:'u'+Date.now()+'qi',username:'quality_incharge',passwordHash:defPh,role:'quality_incharge',firstName:'Quality Incharge',lastName:name,email:'',phone:'',active:true,theme:'blue',lang:'en',created:today},
+    {id:'u'+Date.now()+'aa',username:'admin_assistant',passwordHash:defPh,role:'admin_assistant',firstName:'Admin Assistant',lastName:name,email:'',phone:'',active:true,theme:'blue',lang:'en',created:today}
+  ];
+  localStorage.setItem(pfx+'accounts',JSON.stringify(defaultAccounts));
   const emptyCollections=['students','teachers','complaints','tasks','infractions','referrals',
     'class_visits','notebook_checks','activities','activity_reports','early_pickups',
     'announcements','discipline_reports','activity_log','infraction_forms','visit_forms',
@@ -1343,13 +1353,33 @@ function addTchM(){
   openM('<div class="mh"><h3>+ Add Teacher</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fr f2"><div class="fg"><label>Full Name *</label><input id="tch-name" placeholder="e.g. Mohammed Al-Saadi"></div><div class="fg"><label>Employee ID</label><input id="tch-eid" placeholder="e.g. T-1042"></div></div><div class="fr f2"><div class="fg"><label>'+T('subject')+'</label><input id="tch-subj" placeholder="e.g. Mathematics"></div><div class="fg"><label>Department</label><input id="tch-dep" placeholder="e.g. Science Department"></div></div><div class="fr f2"><div class="fg"><label>'+T('phone')+'</label><input id="tch-phone"></div><div class="fg"><label>'+T('email')+'</label><input id="tch-email" type="email"></div></div><div class="fg"><label>Note</label><textarea id="tch-note" placeholder="Optional notes (qualifications, joining date, etc.)"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveTch()">+ '+T('add')+' →</button></div>');
 }
 
-function saveTch(){
+// Auto-create a teacher login account from a teacher name
+async function autoCreateTeacherAccount(fullName,teacherId){
+  const acc=DB.get('accounts')||[];
+  const parts=fullName.trim().split(/\s+/);
+  const fn=parts[0]||'Teacher';
+  const ln=parts.slice(1).join(' ')||'';
+  // Generate username: firstname.lastname (lowercase, no special chars)
+  let base=(fn+(ln?'.'+ln.split(' ')[0]:'')).toLowerCase().replace(/[^a-z0-9.]/g,'');
+  if(!base)base='teacher';
+  let uname=base;let c=1;
+  while(acc.find(a=>a.username===uname)){uname=base+c;c++;}
+  const ph=await hashPassword('Teacher@2024');
+  acc.push({id:'u'+Date.now()+Math.random().toString(36).slice(2,5),username:uname,passwordHash:ph,role:'teacher',firstName:fn,lastName:ln,email:'',phone:'',active:true,theme:'blue',lang:'en',created:new Date().toISOString().split('T')[0],teacherId:teacherId});
+  DB.set('accounts',acc);
+}
+
+async function saveTch(){
   const name=document.getElementById('tch-name').value.trim();
   if(!name){toast('Teacher name required','danger');return;}
   const teachers=DB.get('teachers')||[];
   if(teachers.some(t=>t.name.toLowerCase()===name.toLowerCase())){toast('Teacher already exists','danger');return;}
-  teachers.push({id:nid('tch'),name,employeeId:document.getElementById('tch-eid').value.trim(),subject:document.getElementById('tch-subj').value.trim(),department:document.getElementById('tch-dep').value.trim(),phone:document.getElementById('tch-phone').value.trim(),email:document.getElementById('tch-email').value.trim(),note:document.getElementById('tch-note').value.trim(),active:true,created:new Date().toISOString().split('T')[0]});
-  DB.set('teachers',teachers);logA('Added teacher: '+name);closeM();toast('Teacher added','success');rTeachers();
+  const tchId=nid('tch');
+  teachers.push({id:tchId,name,employeeId:document.getElementById('tch-eid').value.trim(),subject:document.getElementById('tch-subj').value.trim(),department:document.getElementById('tch-dep').value.trim(),phone:document.getElementById('tch-phone').value.trim(),email:document.getElementById('tch-email').value.trim(),note:document.getElementById('tch-note').value.trim(),active:true,created:new Date().toISOString().split('T')[0]});
+  DB.set('teachers',teachers);
+  // Auto-create teacher login account
+  await autoCreateTeacherAccount(name,tchId);
+  logA('Added teacher: '+name);closeM();toast('Teacher added + account created','success');rTeachers();
 }
 
 function editTchM(id){
@@ -1378,7 +1408,10 @@ function delTch(id){
 
 function impTchM(){
   openM('<div class="mh"><h3>📥 Import Teachers CSV / Excel</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ai">📋 Save your Excel file as <strong>CSV (.csv)</strong> first, then upload here. Two formats accepted:<br><br><strong>Simple (3 columns):</strong> Name, Subject, Phone<br><strong>Full (6 columns):</strong> Name, EmployeeID, Subject, Department, Phone, Email</div><div style="background:var(--sf2);border-radius:var(--rs);padding:9px;font-family:monospace;font-size:10px;color:var(--tx3);margin-bottom:12px">Simple example:<br>Mohammed Al-Saadi,Mathematics,0501234567<br>Layla Al-Najjar,Arabic,0502223344<br><br>Full example:<br>Mohammed Al-Saadi,T-1042,Mathematics,Science,0501234567,m@school.sa</div><div class="al aw" style="margin-bottom:12px">⚠️ The <strong>first row is treated as a header and skipped</strong>. Make sure your data starts from row 2.</div><div class="fg"><label>CSV File *</label><input type="file" id="tchimpf" accept=".csv,.txt"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="procTchImp()">Import →</button></div>');
-  window.procTchImp=function(){const file=document.getElementById('tchimpf').files[0];if(!file){toast('Select file','danger');return;}const reader=new FileReader();reader.onload=e=>{const lines=e.target.result.split(/\r?\n/).filter(l=>l.trim()).slice(1);const teachers=DB.get('teachers')||[];let added=0,skipped=0;lines.forEach((line,idx)=>{const cols=line.split(',').map(c=>c.trim().replace(/^"|"$/g,''));let name,eid,subj,dep,ph,em;if(cols.length>=6){[name,eid,subj,dep,ph,em]=cols;}else if(cols.length>=3){[name,subj,ph]=cols;eid='';dep='';em='';}else if(cols.length===2){[name,subj]=cols;eid='';dep='';ph='';em='';}else if(cols.length===1){name=cols[0];eid=subj=dep=ph=em='';}else{skipped++;return;}if(name&&name.trim()){teachers.push({id:'tch'+Date.now()+idx,name:name.trim(),employeeId:(eid||'').trim(),subject:(subj||'').trim(),department:(dep||'').trim(),phone:(ph||'').trim(),email:(em||'').trim(),note:'',active:true,created:new Date().toISOString().split('T')[0]});added++;}else skipped++;});DB.set('teachers',teachers);logA('Imported '+added+' teachers from CSV');closeM();toast(added+' teachers imported'+(skipped?' ('+skipped+' rows skipped)':''),'success');rTeachers();};reader.readAsText(file);};
+  window.procTchImp=async function(){const file=document.getElementById('tchimpf').files[0];if(!file){toast('Select file','danger');return;}const reader=new FileReader();reader.onload=async function(e){const lines=e.target.result.split(/\r?\n/).filter(l=>l.trim()).slice(1);const teachers=DB.get('teachers')||[];const newNames=[];let added=0,skipped=0;lines.forEach((line,idx)=>{const cols=line.split(',').map(c=>c.trim().replace(/^"|"$/g,''));let name,eid,subj,dep,ph,em;if(cols.length>=6){[name,eid,subj,dep,ph,em]=cols;}else if(cols.length>=3){[name,subj,ph]=cols;eid='';dep='';em='';}else if(cols.length===2){[name,subj]=cols;eid='';dep='';ph='';em='';}else if(cols.length===1){name=cols[0];eid=subj=dep=ph=em='';}else{skipped++;return;}if(name&&name.trim()){const tchId='tch'+Date.now()+idx;teachers.push({id:tchId,name:name.trim(),employeeId:(eid||'').trim(),subject:(subj||'').trim(),department:(dep||'').trim(),phone:(ph||'').trim(),email:(em||'').trim(),note:'',active:true,created:new Date().toISOString().split('T')[0]});newNames.push({name:name.trim(),id:tchId});added++;}else skipped++;});DB.set('teachers',teachers);
+      // Auto-create accounts for all imported teachers
+      for(const t of newNames){await autoCreateTeacherAccount(t.name,t.id);}
+      logA('Imported '+added+' teachers from CSV (accounts created)');closeM();toast(added+' teachers imported + accounts created'+(skipped?' ('+skipped+' rows skipped)':''),'success');rTeachers();};reader.readAsText(file);};
 }
 
 // ═══════════════════════════════════════════════════════════
