@@ -3708,9 +3708,9 @@ function rReexam(){
   const list=DB.get('reexam_schedules')||[];
   
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📝 '+T('reexam_schedule')+' ('+list.length+')</h3>'+(canEdit?'<button class="btn bp bsm" onclick="addReexamM()">+ New Schedule for Student</button>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Build a personalized re-exam schedule for each absent student listing every subject they missed and the new exam date for each.</div></div>'
-  
-  // View tabs: List | By Date
-  +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap"><button id="rxv-list" class="btn bp bsm" onclick="reexView(\'list\')">📋 All Schedules</button><button id="rxv-date" class="btn bg2 bsm" onclick="reexView(\'date\')">📅 By Exam Date</button></div></div>'
+
+  // View tabs: List | By Date | By Session
+  +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap"><button id="rxv-list" class="btn bp bsm" onclick="reexView(\'list\')">📋 All Schedules</button><button id="rxv-date" class="btn bg2 bsm" onclick="reexView(\'date\')">📅 By Exam Date</button><button id="rxv-session" class="btn bg2 bsm" onclick="reexView(\'session\')">📑 By Session</button></div></div>'
   +'<div id="rexview"></div>';
   
   if(!window._rexMode)window._rexMode='list';
@@ -3719,10 +3719,11 @@ function rReexam(){
 
 function reexView(mode){
   window._rexMode=mode;
-  ['list','date'].forEach(k=>{const b=document.getElementById('rxv-'+k);if(b)b.className=b.className.replace('bp','bg2');});
+  ['list','date','session'].forEach(k=>{const b=document.getElementById('rxv-'+k);if(b)b.className=b.className.replace('bp','bg2');});
   const a=document.getElementById('rxv-'+mode);if(a)a.className=a.className.replace('bg2','bp');
   if(mode==='list')renderRexList();
-  else renderRexByDate();
+  else if(mode==='date')renderRexByDate();
+  else renderRexBySession();
 }
 
 function renderRexList(){
@@ -3739,13 +3740,13 @@ function renderRexList(){
 
 function buildRexList(list,canEdit,canShare){
   if(!list.length)return'<div class="emp"><div class="ei">📝</div><p>No re-exam schedules created yet</p></div>';
-  return'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Subjects</th><th>Earliest Date</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>'+list.slice().reverse().map(r=>{
+  return'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Exam Session</th><th>Subjects</th><th>Earliest Date</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+list.slice().reverse().map(r=>{
     const subjs=(r.subjects||[]);
     const dates=subjs.map(s=>s.examDate||'').filter(d=>d).sort();
     const earliest=dates[0]||'—';
     const conducted=subjs.filter(s=>s.examStatus==='Conducted').length;
     const total=subjs.length;
-    return'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><div style="display:flex;gap:3px;flex-wrap:wrap">'+subjs.map(s=>{const st=s.examStatus||'Pending';return'<span class="badge '+(st==='Conducted'?'bgn':st==='Not Conducted'?'bgr':'brd')+'" title="'+esc(s.examDate||'no date')+' — '+st+'">'+esc(s.subject)+'</span>';}).join('')+' <span style="color:var(--tx3);font-size:10px">('+conducted+'/'+total+' done)</span></div></td><td class="mono" style="font-size:11px">'+esc(earliest)+'</td><td><span class="badge '+(r.status==='Completed'?'bgn':r.status==='In Progress'?'bbl':'bgo')+'">'+(r.status||'Scheduled')+'</span></td><td style="font-size:10px;color:var(--tx3)">'+(r.created||'').split('T')[0]+'<br>'+esc(r.createdByName||'—')+'</td><td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn bg2 bxs" onclick="vReexam(\''+r.id+'\')">View</button>'+(canEdit?'<button class="btn bp bxs" onclick="updateRexStatusM(\''+r.id+'\')">Status</button>':'')+'<button class="btn bg2 bxs" onclick="expReexamPDF(\''+r.id+'\')">📄</button>'+(canShare?'<button class="btn bp bxs" onclick="shareReexamWA(\''+r.id+'\')">📱 WA</button>':'')+(canEdit?'<button class="btn bp bxs" onclick="editReexamM(\''+r.id+'\')">Edit</button><button class="btn bd3 bxs" onclick="delReexam(\''+r.id+'\')">Del</button>':'')+'</td></tr>';
+    return'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><span class="badge bpu" style="font-size:10px">'+esc(r.examSession||'—')+'</span></td><td><div style="display:flex;gap:3px;flex-wrap:wrap">'+subjs.map(s=>{const st=s.examStatus||'Pending';return'<span class="badge '+(st==='Conducted'?'bgn':st==='Not Conducted'?'bgr':'brd')+'" title="'+esc(s.examDate||'no date')+' — '+st+'">'+esc(s.subject)+'</span>';}).join('')+' <span style="color:var(--tx3);font-size:10px">('+conducted+'/'+total+' done)</span></div></td><td class="mono" style="font-size:11px">'+esc(earliest)+'</td><td><span class="badge '+(r.status==='Completed'?'bgn':r.status==='In Progress'?'bbl':'bgo')+'">'+(r.status||'Scheduled')+'</span></td><td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn bg2 bxs" onclick="vReexam(\''+r.id+'\')">View</button>'+(canEdit?'<button class="btn bp bxs" onclick="updateRexStatusM(\''+r.id+'\')">Status</button>':'')+'<button class="btn bg2 bxs" onclick="expReexamParentPDF(\''+r.id+'\')">📄 Parent</button><button class="btn bg2 bxs" onclick="expReexamStatusPDF(\''+r.id+'\')">📋 Report</button>'+(canShare?'<button class="btn bp bxs" onclick="shareReexamWA(\''+r.id+'\')">📱 WA</button>':'')+(canEdit?'<button class="btn bp bxs" onclick="editReexamM(\''+r.id+'\')">Edit</button><button class="btn bd3 bxs" onclick="delReexam(\''+r.id+'\')">Del</button>':'')+'</td></tr>';
   }).join('')+'</tbody></table></div>';
 }
 
@@ -3773,6 +3774,64 @@ function buildRexByDateTbl(rows,date){
   if(!filtered.length)return'<div class="emp"><p style="font-size:12px">No re-exams scheduled on '+esc(date)+'</p></div>';
   return'<div class="al aw" style="margin-bottom:11px"><strong>📅 '+esc(date)+':</strong> '+filtered.length+' student-subject combination(s) scheduled</div>'
   +'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Subject</th><th>Time</th><th>Venue</th><th>Invigilator</th><th>Status</th><th>Remarks</th><th>Action</th></tr></thead><tbody>'+filtered.map(r=>'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><span class="badge brd">'+esc(r.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(r.startTime||'—')+(r.endTime?' - '+esc(r.endTime):'')+'</td><td style="font-size:11px">'+esc(r.venue||'—')+'</td><td style="font-size:11px">'+esc(r.invigilator||'—')+'</td><td><span class="badge '+(r.examStatus==='Conducted'?'bgn':r.examStatus==='Not Conducted'?'bgr':'bgo')+'">'+esc(r.examStatus)+'</span></td><td style="font-size:11px;max-width:120px">'+esc(r.remarks||'—')+'</td><td><button class="btn bg2 bxs" onclick="vReexam(\''+r.scheduleId+'\')">View</button></td></tr>').join('')+'</tbody></table></div>';
+}
+
+// ─── By Session view ─────────────────────────────────────────
+
+function renderRexBySession(){
+  const list=DB.get('reexam_schedules')||[];
+  const canEdit=['academic_supervisor','admin_assistant','vice_principal','superadmin'].includes(CU.role);
+  const sessions=[...new Set(list.map(r=>r.examSession||'').filter(Boolean))].sort();
+  const noSession=list.filter(r=>!r.examSession);
+
+  document.getElementById('rexview').innerHTML='<div class="card">'
+  +'<div style="font-size:11px;color:var(--tx3);margin-bottom:12px">Schedules grouped by examination session. Export a full session report after updating all statuses.</div>'
+  +(sessions.length?sessions.map(sess=>{
+    const items=list.filter(r=>r.examSession===sess);
+    const totalSubjs=items.reduce((a,r)=>a+(r.subjects||[]).length,0);
+    const conductedSubjs=items.reduce((a,r)=>a+(r.subjects||[]).filter(s=>s.examStatus==='Conducted').length,0);
+    const allDone=totalSubjs>0&&conductedSubjs===totalSubjs;
+    return'<div style="background:var(--sf2);border-radius:var(--rs);padding:12px;margin-bottom:10px;border-left:4px solid '+(allDone?'var(--gd)':'var(--ac)')+'">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
+    +'<div><strong style="font-size:14px;color:var(--ac)">'+esc(sess)+'</strong><div style="font-size:11px;color:var(--tx3);margin-top:3px">'+items.length+' student(s) · '+totalSubjs+' exam(s) · <strong style="color:'+(allDone?'var(--gd)':'var(--tx)')+'">'+conductedSubjs+'/'+totalSubjs+' conducted</strong></div></div>'
+    +'<div style="display:flex;gap:5px"><button class="btn bp bsm" onclick="expSessionReportPDF(\''+esc(sess).replace(/'/g,"\\'")+'\')">📋 Session Report PDF</button></div></div>'
+    +'<div class="tw"><table style="font-size:11px"><thead><tr><th>Student</th><th>Class</th><th>Subjects</th><th>Progress</th><th>Overall</th></tr></thead><tbody>'+items.map(r=>{
+      const subjs=r.subjects||[];
+      const c=subjs.filter(s=>s.examStatus==='Conducted').length;
+      return'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td>'+subjs.map(s=>{const st=s.examStatus||'Pending';return'<span class="badge '+(st==='Conducted'?'bgn':st==='Not Conducted'?'bgr':'brd')+'" style="font-size:9px;margin:1px">'+esc(s.subject)+'</span>';}).join('')+'</td><td>'+c+'/'+subjs.length+'</td><td><span class="badge '+(r.status==='Completed'?'bgn':r.status==='In Progress'?'bbl':'bgo')+'" style="font-size:10px">'+(r.status||'Scheduled')+'</span></td></tr>';
+    }).join('')+'</tbody></table></div></div>';
+  }).join(''):'')
+  +(noSession.length?'<div class="al aw" style="margin-top:10px">'+noSession.length+' schedule(s) have no exam session assigned. Edit them to add a session.</div>':'')
+  +(sessions.length===0&&noSession.length===0?'<div class="emp"><div class="ei">📑</div><p>No re-exam schedules yet</p></div>':'')
+  +'</div>';
+}
+
+// Full Session Report PDF — all students in one session
+function expSessionReportPDF(session){
+  const list=(DB.get('reexam_schedules')||[]).filter(r=>r.examSession===session);
+  if(!list.length){toast('No schedules found for this session','danger');return;}
+  const settings=DB.get('settings')||{};
+  const win=window.open('','_blank');
+  const totalSubjs=list.reduce((a,r)=>a+(r.subjects||[]).length,0);
+  const conductedSubjs=list.reduce((a,r)=>a+(r.subjects||[]).filter(s=>s.examStatus==='Conducted').length,0);
+  const notConducted=list.reduce((a,r)=>a+(r.subjects||[]).filter(s=>s.examStatus==='Not Conducted').length,0);
+  const pending=totalSubjs-conductedSubjs-notConducted;
+  const completedStudents=list.filter(r=>(r.subjects||[]).every(s=>s.examStatus==='Conducted'||s.examStatus==='Not Conducted')).length;
+
+  // Build rows: one row per student-subject
+  let rowsHTML='';let rowNum=0;
+  list.sort((a,b)=>a.studentName.localeCompare(b.studentName)).forEach(r=>{
+    (r.subjects||[]).forEach((s,si)=>{
+      rowNum++;
+      const st=s.examStatus||'Pending';
+      rowsHTML+='<tr>'+(si===0?'<td rowspan="'+(r.subjects||[]).length+'" style="vertical-align:top;font-weight:bold">'+r.studentName+'</td><td rowspan="'+(r.subjects||[]).length+'" style="vertical-align:top">'+(r.grade||'')+(r.section||'')+'</td>':'')+'<td>'+s.subject+'</td><td>'+(s.examDate||'—')+'</td><td>'+(s.startTime||'—')+(s.endTime?' - '+s.endTime:'')+'</td><td>'+(s.venue||'—')+'</td><td>'+(s.invigilator||'—')+'</td><td class="'+(st==='Conducted'?'conducted':st==='Not Conducted'?'not-conducted':st==='Postponed'?'postponed':'pending')+'">'+st+'</td><td style="font-size:9px">'+(s.remarks||'—')+'</td></tr>';
+    });
+  });
+
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Session Report — '+session+'</title><style>@page{size:A4 landscape;margin:12mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:10px;line-height:1.4}.title{font-size:18px;color:#1a5f7a;text-align:center;margin:8px 0 4px;font-weight:bold}.subtitle{text-align:center;font-size:12px;color:#555;margin-bottom:12px}.stats{display:flex;justify-content:center;gap:20px;margin-bottom:12px;flex-wrap:wrap}.stat-box{background:#f0f4f8;border-radius:6px;padding:8px 16px;text-align:center;min-width:90px}.stat-box .num{font-size:20px;font-weight:bold;color:#1a5f7a}.stat-box .lbl{font-size:9px;color:#777;text-transform:uppercase}table{width:100%;border-collapse:collapse;font-size:10px}td,th{padding:5px 6px;border:1px solid #ccc;text-align:left}th{background:#1a5f7a;color:#fff;font-size:9px;text-transform:uppercase}.conducted{color:#16a34a;font-weight:bold}.not-conducted{color:#dc2626;font-weight:bold}.pending{color:#d97706}.postponed{color:#6366f1;font-weight:bold}.footer{margin-top:16px;padding-top:6px;border-top:1px solid #ddd;font-size:8px;color:#888;text-align:center}@media print{button{display:none}}</style></head><body>'+pdfHeaderHTML({subtitle:'Re-exam Session Report'})+'<div class="title">RE-EXAM SESSION REPORT</div><div class="subtitle">'+session+' — '+(settings.schoolName||'School')+'</div><div class="stats"><div class="stat-box"><div class="num">'+list.length+'</div><div class="lbl">Students</div></div><div class="stat-box"><div class="num">'+totalSubjs+'</div><div class="lbl">Total Exams</div></div><div class="stat-box"><div class="num" style="color:#16a34a">'+conductedSubjs+'</div><div class="lbl">Conducted</div></div><div class="stat-box"><div class="num" style="color:#dc2626">'+notConducted+'</div><div class="lbl">Not Conducted</div></div><div class="stat-box"><div class="num" style="color:#d97706">'+pending+'</div><div class="lbl">Pending</div></div></div><table><thead><tr><th>Student</th><th>Class</th><th>Subject</th><th>Re-exam Date</th><th>Time</th><th>Venue</th><th>Invigilator</th><th>Status</th><th>Remarks</th></tr></thead><tbody>'+rowsHTML+'</tbody></table><div class="footer">Generated from '+(settings.schoolName||'School')+' on '+new Date().toLocaleString()+' | '+completedStudents+'/'+list.length+' students fully processed</div><button onclick="window.print()" style="margin-top:10px;padding:8px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">Print / Save as PDF</button></body></html>');
+  win.document.close();
+  setTimeout(()=>{try{win.print();}catch(e){}},800);
+  toast('Session report PDF generated','success');
 }
 
 // ─── Add / Edit form ─────────────────────────────────────────
@@ -3813,10 +3872,11 @@ function renderReexamForm(){
   const existingMap={};(data.subjects||[]).forEach(s=>{existingMap[s.subject]=s;});
   
   openM('<div class="mh"><h3>📝 '+(data.isNew?'New':'Edit')+' Re-exam Schedule</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
-  +'<div class="al ai">📋 Pick an absent student. The form will load every subject they were absent in. For each subject, set a re-exam date, time, and venue.</div>'
-  
-  // Step 1: Student picker (autocomplete from absent students only)
-  +'<div style="background:var(--sf2);border-radius:var(--r);padding:12px;margin-bottom:12px;border-left:4px solid var(--ac)"><div style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:7px">Step 1 · Select Absent Student</div>'
+  +'<div class="al ai">📋 Pick an absent student and the examination session they missed. The form will load every subject they were absent in.</div>'
+
+  // Step 1: Student + Exam Session
+  +'<div style="background:var(--sf2);border-radius:var(--r);padding:12px;margin-bottom:12px;border-left:4px solid var(--ac)"><div style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:7px">Step 1 · Select Absent Student & Exam Session</div>'
+  +'<div class="fg"><label>Examination Session *</label><input id="rex-session" value="'+esc(data.examSession||'')+'" placeholder="e.g. Mid-term 1, Final Exam, Monthly Test 3…" list="rex-session-list" oninput="window._rexEdit.examSession=this.value" style="width:100%;padding:9px 11px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><datalist id="rex-session-list">'+(()=>{const sessions=[...new Set((DB.get('reexam_schedules')||[]).map(r=>r.examSession).filter(Boolean))];return sessions.map(s=>'<option value="'+esc(s)+'">').join('');})()+'</datalist></div>'
   +(data.isNew?'<div class="fg" style="margin-bottom:0"><label>Student * <span style="font-weight:400;color:var(--tx3);font-size:10px">(only students with recorded absences)</span></label><div style="position:relative"><input id="rex-stu-i" value="'+esc(data.studentName||'')+'" placeholder="🔍 Type student name…" autocomplete="off" oninput="rexStuSearch(this.value)" onblur="setTimeout(()=>{const d=document.getElementById(\'rex-stu-d\');if(d)d.style.display=\'none\'},250)" style="width:100%;padding:9px 11px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><div id="rex-stu-d" class="sd"></div></div>'+(chosenStu?'<div class="al ag" style="margin-top:8px;margin-bottom:0;padding:7px 10px">✓ <strong>'+esc(chosenStu.studentName)+'</strong> — Grade '+esc(chosenStu.grade||'')+esc(chosenStu.section||'')+' · '+stuSubjects.length+' subject(s) absent</div>':'')+'</div>':'<div class="al ag" style="margin-bottom:0;padding:7px 10px">Editing schedule for: <strong>'+esc(data.studentName)+'</strong> — Grade '+esc(data.grade||'')+esc(data.section||'')+'</div>')
   +'</div>'
   
@@ -3889,14 +3949,16 @@ function saveReexam(){
   if(!withDates.length){toast('Set a re-exam date for at least one subject','danger');return;}
   data.status=document.getElementById('rex-status').value;
   data.notes=document.getElementById('rex-notes').value.trim();
-  
+  data.examSession=(document.getElementById('rex-session')||{}).value||data.examSession||'';
+
   const list=DB.get('reexam_schedules')||[];
   if(data.isNew){
-    list.push({id:nid('rex'),studentId:data.studentId||null,studentName:data.studentName,grade:data.grade||'',section:data.section||'',subjects:data.subjects,status:data.status,notes:data.notes,createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,created:new Date().toISOString()});
+    if(!data.examSession){toast('Please enter the examination session','danger');return;}
+    list.push({id:nid('rex'),studentId:data.studentId||null,studentName:data.studentName,grade:data.grade||'',section:data.section||'',examSession:data.examSession,subjects:data.subjects,status:data.status,notes:data.notes,createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,created:new Date().toISOString()});
     logA('Created re-exam schedule for '+data.studentName+' ('+data.subjects.length+' subjects)');
     toast('Re-exam schedule created','success');
   }else{
-    const i=list.findIndex(r=>r.id===data.id);if(i>=0){list[i]={...list[i],studentName:data.studentName,grade:data.grade,section:data.section,subjects:data.subjects,status:data.status,notes:data.notes,updated:new Date().toISOString()};
+    const i=list.findIndex(r=>r.id===data.id);if(i>=0){list[i]={...list[i],studentName:data.studentName,grade:data.grade,section:data.section,examSession:data.examSession,subjects:data.subjects,status:data.status,notes:data.notes,updated:new Date().toISOString()};
     logA('Updated re-exam schedule for '+data.studentName);toast('Updated','success');}
   }
   DB.set('reexam_schedules',list);closeM();rReexam();
@@ -3909,13 +3971,13 @@ function vReexam(id){
   const conducted=(r.subjects||[]).filter(s=>s.examStatus==='Conducted').length;
   const total=(r.subjects||[]).length;
   openM('<div class="mh"><h3>📝 Re-exam Schedule</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
-  +'<div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap"><span class="badge bpu">'+total+' subject(s)</span><span class="badge '+(r.status==='Completed'?'bgn':r.status==='In Progress'?'bbl':'bgo')+'">'+(r.status||'Scheduled')+'</span><span class="badge '+(conducted===total&&total>0?'bgn':'bbl')+'">'+conducted+'/'+total+' conducted</span></div>'
+  +'<div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap"><span class="badge bpu">'+total+' subject(s)</span>'+(r.examSession?'<span class="badge bbl">'+esc(r.examSession)+'</span>':'')+'<span class="badge '+(r.status==='Completed'?'bgn':r.status==='In Progress'?'bbl':'bgo')+'">'+(r.status||'Scheduled')+'</span><span class="badge '+(conducted===total&&total>0?'bgn':'bbl')+'">'+conducted+'/'+total+' conducted</span></div>'
   +'<h2 style="font-size:17px;color:var(--tx);margin-bottom:5px">'+esc(r.studentName)+'</h2>'
   +'<div style="font-size:12px;color:var(--tx3);margin-bottom:13px">Grade '+esc(r.grade||'')+esc(r.section||'')+'</div>'
   +'<div class="fg"><label>📅 Re-exam Schedule by Subject</label><div class="tw"><table style="font-size:12px"><thead><tr><th>Subject</th><th>Date</th><th>Time</th><th>Venue</th><th>Invigilator</th><th>Exam Status</th><th>Remarks</th></tr></thead><tbody>'+(r.subjects||[]).map(s=>{const st=s.examStatus||'Pending';return'<tr><td><span class="badge brd">'+esc(s.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(s.examDate||'—')+'</td><td class="mono" style="font-size:11px">'+esc(s.startTime||'—')+(s.endTime?' - '+esc(s.endTime):'')+'</td><td style="font-size:11px">'+esc(s.venue||'—')+'</td><td style="font-size:11px">'+esc(s.invigilator||'—')+'</td><td><span class="badge '+(st==='Conducted'?'bgn':st==='Not Conducted'?'bgr':'bgo')+'">'+st+'</span></td><td style="font-size:11px;max-width:150px">'+esc(s.remarks||'—')+'</td></tr>';}).join('')+'</tbody></table></div></div>'
   +(r.notes?'<div class="al aw" style="margin-bottom:0"><strong>📝 Notes:</strong> '+esc(r.notes)+'</div>':'')
   +'<div style="font-size:10px;color:var(--tx3);margin-top:11px;padding-top:9px;border-top:1px solid var(--bd)">Created by <strong>'+esc(r.createdByName||'—')+'</strong> on '+(r.created||'').split('T')[0]+(r.statusUpdatedBy?' · Status updated by <strong>'+esc(r.statusUpdatedBy)+'</strong>':'')+'</div>'
-  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expReexamPDF(\''+r.id+'\')">📄 Export PDF</button>'+(canShare?'<button class="btn bp bsm" onclick="shareReexamWA(\''+r.id+'\')">📱 Share WhatsApp</button>':'')+(canEdit?'<button class="btn bp bsm" onclick="closeM();updateRexStatusM(\''+r.id+'\')">Update Status</button><button class="btn bp bsm" onclick="editReexamM(\''+r.id+'\')">'+T('edit')+'</button>':'')+'</div>',true);
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expReexamParentPDF(\''+r.id+'\')">📄 Parent Notice</button><button class="btn bg2 bsm" onclick="expReexamStatusPDF(\''+r.id+'\')">📋 Status Report</button>'+(canShare?'<button class="btn bp bsm" onclick="shareReexamWA(\''+r.id+'\')">📱 Share WhatsApp</button>':'')+(canEdit?'<button class="btn bp bsm" onclick="closeM();updateRexStatusM(\''+r.id+'\')">Update Status</button><button class="btn bp bsm" onclick="editReexamM(\''+r.id+'\')">'+T('edit')+'</button>':'')+'</div>',true);
 }
 
 function delReexam(id){
@@ -3961,16 +4023,32 @@ function saveRexStatus(id,count){
   toast('Status updated','success');closeM();rReexam();
 }
 
-function expReexamPDF(id){
+// Parent Notification PDF — simple: just student, subjects, dates. No venue/time/invigilator.
+function expReexamParentPDF(id){
   const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
   const settings=DB.get('settings')||{};
   const win=window.open('','_blank');
-  const hasStatusData=(r.subjects||[]).some(s=>s.examStatus&&s.examStatus!=='Pending');
-  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Re-exam Schedule — '+r.studentName+'</title><style>@page{size:A4;margin:18mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:12px;line-height:1.5;max-width:170mm}.title{font-size:18px;color:#a52424;text-align:center;margin:14px 0;font-weight:bold;background:#fce0e0;padding:9px;border-radius:6px}.stuinfo{background:#f0f4f8;border-radius:8px;padding:13px 18px;margin-bottom:14px;font-size:13px;text-align:center}.stuinfo strong{font-size:16px;color:#1a5f7a}table{width:100%;border-collapse:collapse;margin-top:6px;font-size:11px}td,th{padding:8px 9px;border:1px solid #ddd;text-align:left}th{background:#1a5f7a;color:#fff;font-size:10px;text-transform:uppercase}.conducted{color:#16a34a;font-weight:bold}.not-conducted{color:#dc2626;font-weight:bold}.pending{color:#d97706}.notes{background:#fdf3dc;padding:10px;border-radius:5px;margin-top:14px;font-size:11px;color:#7a4d00;font-style:italic}.parent-msg{background:#e4ecfb;border-radius:8px;padding:13px 16px;font-size:11px;line-height:1.6;color:#1a3a5c;margin-top:18px}.footer{margin-top:24px;padding-top:9px;border-top:1px solid #ddd;font-size:9px;color:#888;text-align:center}@media print{button{display:none}}</style></head><body>'+pdfHeaderHTML({subtitle:'Re-exam Schedule — Parent Notification'})+'<div class="title">📝 RE-EXAM SCHEDULE</div><div class="stuinfo"><strong>'+r.studentName+'</strong><br>Grade '+(r.grade||'')+(r.section||'')+'</div><table><thead><tr><th>Subject</th><th>Re-exam Date</th><th>Time</th><th>Venue</th><th>Invigilator</th>'+(hasStatusData?'<th>Status</th><th>Remarks</th>':'')+'</tr></thead><tbody>'+(r.subjects||[]).map(s=>{const st=s.examStatus||'Pending';return'<tr><td><strong>'+s.subject+'</strong></td><td>'+(s.examDate||'—')+'</td><td>'+(s.startTime||'—')+(s.endTime?' to '+s.endTime:'')+'</td><td>'+(s.venue||'—')+'</td><td>'+(s.invigilator||'—')+'</td>'+(hasStatusData?'<td class="'+(st==='Conducted'?'conducted':st==='Not Conducted'?'not-conducted':'pending')+'">'+st+'</td><td>'+(s.remarks||'—')+'</td>':'')+'</tr>';}).join('')+'</tbody></table>'+(r.notes?'<div class="notes"><strong>📝 Notes:</strong> '+r.notes+'</div>':'')+'<div class="parent-msg">Dear Parent,<br><br>Your child '+r.studentName+' missed scheduled exams. The school has arranged the above re-exam schedule. Please ensure your child attends each subject\'s re-exam at the date, time, and venue listed.<br><br>For questions, please contact the school office.<br><br>Thank you for your cooperation.</div><div class="footer">Generated from '+esc(settings.schoolName||'School')+' on '+new Date().toLocaleString()+(r.createdByName?' · Created by '+r.createdByName:'')+(r.statusUpdatedBy?' · Status by '+r.statusUpdatedBy:'')+'</div><button onclick="window.print()" style="margin-top:14px;padding:8px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">🖨️ Print / Save as PDF</button></body></html>');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Re-exam Notice — '+r.studentName+'</title><style>@page{size:A4;margin:18mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:12px;line-height:1.5;max-width:170mm}.title{font-size:18px;color:#1a5f7a;text-align:center;margin:14px 0;font-weight:bold;background:#e4ecfb;padding:9px;border-radius:6px}.stuinfo{background:#f0f4f8;border-radius:8px;padding:13px 18px;margin-bottom:14px;font-size:13px;text-align:center}.stuinfo strong{font-size:16px;color:#1a5f7a}table{width:100%;border-collapse:collapse;margin-top:6px;font-size:12px}td,th{padding:10px 12px;border:1px solid #ddd;text-align:left}th{background:#1a5f7a;color:#fff;font-size:11px;text-transform:uppercase}.parent-msg{background:#e4ecfb;border-radius:8px;padding:15px 18px;font-size:12px;line-height:1.7;color:#1a3a5c;margin-top:20px}.footer{margin-top:24px;padding-top:9px;border-top:1px solid #ddd;font-size:9px;color:#888;text-align:center}@media print{button{display:none}}</style></head><body>'+pdfHeaderHTML({subtitle:'Re-exam Schedule Notification'})+'<div class="title">RE-EXAM SCHEDULE NOTIFICATION</div><div class="stuinfo"><strong>'+r.studentName+'</strong><br>Grade '+(r.grade||'')+(r.section||'')+(r.examSession?'<br><span style="font-size:11px;color:#555">Examination Session: '+r.examSession+'</span>':'')+'</div><div class="parent-msg">Dear Parent / Guardian,<br><br>This is to inform you that your child <strong>'+r.studentName+'</strong> (Grade '+(r.grade||'')+(r.section||'')+') was absent during '+(r.examSession||'recent examinations')+'. The school has arranged re-examinations for the missed subjects as listed below.</div><table><thead><tr><th>#</th><th>Subject</th><th>Re-exam Date</th></tr></thead><tbody>'+(r.subjects||[]).map((s,i)=>'<tr><td>'+(i+1)+'</td><td><strong>'+s.subject+'</strong></td><td>'+(s.examDate||'To be announced')+'</td></tr>').join('')+'</tbody></table><div class="parent-msg">Please ensure your child attends each re-exam on the scheduled date. For any questions, contact the school office.<br><br>Thank you for your cooperation.</div><div class="footer">Generated from '+(settings.schoolName||'School')+' on '+new Date().toLocaleString()+'</div><button onclick="window.print()" style="margin-top:14px;padding:8px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">Print / Save as PDF</button></body></html>');
   win.document.close();
   setTimeout(()=>{try{win.print();}catch(e){}},800);
-  toast('Re-exam PDF generated','success');
+  toast('Parent notification PDF generated','success');
 }
+
+// Internal Status Report PDF — full details: venue, time, invigilator, status, remarks
+function expReexamStatusPDF(id){
+  const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
+  const settings=DB.get('settings')||{};
+  const win=window.open('','_blank');
+  const conducted=(r.subjects||[]).filter(s=>s.examStatus==='Conducted').length;
+  const total=(r.subjects||[]).length;
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Re-exam Status Report — '+r.studentName+'</title><style>@page{size:A4 landscape;margin:15mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:11px;line-height:1.4}.title{font-size:16px;color:#1a5f7a;text-align:center;margin:10px 0;font-weight:bold;background:#e8f4f8;padding:8px;border-radius:6px}.stuinfo{display:flex;justify-content:space-between;align-items:center;background:#f0f4f8;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:12px;flex-wrap:wrap;gap:8px}table{width:100%;border-collapse:collapse;margin-top:6px;font-size:10px}td,th{padding:7px 8px;border:1px solid #ddd;text-align:left}th{background:#1a5f7a;color:#fff;font-size:9px;text-transform:uppercase}.conducted{color:#16a34a;font-weight:bold}.not-conducted{color:#dc2626;font-weight:bold}.pending{color:#d97706}.postponed{color:#6366f1;font-weight:bold}.summary{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;margin-top:14px;font-size:11px}.footer{margin-top:18px;padding-top:8px;border-top:1px solid #ddd;font-size:8px;color:#888;text-align:center}@media print{button{display:none}}</style></head><body>'+pdfHeaderHTML({subtitle:'Re-exam Status Report — Internal'})+'<div class="title">RE-EXAM STATUS REPORT</div><div class="stuinfo"><div><strong style="font-size:14px">'+r.studentName+'</strong> — Grade '+(r.grade||'')+(r.section||'')+'</div>'+(r.examSession?'<div>Session: <strong>'+r.examSession+'</strong></div>':'')+'<div>Overall: <strong>'+r.status+'</strong> | '+conducted+'/'+total+' Conducted</div></div><table><thead><tr><th>#</th><th>Subject</th><th>Re-exam Date</th><th>Time</th><th>Venue</th><th>Invigilator</th><th>Exam Status</th><th>Remarks</th></tr></thead><tbody>'+(r.subjects||[]).map((s,i)=>{const st=s.examStatus||'Pending';return'<tr><td>'+(i+1)+'</td><td><strong>'+s.subject+'</strong></td><td>'+(s.examDate||'—')+'</td><td>'+(s.startTime||'—')+(s.endTime?' - '+s.endTime:'')+'</td><td>'+(s.venue||'—')+'</td><td>'+(s.invigilator||'—')+'</td><td class="'+(st==='Conducted'?'conducted':st==='Not Conducted'?'not-conducted':st==='Postponed'?'postponed':'pending')+'">'+st+'</td><td>'+(s.remarks||'—')+'</td></tr>';}).join('')+'</tbody></table>'+(r.notes?'<div style="background:#fdf3dc;padding:8px 12px;border-radius:5px;margin-top:10px;font-size:10px;color:#7a4d00"><strong>Notes:</strong> '+r.notes+'</div>':'')+'<div class="summary"><strong>Summary:</strong> '+conducted+' of '+total+' exams conducted.'+(total-conducted>0?' <span style="color:#dc2626">'+( total-conducted)+' remaining.</span>':' <span style="color:#16a34a">All exams completed.</span>')+'</div><div class="footer">Generated from '+(settings.schoolName||'School')+' on '+new Date().toLocaleString()+(r.createdByName?' | Created by '+r.createdByName:'')+(r.statusUpdatedBy?' | Status updated by '+r.statusUpdatedBy:'')+'</div><button onclick="window.print()" style="margin-top:12px;padding:8px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">Print / Save as PDF</button></body></html>');
+  win.document.close();
+  setTimeout(()=>{try{win.print();}catch(e){}},800);
+  toast('Status report PDF generated','success');
+}
+
+// Keep backward compat alias
+function expReexamPDF(id){expReexamStatusPDF(id);}
 
 function shareReexamWA(id){
   const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
