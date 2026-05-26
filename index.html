@@ -639,7 +639,6 @@ function toggleSchool(id){
 async function enterSchool(id){
   selectSchool(id);
   if(typeof resyncForSchool==='function')await resyncForSchool();
-  cleanupOrphanedTeacherAccounts();
   const sch=getSchoolById(id);
   if(!sch)return;
   const acc=DB.get('accounts')||[];
@@ -993,8 +992,6 @@ async function doLogin(){
   CU=user;SAIMP=false;SAR=null;
   // Persist login session
   localStorage.setItem('sms7_session',JSON.stringify({userId:user.id,school:schoolVal}));
-  // Cleanup orphaned teacher accounts for this school on every login
-  cleanupOrphanedTeacherAccounts();
   launch();
 }
 function doLogout(){
@@ -1390,6 +1387,8 @@ function addEvt(){openM('<div class="mh"><h3>📅 '+T('add_event')+'</h3><button
 function saveEvt(){const n=document.getElementById('evn').value.trim(),d=document.getElementById('evd').value;if(!n||!d){toast('Fill required fields','danger');return;}const evts=DB.get('academic_calendar')||[];evts.push({id:nid('ev'),name:n,date:d,note:document.getElementById('evnt').value});DB.set('academic_calendar',evts);logA('Added calendar event: '+n);closeM();toast('Event added','success');rCalendar();}
 function delEvt(id){if(!confirm('Delete?'))return;DB.set('academic_calendar',(DB.get('academic_calendar')||[]).filter(e=>e.id!==id));rCalendar();}
 function rAccounts(){
+  // Cleanup orphaned teacher accounts when viewing accounts page (safe — all data loaded by now)
+  if(CU.role==='superadmin')cleanupOrphanedTeacherAccounts();
   const acc=DB.get('accounts')||[];
   const isSA=CU.role==='superadmin';
   const noEmail=acc.filter(a=>!a.email||!a.email.trim()).length;
@@ -1592,6 +1591,7 @@ async function autoCreateTeacherAccount(fullName,teacherId){
   const ph=await hashPassword('Teacher@2024');
   acc.push({id:'u'+Date.now()+Math.random().toString(36).slice(2,5),username:uname,passwordHash:ph,_cardPw:'Teacher@2024',role:'teacher',firstName:fn,lastName:ln,email:'',phone:'',active:true,theme:'blue',lang:'en',created:new Date().toISOString().split('T')[0],teacherId:teacherId});
   DB.set('accounts',acc);
+  return uname;
 }
 
 async function saveTch(){
@@ -1603,8 +1603,10 @@ async function saveTch(){
   teachers.push({id:tchId,name,employeeId:document.getElementById('tch-eid').value.trim(),subject:document.getElementById('tch-subj').value.trim(),department:document.getElementById('tch-dep').value.trim(),phone:document.getElementById('tch-phone').value.trim(),email:document.getElementById('tch-email').value.trim(),note:document.getElementById('tch-note').value.trim(),active:true,created:new Date().toISOString().split('T')[0]});
   DB.set('teachers',teachers);
   // Auto-create teacher login account
-  await autoCreateTeacherAccount(name,tchId);
-  logA('Added teacher: '+name);closeM();toast('Teacher added + account created','success');rTeachers();
+  const generatedUsername=await autoCreateTeacherAccount(name,tchId);
+  logA('Added teacher: '+name);closeM();rTeachers();
+  // Show credentials popup so admin knows the login details
+  openM('<div class="mh"><h3>✅ Teacher Account Created</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ag" style="margin-bottom:14px"><strong>'+esc(name)+'</strong> has been added and a login account was automatically created.</div><div style="background:var(--sf2);border:2px solid var(--ac);border-radius:var(--rs);padding:16px;margin-bottom:14px"><div style="font-size:11px;text-transform:uppercase;color:var(--tx3);letter-spacing:0.5px;margin-bottom:10px;font-weight:700">Login Credentials</div><div style="display:flex;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:140px"><div style="font-size:10px;color:var(--tx3)">Username</div><div style="font-family:monospace;font-size:16px;font-weight:700;color:var(--ac);background:var(--bg);padding:6px 10px;border-radius:4px;border:1px dashed var(--bd);margin-top:3px">'+esc(generatedUsername)+'</div></div><div style="flex:1;min-width:140px"><div style="font-size:10px;color:var(--tx3)">Password</div><div style="font-family:monospace;font-size:16px;font-weight:700;color:var(--ac);background:var(--bg);padding:6px 10px;border-radius:4px;border:1px dashed var(--bd);margin-top:3px">Teacher@2024</div></div></div></div><div style="font-size:11px;color:var(--tx3)">Share these credentials with the teacher. They can change their password after first login from their profile page.</div></div><div class="mf"><button class="btn bp" onclick="closeM()">OK, Got It</button></div>');
 }
 
 function editTchM(id){
@@ -4696,7 +4698,6 @@ window.__doSeedAndStart=async function(){
         }else{
           selectSchool(sess.school);
           if(typeof resyncForSchool==='function')await resyncForSchool();
-          cleanupOrphanedTeacherAccounts();
           const acc=DB.get('accounts')||[];
           const user=acc.find(a=>a.id===sess.userId&&a.active);
           if(user){
