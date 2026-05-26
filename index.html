@@ -639,6 +639,7 @@ function toggleSchool(id){
 async function enterSchool(id){
   selectSchool(id);
   if(typeof resyncForSchool==='function')await resyncForSchool();
+  cleanupOrphanedTeacherAccounts();
   const sch=getSchoolById(id);
   if(!sch)return;
   const acc=DB.get('accounts')||[];
@@ -992,6 +993,8 @@ async function doLogin(){
   CU=user;SAIMP=false;SAR=null;
   // Persist login session
   localStorage.setItem('sms7_session',JSON.stringify({userId:user.id,school:schoolVal}));
+  // Cleanup orphaned teacher accounts for this school on every login
+  cleanupOrphanedTeacherAccounts();
   launch();
 }
 function doLogout(){
@@ -4693,6 +4696,7 @@ window.__doSeedAndStart=async function(){
         }else{
           selectSchool(sess.school);
           if(typeof resyncForSchool==='function')await resyncForSchool();
+          cleanupOrphanedTeacherAccounts();
           const acc=DB.get('accounts')||[];
           const user=acc.find(a=>a.id===sess.userId&&a.active);
           if(user){
