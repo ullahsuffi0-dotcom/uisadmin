@@ -1555,9 +1555,21 @@ function saveTchEdit(id){
 }
 
 function delTch(id){
-  if(!confirm('Delete this teacher? Their existing class visits and activity reports will keep the name on record.'))return;
+  if(!confirm('Delete this teacher and their login account? Their existing class visits and activity reports will keep the name on record.'))return;
+  // Also delete the linked account (account with teacherId === id, or role==='teacher' with matching name)
+  const teacher=(DB.get('teachers')||[]).find(t=>t.id===id);
+  const accounts=DB.get('accounts')||[];
+  const updatedAccounts=accounts.filter(a=>{
+    if(a.teacherId&&a.teacherId===id)return false;
+    if(teacher&&a.role==='teacher'&&!a.teacherId){
+      const accName=((a.firstName||'')+' '+(a.lastName||'')).trim().toLowerCase();
+      if(accName===(teacher.name||'').trim().toLowerCase())return false;
+    }
+    return true;
+  });
+  if(updatedAccounts.length<accounts.length)DB.set('accounts',updatedAccounts);
   DB.set('teachers',(DB.get('teachers')||[]).filter(t=>t.id!==id));
-  logA('Deleted teacher');toast('Deleted','danger');rTeachers();
+  logA('Deleted teacher'+(teacher?' '+teacher.name:'')+' and linked account');toast('Teacher and account deleted','danger');rTeachers();
 }
 
 function impTchM(){
@@ -3704,33 +3716,114 @@ function rReexam(){
   const canShare=['admin_assistant','superadmin','principal','academic_supervisor','vice_principal'].includes(CU.role);
   const canView=canEdit||['principal','student_advisor'].includes(CU.role);
   if(!canView){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
-  
-  const list=DB.get('reexam_schedules')||[];
-  
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📝 '+T('reexam_schedule')+' ('+list.length+')</h3>'+(canEdit?'<button class="btn bp bsm" onclick="addReexamM()">+ New Schedule for Student</button>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Build a personalized re-exam schedule for each absent student listing every subject they missed and the new exam date for each.</div></div>'
 
-  // View tabs: List | By Date | By Session
-  +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap"><button id="rxv-list" class="btn bp bsm" onclick="reexView(\'list\')">📋 All Schedules</button><button id="rxv-date" class="btn bg2 bsm" onclick="reexView(\'date\')">📅 By Exam Date</button><button id="rxv-session" class="btn bg2 bsm" onclick="reexView(\'session\')">📑 By Session</button></div></div>'
+  const list=DB.get('reexam_schedules')||[];
+
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📝 '+T('reexam_schedule')+' ('+list.length+')</h3></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Click any absent student to create or edit their re-exam schedule.</div></div>'
+
+  // View tabs: Absent Students | Schedules | By Date | By Session
+  +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button id="rxv-absent" class="btn bp bsm" onclick="reexView(\'absent\')">👨‍🎓 Absent Students</button>':'')+'<button id="rxv-list" class="btn bg2 bsm" onclick="reexView(\'list\')">📋 Schedules</button><button id="rxv-date" class="btn bg2 bsm" onclick="reexView(\'date\')">📅 By Exam Date</button><button id="rxv-session" class="btn bg2 bsm" onclick="reexView(\'session\')">📑 By Session</button></div></div>'
   +'<div id="rexview"></div>';
-  
-  if(!window._rexMode)window._rexMode='list';
+
+  if(!window._rexMode)window._rexMode=canEdit?'absent':'list';
   reexView(window._rexMode);
 }
 
 function reexView(mode){
   window._rexMode=mode;
-  ['list','date','session'].forEach(k=>{const b=document.getElementById('rxv-'+k);if(b)b.className=b.className.replace('bp','bg2');});
+  ['absent','list','date','session'].forEach(k=>{const b=document.getElementById('rxv-'+k);if(b)b.className=b.className.replace('bp','bg2');});
   const a=document.getElementById('rxv-'+mode);if(a)a.className=a.className.replace('bg2','bp');
-  if(mode==='list')renderRexList();
+  if(mode==='absent')renderRexAbsentStudents();
+  else if(mode==='list')renderRexList();
   else if(mode==='date')renderRexByDate();
   else renderRexBySession();
+}
+
+// ─── Absent Students tab — main entry point for creating schedules ───
+function renderRexAbsentStudents(){
+  const abs=DB.get('exam_absents')||[];
+  const schedules=DB.get('reexam_schedules')||[];
+  // Build unique student map from absences
+  const stuMap={};
+  abs.forEach(a=>{
+    const k=a.studentId||a.studentName;
+    if(!stuMap[k])stuMap[k]={studentId:a.studentId,studentName:a.studentName,grade:a.grade,section:a.section,subjects:new Set()};
+    stuMap[k].subjects.add(a.subject);
+  });
+  const students=Object.values(stuMap).sort((a,b)=>a.studentName.localeCompare(b.studentName));
+
+  // For each student, check schedule status
+  const rows=students.map(stu=>{
+    const absentSubjects=[...stu.subjects];
+    // Find any existing schedule for this student
+    const existing=schedules.find(r=>(stu.studentId&&r.studentId===stu.studentId)||r.studentName===stu.studentName);
+    let status='Not Created',statusClass='bgr',scheduledSubjects=[];
+    if(existing){
+      scheduledSubjects=(existing.subjects||[]).map(s=>s.subject);
+      const allCovered=absentSubjects.every(s=>scheduledSubjects.includes(s));
+      if(allCovered){status='Created';statusClass='bgn';}
+      else{status='Partial';statusClass='bgo';}
+    }
+    return{...stu,absentSubjects,existing,status,statusClass,scheduledSubjects};
+  });
+
+  document.getElementById('rexview').innerHTML='<div class="card">'
+  +'<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap"><input id="rexabsq" placeholder="Search student name…" oninput="fltRexAbs()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="rexabsf" onchange="fltRexAbs()" style="padding:9px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px"><option value="">All</option><option value="Not Created">Not Created</option><option value="Partial">Partial</option><option value="Created">Created</option></select></div>'
+  +'<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;font-size:11px"><span style="color:var(--tx3)">Total: <strong>'+students.length+'</strong></span><span style="color:#16a34a">Created: <strong>'+rows.filter(r=>r.status==='Created').length+'</strong></span><span style="color:#d97706">Partial: <strong>'+rows.filter(r=>r.status==='Partial').length+'</strong></span><span style="color:#dc2626">Not Created: <strong>'+rows.filter(r=>r.status==='Not Created').length+'</strong></span></div>'
+  +'<div id="rexabsw">'+buildRexAbsTbl(rows)+'</div></div>';
+  window._rexAbsRows=rows;
+  window.fltRexAbs=function(){
+    const q=(document.getElementById('rexabsq').value||'').toLowerCase();
+    const sf=document.getElementById('rexabsf').value;
+    let filtered=window._rexAbsRows;
+    if(q)filtered=filtered.filter(r=>r.studentName.toLowerCase().includes(q));
+    if(sf)filtered=filtered.filter(r=>r.status===sf);
+    document.getElementById('rexabsw').innerHTML=buildRexAbsTbl(filtered);
+  };
+}
+
+function buildRexAbsTbl(rows){
+  if(!rows.length)return'<div class="emp"><div class="ei">👨‍🎓</div><p>No absent students found</p></div>';
+  return'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Absent Subjects</th><th>Schedule Status</th><th>Action</th></tr></thead><tbody>'+rows.map(r=>{
+    return'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><div style="display:flex;gap:3px;flex-wrap:wrap">'+r.absentSubjects.map(s=>{
+      const scheduled=r.scheduledSubjects.includes(s);
+      return'<span class="badge '+(scheduled?'bgn':'brd')+'" title="'+(scheduled?'Scheduled':'Not scheduled')+'">'+esc(s)+'</span>';
+    }).join('')+'</div></td><td><span class="badge '+r.statusClass+'">'+r.status+'</span>'+(r.status==='Partial'?'<div style="font-size:9px;color:var(--tx3);margin-top:2px">Missing: '+r.absentSubjects.filter(s=>!r.scheduledSubjects.includes(s)).map(s=>esc(s)).join(', ')+'</div>':'')+'</td><td>'+(r.existing?'<button class="btn bp bxs" onclick="editReexamM(\''+r.existing.id+'\')">Edit Schedule</button><button class="btn bg2 bxs" onclick="vReexam(\''+r.existing.id+'\')">View</button>':'<button class="btn bp bxs" onclick="addReexamForStudent(\''+esc((r.studentId||'').replace(/'/g,"\\'"))+'\',\''+esc(r.studentName.replace(/'/g,"\\'"))+'\')">Create Schedule</button>')+'</td></tr>';
+  }).join('')+'</tbody></table></div>';
+}
+
+function addReexamForStudent(sid,sname){
+  // Pre-fill the form with this student's data
+  const abs=DB.get('exam_absents')||[];
+  const stuAbs=abs.filter(a=>(sid&&a.studentId===sid)||a.studentName===sname);
+  if(!stuAbs.length)return;
+  const subjMap={};
+  stuAbs.forEach(a=>{
+    if(!subjMap[a.subject])subjMap[a.subject]={subject:a.subject,absentDates:[]};
+    subjMap[a.subject].absentDates.push(a.absentDate);
+  });
+  window._rexEdit={
+    isNew:true,
+    studentId:stuAbs[0].studentId||null,
+    studentName:stuAbs[0].studentName,
+    grade:stuAbs[0].grade||'',
+    section:stuAbs[0].section||'',
+    subjects:Object.values(subjMap).map(s=>({subject:s.subject,examDate:'',startTime:'',endTime:'',venue:'',invigilator:'',absentDates:s.absentDates})),
+    examSession:''
+  };
+  window._rexAbsentStudents=[];// not needed since student is pre-selected
+  renderReexamForm();
 }
 
 function renderRexList(){
   const list=DB.get('reexam_schedules')||[];
   const canEdit=['academic_supervisor','admin_assistant','vice_principal','superadmin'].includes(CU.role);
   const canShare=['admin_assistant','superadmin','principal','academic_supervisor','vice_principal'].includes(CU.role);
-  document.getElementById('rexview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px"><input id="rexq" placeholder="🔍 Search by student name…" oninput="fltRexList()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"></div><div id="rexlistw">'+buildRexList(list,canEdit,canShare)+'</div></div>';
+  // Collect sessions for combined report dropdown
+  const sessions=[...new Set(list.map(r=>r.examSession).filter(Boolean))].sort();
+  document.getElementById('rexview').innerHTML='<div class="card">'
+  +(sessions.length?'<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;background:var(--sf2);padding:10px;border-radius:var(--rs)"><label style="font-size:12px;font-weight:600;white-space:nowrap">📋 Combined Report:</label><select id="rexSessRpt" style="padding:8px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'+sessions.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('')+'</select><button class="btn bp bsm" onclick="expSessionReportPDF(document.getElementById(\'rexSessRpt\').value)">Export Session Report PDF</button></div>':'')
+  +'<div style="display:flex;gap:8px;margin-bottom:12px"><input id="rexq" placeholder="Search by student name…" oninput="fltRexList()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"></div><div id="rexlistw">'+buildRexList(list,canEdit,canShare)+'</div></div>';
   window.fltRexList=function(){
     const q=document.getElementById('rexq').value.toLowerCase();
     const filtered=q?list.filter(r=>r.studentName.toLowerCase().includes(q)):list;
