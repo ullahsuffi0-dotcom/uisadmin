@@ -6032,7 +6032,7 @@ function rDutyRoster(){
   const savedDates=allRosters.map(r=>r.date).filter(Boolean).sort().reverse();
   const savedOpts=savedDates.map(d=>'<option value="'+d+'">'+d+' ('+getDayOfWeek(d)+')</option>').join('');
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button><button class="btn bd3 bsm" onclick="clearAllRostersM()">🗑️ Clear All Rosters</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><label style="font-size:12px;font-weight:600">📅 Date:</label><input type="date" id="rd-date" value="'+window._rosterDate+'" onchange="onRosterDateChange()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
   +'<button class="btn bg2 bsm" onclick="rdShiftDate(-1)">← Prev</button><button class="btn bg2 bsm" onclick="rdShiftDate(1)">Next →</button><button class="btn bg2 bsm" onclick="rdToday()">Today</button>'
   +'<button class="btn bg2 bsm" onclick="exportRosterPDF()">📄 Print PDF</button>'
@@ -6137,7 +6137,8 @@ function rdRender(){
   });
   
   if(canEdit){
-    html+='<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn bg2" onclick="rdReload()" title="Reload last saved version (discards unsaved changes)">↺ Reload Saved</button><button class="btn bp" onclick="saveRoster()" style="padding:11px 24px">💾 Save Roster →</button></div>';
+    const hasSaved=getRosterForDate(date);
+    html+='<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn bg2" onclick="rdReload()" title="Reload last saved version (discards unsaved changes)">↺ Reload Saved</button>'+(hasSaved?'<button class="btn bd3" onclick="clearDateRoster(\''+escJs(date)+'\')">🗑️ Clear This Day</button>':'')+'<button class="btn bp" onclick="saveRoster()" style="padding:11px 24px">💾 Save Roster →</button></div>';
   }
   
   document.getElementById('roster-body').innerHTML=html;
@@ -6148,6 +6149,29 @@ function rdReload(){
   if(!confirm('Discard any unsaved changes and reload the last saved roster for this date?'))return;
   delete window._workingRoster;
   rdRender();
+}
+
+function clearDateRoster(date){
+  if(!confirm('Delete the saved roster for '+date+'?\nThis will remove all teacher assignments for this date. This cannot be undone.'))return;
+  const list=DB.get('duty_rosters')||[];
+  const updated=list.filter(r=>r.date!==date);
+  DB.set('duty_rosters',updated);
+  logA('Cleared duty roster for '+date);
+  delete window._workingRoster;
+  toast('Roster for '+date+' cleared','success');
+  rDutyRoster();
+}
+
+function clearAllRostersM(){
+  const all=DB.get('duty_rosters')||[];
+  if(!all.length){toast('No rosters to clear','info');return;}
+  if(!confirm('⚠️ DELETE ALL '+all.length+' SAVED DUTY ROSTERS?\n\nThis will permanently remove every roster for every date. This cannot be undone.\n\nAre you sure?'))return;
+  if(!confirm('Final confirmation: Delete ALL '+all.length+' duty rosters?'))return;
+  DB.set('duty_rosters',[]);
+  logA('Cleared all duty rosters ('+all.length+' deleted)');
+  delete window._workingRoster;
+  toast('All '+all.length+' rosters cleared','success');
+  rDutyRoster();
 }
 
 function renderDutySlot(roster,slot,canEdit){
@@ -6166,7 +6190,7 @@ function renderDutySlot(roster,slot,canEdit){
       :(assigned.length?assigned.map(t=>'<span class="badge bbl" style="font-size:11px;margin-right:4px">'+esc(t)+'</span>').join(''):'<span style="color:var(--tx3);font-size:11px;font-style:italic">— Unassigned —</span>'))
     +'</td><td>'
     // VP Remarks column
-    +(spotRemarks.length?spotRemarks.map(rm=>'<div style="font-size:10px;padding:3px 6px;background:'+(rm.rating==='good'?'#d4edda':rm.rating==='poor'?'#f8d7da':'#fff3cd')+';border-radius:4px;margin-bottom:3px"><strong>'+esc(rm.teacher)+'</strong>: '+esc(rm.remark)+(rm.rating?' <span class="badge '+(rm.rating==='good'?'bgn':rm.rating==='poor'?'brd':'bgo')+'" style="font-size:9px">'+esc(rm.rating)+'</span>':'')+'</div>').join(''):'')
+    +(spotRemarks.length?spotRemarks.map(rm=>'<div style="font-size:10px;padding:3px 6px;background:'+(rm.rating==='good'?'#d4edda':rm.rating==='poor'?'#f8d7da':'#fff3cd')+';border-radius:4px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:flex-start;gap:4px"><div><strong>'+esc(rm.teacher)+'</strong>: '+esc(rm.remark)+(rm.rating?' <span class="badge '+(rm.rating==='good'?'bgn':rm.rating==='poor'?'brd':'bgo')+'" style="font-size:9px">'+esc(rm.rating)+'</span>':'')+'</div>'+(canRemark?'<div style="display:flex;gap:2px;flex-shrink:0"><button onclick="editDutyRemarkM(\''+escJs(rm.id)+'\')" style="background:none;border:none;cursor:pointer;font-size:11px;padding:0" title="Edit">✏️</button><button onclick="delDutyRemark(\''+escJs(rm.id)+'\')" style="background:none;border:none;cursor:pointer;font-size:11px;padding:0" title="Delete">🗑️</button></div>':'')+'</div>').join(''):'')
     +(canRemark&&assigned.length?'<button class="btn bg2 bxs" style="font-size:10px;margin-top:2px" onclick="addDutyRemarkM(\''+escJs(dateStr)+'\',\''+slot.id+'\',\''+escJs(spot)+'\')">+ Remark</button>':'')
     +'</td>'+(canEdit?'<td></td>':'')+'</tr>';
   });
@@ -6428,6 +6452,45 @@ function saveDutyRemark(date,slotId,spot){
   DB.set('duty_remarks',remarks);
   logA('Added duty remark for '+teacher+' at '+spot+' on '+date);
   closeM();toast('Remark saved','success');
+  rdRender();
+}
+
+function editDutyRemarkM(id){
+  const remarks=DB.get('duty_remarks')||[];
+  const rm=remarks.find(r=>r.id===id);
+  if(!rm){toast('Remark not found','danger');return;}
+  const slotObj=getDutySlots().find(s=>s.id===rm.slotId);
+  const slotLabel=slotObj?slotObj.label:rm.slotId;
+  openM('<div class="mh"><h3>✏️ Edit Duty Remark</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai" style="margin-bottom:10px">📅 <strong>'+esc(rm.date)+'</strong> · '+esc(slotLabel)+'<br>📍 <strong>'+esc(rm.spot)+'</strong> · 👤 <strong>'+esc(rm.teacher)+'</strong></div>'
+  +'<div class="fg"><label>Rating</label><select id="drm-rating" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"><option value="good"'+(rm.rating==='good'?' selected':'')+'>✅ Good</option><option value="average"'+(rm.rating==='average'?' selected':'')+'>⚠️ Average</option><option value="poor"'+(rm.rating==='poor'?' selected':'')+'>❌ Poor</option></select></div>'
+  +'<div class="fg"><label>Remark *</label><textarea id="drm-remark" style="min-height:80px">'+esc(rm.remark)+'</textarea></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button><button class="btn bp" onclick="saveEditDutyRemark(\''+escJs(id)+'\')">💾 Update Remark</button></div>');
+}
+
+function saveEditDutyRemark(id){
+  const rating=document.getElementById('drm-rating').value;
+  const remark=document.getElementById('drm-remark').value.trim();
+  if(!remark){toast('Remark is required','danger');return;}
+  const remarks=DB.get('duty_remarks')||[];
+  const idx=remarks.findIndex(r=>r.id===id);
+  if(idx<0){toast('Remark not found','danger');return;}
+  remarks[idx].rating=rating;
+  remarks[idx].remark=remark;
+  remarks[idx].editedBy=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  remarks[idx].editedAt=new Date().toISOString();
+  DB.set('duty_remarks',remarks);
+  logA('Edited duty remark '+id);
+  closeM();toast('Remark updated','success');
+  rdRender();
+}
+
+function delDutyRemark(id){
+  if(!confirm('Delete this duty remark?'))return;
+  const remarks=DB.get('duty_remarks')||[];
+  DB.set('duty_remarks',remarks.filter(r=>r.id!==id));
+  logA('Deleted duty remark '+id);
+  toast('Remark deleted','success');
   rdRender();
 }
 
