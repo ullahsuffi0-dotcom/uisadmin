@@ -847,6 +847,8 @@ function seed(){
 }
 // Lightweight migration: ensure new collections exist for existing users
 function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);if(!DB.get('attendance'))DB.set('attendance',[]);if(!DB.get('student_health'))DB.set('student_health',[]);if(!DB.get('remedial_plans'))DB.set('remedial_plans',[]);if(!DB.get('vp_reports'))DB.set('vp_reports',[]);if(!DB.get('warning_letters'))DB.set('warning_letters',[]);if(!DB.get('teacher_achievements'))DB.set('teacher_achievements',[]);if(!DB.get('reexam_schedules'))DB.set('reexam_schedules',[]);
+  if(!DB.get('duty_places'))DB.set('duty_places',[]);
+  if(!DB.get('duty_remarks'))DB.set('duty_remarks',[]);
   // Auto-create exam_sessions from existing exam_absents examSession values
   if(!DB.get('exam_sessions')){const abs=DB.get('exam_absents')||[];const names=[...new Set(abs.map(a=>a.examSession).filter(Boolean))];if(names.length){DB.set('exam_sessions',names.map(n=>({id:nid('es'),name:n,status:'active',createdBy:'System (migrated)',created:new Date().toISOString().split('T')[0]})));}else{DB.set('exam_sessions',[]);}}
   // Update school name from old default if still unchanged
@@ -4433,7 +4435,8 @@ const SYNC_KEYS = [
   'early_pickups','announcements','discipline_reports','activity_log','infraction_forms',
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
-  'sessions','active_session_id','behaviour','duty_rosters','substitutions'
+  'sessions','active_session_id','behaviour','duty_rosters','substitutions',
+  'duty_places','duty_remarks'
 ];
 
 function isSessionScopedKey(k){
@@ -4458,6 +4461,7 @@ const AUTO_REFRESH_MAP = {
   teacher_achievements:['rTeacherAchievements'],settings:['rSettings'],
   reexam_schedules:['rReexam'],
   duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
+  duty_places:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
   sessions:['rSessions'],active_session_id:['rSessions']
 };
 
@@ -4774,9 +4778,9 @@ function saveSettings(){const s=DB.get('settings')||{};Object.assign(s,{schoolNa
 function prevLogo(){const file=document.getElementById('logof').files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{document.getElementById('logoprev').innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:contain">';};reader.readAsDataURL(file);}
 function saveLogo(){const file=document.getElementById('logof').files[0],emoji=document.getElementById('logoem').value;if(file){const reader=new FileReader();reader.onload=e=>{const s=DB.get('settings')||{};s.logo=e.target.result;DB.set('settings',s);applyBrand(s);logA('Updated school logo (image)');toast('Logo saved','success');};reader.readAsDataURL(file);}else if(emoji){const s=DB.get('settings')||{};s.logo=emoji;DB.set('settings',s);applyBrand(s);logA('Updated school logo: '+emoji);toast('Logo saved','success');}}
 function setLiveMode(val){toast('Live Mode is no longer needed — demo panel has been permanently removed for production.','info');}
-function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
+function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
 function impAllM(){openM('<div class="mh"><h3>📤 Restore Backup</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ad">⚠️ This will overwrite ALL data. Export a backup first!</div><div class="fg"><label>Backup JSON File</label><input type="file" id="impjf" accept=".json"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bd3" onclick="procRestore()">Restore →</button></div>');window.procRestore=function(){const file=document.getElementById('impjf').files[0];if(!file){toast('Select file','danger');return;}const reader=new FileReader();reader.onload=e=>{try{const data=JSON.parse(e.target.result);Object.entries(data).forEach(([k,v])=>{if(k!=='exportedAt')DB.set(k,v);});closeM();toast('Data restored!','success');setTimeout(()=>{applyBrand(DB.get('settings')||{});navigate('dashboard');},500);}catch{toast('Invalid backup file','danger');}};reader.readAsText(file);};}
-function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
+function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
 function rInfForms(){const forms=DB.get('infraction_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>⚠️ '+T('infraction_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'infraction_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'infraction_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'infraction_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📄</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function rVisitForms(){const forms=DB.get('visit_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>📝 '+T('visit_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'visit_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'visit_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'visit_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📋</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function upFormM(k){openM('<div class="mh"><h3>📤 Upload Form</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Form Name *</label><input id="ufn"></div><div class="fg"><label>File *</label><input type="file" id="uff" accept=".pdf,.jpg,.png,.docx"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveForm(\''+k+'\')">Upload →</button></div>');}
@@ -5935,9 +5939,9 @@ function renderSessionIndicator(){
 // VP manages substitutions when teachers are absent
 // ═══════════════════════════════════════════════════════════
 
-// Duty schedule template — based on Unaizah International School format
-// Each slot has a fixed set of "spots" (areas/locations). Admin assigns teachers per spot.
-const DUTY_SLOTS=[
+// Duty schedule template — customizable via DB key 'duty_places'
+// Each slot has a set of "spots" (areas/locations). Admin assigns teachers per spot.
+const DEFAULT_DUTY_SLOTS=[
   {id:'morning_early',label:'Morning Duty (6:30 – 7:45)',time:'6:30 – 7:45',spots:['Assembly Area','Play Ground (Class 8-12)']},
   {id:'morning_late',label:'Morning Duty (7:00 – 7:45)',time:'7:00 – 7:45',spots:['Gate (Play Ground)','Red & Yellow Area','Blue / Green Area','Rear Gate','Main Gate']},
   {id:'first_break',label:'First Break (9:15 – 9:30)',time:'9:15 – 9:30',spots:['Admin Corridor','Under the Shed','Canteen']},
@@ -5946,6 +5950,12 @@ const DUTY_SLOTS=[
   {id:'going_time',label:'Going Time (13:30 – 13:45)',time:'13:30 – 13:45',spots:['Rear Gate (Till Last Bus Leaves)','Nokhba Playground','Class 5B Corridor','Corridor next to Abu Al Saud','Corridor','Gate (Play Ground) Till Last Boy','Under the Shed','Under the Shed (Till Last Boy)','Main Gate','Class 8-12 (Till Last Boy)']},
   {id:'special_combined',label:'Special Class Duty — Combined Classes (12:45 onwards)',time:'12:45 onwards',isClassDuty:true,spots:[]}
 ];
+
+function getDutySlots(){
+  const custom=DB.get('duty_places');
+  if(custom&&Array.isArray(custom)&&custom.length)return custom;
+  return DEFAULT_DUTY_SLOTS;
+}
 
 const DUTY_DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday'];
 
@@ -5974,7 +5984,7 @@ function getMyDutiesForDate(roster,teacherName){
   if(!roster)return [];
   const myName=(teacherName||'').trim().toLowerCase();
   const duties=[];
-  DUTY_SLOTS.forEach(slot=>{
+  getDutySlots().forEach(slot=>{
     if(slot.isClassDuty)return;
     const slotData=(roster.slots||{})[slot.id]||{};
     slot.spots.forEach(spot=>{
@@ -6017,11 +6027,21 @@ function rDutyRoster(){
   // Only the date picker UI gets re-built; the body keeps in-progress edits
   const isReentry=(window._workingRoster&&window._workingRoster.date===window._rosterDate&&document.getElementById('roster-body'));
   
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
+  // Build list of saved roster dates for the search / repeat-from dropdown
+  const allRosters=DB.get('duty_rosters')||[];
+  const savedDates=allRosters.map(r=>r.date).filter(Boolean).sort().reverse();
+  const savedOpts=savedDates.map(d=>'<option value="'+d+'">'+d+' ('+getDayOfWeek(d)+')</option>').join('');
+
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><label style="font-size:12px;font-weight:600">📅 Date:</label><input type="date" id="rd-date" value="'+window._rosterDate+'" onchange="onRosterDateChange()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
-  +'<button class="btn bg2 bsm" onclick="rdShiftDate(-1)">← Prev day</button><button class="btn bg2 bsm" onclick="rdShiftDate(1)">Next day →</button><button class="btn bg2 bsm" onclick="rdToday()">Today</button>'
-  +(canEdit?'<button class="btn bg2 bsm" onclick="rdCopyPrev()" title="Copy yesterday\'s roster">📋 Copy Prev Day</button><button class="btn bg2 bsm" onclick="exportRosterPDF()">📄 Print PDF</button>':'<button class="btn bg2 bsm" onclick="exportRosterPDF()">📄 Print PDF</button>')
-  +'</div></div>'
+  +'<button class="btn bg2 bsm" onclick="rdShiftDate(-1)">← Prev</button><button class="btn bg2 bsm" onclick="rdShiftDate(1)">Next →</button><button class="btn bg2 bsm" onclick="rdToday()">Today</button>'
+  +'<button class="btn bg2 bsm" onclick="exportRosterPDF()">📄 Print PDF</button>'
+  +'</div>'
+  // Search saved date row
+  +(savedDates.length?'<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:9px;padding-top:9px;border-top:1px solid var(--bd)"><label style="font-size:11px;font-weight:600;color:var(--tx3)">🔍 Jump to saved date:</label><select id="rd-search" onchange="rdJumpToDate(this.value)" style="padding:7px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;min-width:200px"><option value="">— Select date —</option>'+savedOpts+'</select>'
+  +(canEdit?'<label style="font-size:11px;font-weight:600;color:var(--tx3);margin-left:12px">📋 Repeat from:</label><select id="rd-repeat" style="padding:7px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;min-width:200px"><option value="">— Select day to copy —</option>'+savedOpts+'</select><button class="btn bp bsm" onclick="rdRepeatFrom()">📋 Copy</button>':'')
+  +'</div>':'')
+  +'</div>'
   +'<div id="roster-body"></div>';
   rdRender();
 }
@@ -6033,6 +6053,32 @@ function rdShiftDate(delta){
   d.setDate(d.getDate()+delta);
   window._rosterDate=d.toISOString().split('T')[0];
   document.getElementById('rd-date').value=window._rosterDate;
+  rdRender();
+}
+
+function rdJumpToDate(date){
+  if(!date)return;
+  delete window._workingRoster;
+  window._rosterDate=date;
+  rDutyRoster();
+}
+
+function rdRepeatFrom(){
+  const sel=document.getElementById('rd-repeat');
+  const srcDate=sel?sel.value:'';
+  if(!srcDate){toast('Select a date to copy from','danger');return;}
+  const srcRoster=getRosterForDate(srcDate);
+  if(!srcRoster){toast('No roster data found for '+srcDate,'danger');return;}
+  const date=window._rosterDate;
+  if(srcDate===date){toast('Source and target date are the same','danger');return;}
+  if(!confirm('Copy roster from '+srcDate+' ('+getDayOfWeek(srcDate)+') to '+date+'?\nYou can modify before saving.'))return;
+  window._workingRoster={
+    date,day:getDayOfWeek(date),
+    slots:JSON.parse(JSON.stringify(srcRoster.slots||{})),
+    classDuties:JSON.parse(JSON.stringify(srcRoster.classDuties||[])),
+    copiedFrom:srcDate
+  };
+  toast('Copied from '+srcDate+' — review and click Save','info');
   rdRender();
 }
 
@@ -6066,11 +6112,11 @@ function rdRender(){
     roster=getRosterForDate(date);
     if(!roster){
       roster={date,day,slots:{},classDuties:[]};
-      DUTY_SLOTS.forEach(s=>{if(!s.isClassDuty){roster.slots[s.id]={};s.spots.forEach(sp=>roster.slots[s.id][sp]=[]);}});
+      getDutySlots().forEach(s=>{if(!s.isClassDuty){roster.slots[s.id]={};s.spots.forEach(sp=>roster.slots[s.id][sp]=[]);}});
     }else{
       // Make sure all expected slots/spots exist (defensive — older rosters may be missing newer spots)
       if(!roster.slots)roster.slots={};
-      DUTY_SLOTS.forEach(s=>{if(!s.isClassDuty){if(!roster.slots[s.id])roster.slots[s.id]={};s.spots.forEach(sp=>{if(!roster.slots[s.id][sp])roster.slots[s.id][sp]=[];});}});
+      getDutySlots().forEach(s=>{if(!s.isClassDuty){if(!roster.slots[s.id])roster.slots[s.id]={};s.spots.forEach(sp=>{if(!roster.slots[s.id][sp])roster.slots[s.id][sp]=[];});}});
       if(!roster.classDuties)roster.classDuties=[];
     }
     // Set this as the working copy
@@ -6081,7 +6127,7 @@ function rdRender(){
   let html='<div class="card" style="margin-bottom:13px;text-align:center;padding:16px;background:linear-gradient(135deg,var(--ac2),var(--sf2))"><div style="font-size:14px;font-weight:600;color:var(--tx)">'+esc(settings.schoolName||'School')+'</div><div style="font-size:18px;font-weight:bold;color:var(--ac);margin-top:5px">DAILY DUTY ROSTER · '+esc(day||'—')+' · '+esc(date)+'</div>'+(!isWork?'<div class="al aw" style="margin-top:9px;margin-bottom:0">⚠️ '+esc(day)+' is not a typical working day. Roster editing is still allowed.</div>':'')+(canEdit?'<div style="margin-top:9px;font-size:11px;color:var(--tx3)">💡 Type a teacher\'s name in any input → click a suggestion to add. Click 💾 Save when done.</div>':'')+'</div>';
   
   // Render each duty slot
-  DUTY_SLOTS.forEach(slot=>{
+  getDutySlots().forEach(slot=>{
     if(slot.isClassDuty){
       // Special section for class duties
       html+=renderClassDutySection(roster,slot,canEdit);
@@ -6106,13 +6152,22 @@ function rdReload(){
 
 function renderDutySlot(roster,slot,canEdit){
   const slotData=(roster.slots||{})[slot.id]||{};
+  const canRemark=['vice_principal','superadmin','principal'].includes(CU.role);
+  const allRemarks=DB.get('duty_remarks')||[];
+  const dateStr=roster.date||window._rosterDate;
   let html='<div class="card" style="margin-bottom:11px;padding:14px"><div style="font-size:13px;font-weight:bold;color:var(--ac);margin-bottom:9px;background:var(--ac3);padding:7px 11px;border-radius:var(--rs);display:flex;justify-content:space-between;align-items:center"><span>⏰ '+esc(slot.label)+'</span><span style="font-size:11px;color:var(--ac);background:#fff;padding:3px 8px;border-radius:8px">'+esc(slot.time)+'</span></div>';
-  html+='<div class="tw"><table style="font-size:12px"><thead><tr><th style="width:38%">Spot / Location</th><th>Assigned Teacher(s)</th>'+(canEdit?'<th style="width:48px"></th>':'')+'</tr></thead><tbody>';
+  html+='<div class="tw"><table style="font-size:12px"><thead><tr><th style="width:28%">Spot / Location</th><th>Assigned Teacher(s)</th><th style="width:22%">VP Remarks</th>'+(canEdit?'<th style="width:48px"></th>':'')+'</tr></thead><tbody>';
   slot.spots.forEach(spot=>{
     const assigned=slotData[spot]||[];
+    // Find remarks for each teacher at this spot/slot/date
+    const spotRemarks=allRemarks.filter(rm=>rm.date===dateStr&&rm.slotId===slot.id&&rm.spot===spot);
     html+='<tr><td><strong>'+esc(spot)+'</strong></td><td>'+(canEdit
       ?'<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center" id="dt-'+slot.id+'-'+escId(spot)+'">'+assigned.map((t,i)=>'<span class="badge bbl" style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;font-size:11px">'+esc(t)+' <button onclick="rmTeacherFromSpot(\''+slot.id+'\',\''+escJs(spot)+'\','+i+')" style="background:none;border:none;color:var(--tx2);cursor:pointer;font-size:14px;padding:0">×</button></span>').join('')+'<input type="text" placeholder="+ Add teacher" autocomplete="off" oninput="dutyTchSearch(this,\''+slot.id+'\',\''+escJs(spot)+'\')" style="flex:1;min-width:150px;padding:5px 9px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px"></div>'
       :(assigned.length?assigned.map(t=>'<span class="badge bbl" style="font-size:11px;margin-right:4px">'+esc(t)+'</span>').join(''):'<span style="color:var(--tx3);font-size:11px;font-style:italic">— Unassigned —</span>'))
+    +'</td><td>'
+    // VP Remarks column
+    +(spotRemarks.length?spotRemarks.map(rm=>'<div style="font-size:10px;padding:3px 6px;background:'+(rm.rating==='good'?'#d4edda':rm.rating==='poor'?'#f8d7da':'#fff3cd')+';border-radius:4px;margin-bottom:3px"><strong>'+esc(rm.teacher)+'</strong>: '+esc(rm.remark)+(rm.rating?' <span class="badge '+(rm.rating==='good'?'bgn':rm.rating==='poor'?'brd':'bgo')+'" style="font-size:9px">'+esc(rm.rating)+'</span>':'')+'</div>').join(''):'')
+    +(canRemark&&assigned.length?'<button class="btn bg2 bxs" style="font-size:10px;margin-top:2px" onclick="addDutyRemarkM(\''+escJs(dateStr)+'\',\''+slot.id+'\',\''+escJs(spot)+'\')">+ Remark</button>':'')
     +'</td>'+(canEdit?'<td></td>':'')+'</tr>';
   });
   html+='</tbody></table></div></div>';
@@ -6253,7 +6308,7 @@ function saveRoster(){
     if(!r){
       // Empty roster — build from template
       r={date,day:getDayOfWeek(date),slots:{},classDuties:[]};
-      DUTY_SLOTS.forEach(s=>{if(!s.isClassDuty){r.slots[s.id]={};s.spots.forEach(sp=>{r.slots[s.id][sp]=[];});}});
+      getDutySlots().forEach(s=>{if(!s.isClassDuty){r.slots[s.id]={};s.spots.forEach(sp=>{r.slots[s.id][sp]=[];});}});
     }
     console.warn('[Roster] Working copy was missing — using DB snapshot for save');
   }
@@ -6339,6 +6394,129 @@ function rdCopyPrev(){
   rdRender();
 }
 
+// ─── VP DUTY REMARKS — VP adds remarks per teacher per spot per date ───
+
+function addDutyRemarkM(date,slotId,spot){
+  const roster=getRosterForDate(date);
+  if(!roster)return;
+  const slotData=(roster.slots||{})[slotId]||{};
+  const assigned=slotData[spot]||[];
+  if(!assigned.length){toast('No teachers assigned to this spot','danger');return;}
+  const slotObj=getDutySlots().find(s=>s.id===slotId);
+  const slotLabel=slotObj?slotObj.label:slotId;
+  const tchOpts=assigned.map(t=>'<option value="'+esc(t)+'">'+esc(t)+'</option>').join('');
+  openM('<div class="mh"><h3>📝 Add Duty Remark</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai" style="margin-bottom:10px">📅 <strong>'+esc(date)+'</strong> · '+esc(slotLabel)+'<br>📍 <strong>'+esc(spot)+'</strong></div>'
+  +'<div class="fg"><label>Teacher *</label><select id="drm-tch" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%">'+tchOpts+'</select></div>'
+  +'<div class="fg"><label>Rating</label><select id="drm-rating" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"><option value="good">✅ Good</option><option value="average">⚠️ Average</option><option value="poor">❌ Poor</option></select></div>'
+  +'<div class="fg"><label>Remark *</label><textarea id="drm-remark" placeholder="Enter remark about duty performance..." style="min-height:80px"></textarea></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button><button class="btn bp" onclick="saveDutyRemark(\''+escJs(date)+'\',\''+slotId+'\',\''+escJs(spot)+'\')">💾 Save Remark</button></div>');
+}
+
+function saveDutyRemark(date,slotId,spot){
+  const teacher=document.getElementById('drm-tch').value;
+  const rating=document.getElementById('drm-rating').value;
+  const remark=document.getElementById('drm-remark').value.trim();
+  if(!remark){toast('Remark is required','danger');return;}
+  const remarks=DB.get('duty_remarks')||[];
+  remarks.push({
+    id:nid('dr'),date,slotId,spot,teacher,rating,remark,
+    addedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),
+    addedByRole:CU.role,
+    created:new Date().toISOString()
+  });
+  DB.set('duty_remarks',remarks);
+  logA('Added duty remark for '+teacher+' at '+spot+' on '+date);
+  closeM();toast('Remark saved','success');
+  rdRender();
+}
+
+// ─── MANAGE DUTY PLACES — Admin can modify, add, delete duty slots & spots ───
+
+function manageDutyPlacesM(){
+  const slots=JSON.parse(JSON.stringify(getDutySlots()));
+  window._editSlots=slots;
+  renderPlacesMgr();
+}
+
+function renderPlacesMgr(){
+  const slots=window._editSlots;
+  if(!slots)return;
+  let html='<div class="mh"><h3>⚙️ Manage Duty Places & Timings</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2" style="max-height:70vh;overflow-y:auto">'
+  +'<div class="al ai" style="margin-bottom:10px">Edit slot names, timings, and spots (places). Changes apply to all future rosters. Existing saved rosters keep their data.</div>';
+  slots.forEach((slot,si)=>{
+    if(slot.isClassDuty)return; // skip class duty slot from editor
+    html+='<div style="border:1px solid var(--bd);border-radius:var(--rs);padding:12px;margin-bottom:10px;background:var(--sf2)">'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'
+    +'<input value="'+esc(slot.label)+'" oninput="window._editSlots['+si+'].label=this.value" placeholder="Slot label" style="flex:2;min-width:200px;padding:7px 10px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);font-size:12px;font-weight:600">'
+    +'<input value="'+esc(slot.time)+'" oninput="window._editSlots['+si+'].time=this.value" placeholder="Time range" style="flex:1;min-width:120px;padding:7px 10px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);font-size:12px">'
+    +'<button class="btn bd3 bxs" onclick="delDutySlot('+si+')" title="Delete this slot">🗑️</button>'
+    +'</div>'
+    +'<div style="font-size:10px;color:var(--tx3);margin-bottom:5px;font-weight:600">SPOTS / PLACES:</div>'
+    +'<div id="places-slot-'+si+'" style="display:flex;flex-direction:column;gap:4px">';
+    (slot.spots||[]).forEach((sp,pi)=>{
+      html+='<div style="display:flex;gap:5px;align-items:center"><input value="'+esc(sp)+'" oninput="window._editSlots['+si+'].spots['+pi+']=this.value" style="flex:1;padding:5px 8px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px"><button class="btn bd3 bxs" onclick="rmDutySpot('+si+','+pi+')" style="font-size:11px">×</button></div>';
+    });
+    html+='</div><button class="btn bg2 bxs" onclick="addDutySpot('+si+')" style="margin-top:5px;font-size:10px">+ Add Spot</button></div>';
+  });
+  html+='<button class="btn bg2" onclick="addDutySlot()" style="margin-top:6px">+ Add New Time Slot</button>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button><button class="btn bd3" onclick="resetDutyPlaces()">↺ Reset to Defaults</button><button class="btn bp" onclick="saveDutyPlaces()">💾 Save Places</button></div>';
+  openM(html,true);
+}
+
+function addDutySlot(){
+  const slots=window._editSlots;
+  slots.push({id:'slot_'+Date.now(),label:'New Slot',time:'',spots:['Place 1']});
+  renderPlacesMgr();
+}
+
+function delDutySlot(si){
+  if(!confirm('Delete this entire time slot and all its places?'))return;
+  window._editSlots.splice(si,1);
+  renderPlacesMgr();
+}
+
+function addDutySpot(si){
+  window._editSlots[si].spots.push('');
+  renderPlacesMgr();
+}
+
+function rmDutySpot(si,pi){
+  window._editSlots[si].spots.splice(pi,1);
+  renderPlacesMgr();
+}
+
+function saveDutyPlaces(){
+  const slots=window._editSlots;
+  // Validate
+  for(let i=0;i<slots.length;i++){
+    if(slots[i].isClassDuty)continue;
+    if(!slots[i].label.trim()){toast('Slot '+(i+1)+' needs a label','danger');return;}
+    slots[i].spots=slots[i].spots.filter(s=>s.trim());
+    if(!slots[i].spots.length){toast('Slot "'+slots[i].label+'" needs at least one spot','danger');return;}
+  }
+  // Make sure the special class duty slot is always present
+  if(!slots.find(s=>s.isClassDuty)){
+    slots.push({id:'special_combined',label:'Special Class Duty — Combined Classes (12:45 onwards)',time:'12:45 onwards',isClassDuty:true,spots:[]});
+  }
+  DB.set('duty_places',slots);
+  logA('Updated duty places configuration');
+  closeM();
+  toast('Duty places saved — will apply to all future rosters','success');
+  delete window._workingRoster;
+  rDutyRoster();
+}
+
+function resetDutyPlaces(){
+  if(!confirm('Reset all duty places to the original default layout?'))return;
+  DB.set('duty_places',[]);
+  logA('Reset duty places to defaults');
+  closeM();
+  toast('Duty places reset to defaults','success');
+  delete window._workingRoster;
+  rDutyRoster();
+}
+
 // ─── PDF EXPORT ──────────────────────────────────────────
 
 function exportRosterPDF(){
@@ -6350,7 +6528,7 @@ function exportRosterPDF(){
   const w=window.open('','_blank');
   let body='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Duty Roster — '+date+'</title><style>@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:10px;line-height:1.4}.title-bar{background:#1a5f7a;color:#fff;text-align:center;padding:9px;border-radius:5px;margin-bottom:11px;font-size:14px;font-weight:bold}table{width:100%;border-collapse:collapse;margin-bottom:9px;font-size:10px}th{background:#1a5f7a;color:#fff;padding:5px 7px;text-align:left;font-size:9px}td{padding:5px 7px;border:1px solid #ddd;vertical-align:top}.slot-hdr{background:#a8e0c4;color:#0f3a2a;font-weight:bold;text-align:center;padding:6px;border-radius:3px;margin:8px 0 4px}.area-hdr{background:#bee2f7;color:#1a3a5c;font-weight:600;text-align:center;padding:5px;font-size:9px;border-radius:2px}.special{background:#fef3c7;border:2px solid #d97706;padding:9px;border-radius:5px;margin-top:10px}.special-title{color:#a52424;font-weight:bold;text-align:center;font-size:13px;margin-bottom:8px}@media print{button{display:none}}</style></head><body>'+pdfHeaderHTML({subtitle:'Daily Duty Roster — '+day+' · '+date})+'<div class="title-bar">DAILY DUTY ROSTER · '+day.toUpperCase()+' · '+date+'</div>';
   
-  DUTY_SLOTS.forEach(slot=>{
+  getDutySlots().forEach(slot=>{
     if(slot.isClassDuty){
       const classes=roster.classDuties||[];
       if(!classes.length)return;
@@ -6752,6 +6930,10 @@ function rMyDuties(){
   const myUpcomingSubs=mySubs.filter(s=>s.date>=today);
   const myPastSubs=mySubs.filter(s=>s.date<today);
   
+  // VP remarks for this teacher
+  const allRemarks=DB.get('duty_remarks')||[];
+  const myRemarks=allRemarks.filter(rm=>(rm.teacher||'').trim().toLowerCase()===myFullNameLower).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 My Duties &amp; Substitutions</h3>'+(mySubs.length?'<button class="btn bg2 bsm" onclick="vAllMySubsHistory()">📜 View Full History</button>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">All extra duties assigned to you and your substitution coverage.</div></div>'
   +'<div class="cg g3" style="margin-bottom:13px">'
   +'<div class="stat bl"><div class="sl2">Upcoming Duties</div><div class="sv">'+upcoming.reduce((s,d)=>s+d.duties.length,0)+'</div><div class="sb3">next 14 days</div><div class="sic">📅</div></div>'
@@ -6765,9 +6947,26 @@ function rMyDuties(){
   // Today's duties (also highlighted)
   +(()=>{const todayD=upcoming.find(u=>u.date===today);return todayD?'<div class="card" style="margin-bottom:12px;border:2px solid var(--ac);background:var(--ac2)"><div class="sh2"><h3>📋 Today\'s Duties ('+todayD.duties.length+')</h3></div>'+todayD.duties.map(d=>'<div style="background:var(--sf);padding:11px;border-radius:var(--rs);margin-bottom:7px;border-left:4px solid var(--ac)"><strong style="font-size:13px">'+esc(d.slotLabel)+'</strong><span class="badge bbl" style="margin-left:7px;font-size:10px">'+esc(d.time)+'</span><div style="font-size:12px;margin-top:5px">📍 <strong>'+esc(d.spot)+'</strong></div></div>').join('')+'</div>':'';})()
   
+  // VP Remarks section
+  +(myRemarks.length?'<div class="card" style="margin-bottom:12px;border:2px solid #6f42c1;background:#f3f0ff"><div class="sh2"><h3>📝 VP Duty Remarks ('+myRemarks.length+')</h3></div>'+myRemarks.slice(0,10).map(rm=>'<div style="background:var(--sf);padding:10px 12px;border-radius:var(--rs);margin-bottom:6px;border-left:4px solid '+(rm.rating==='good'?'#28a745':rm.rating==='poor'?'#dc3545':'#ffc107')+'"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px"><strong style="font-size:12px">📅 '+esc(rm.date)+'</strong><span class="badge '+(rm.rating==='good'?'bgn':rm.rating==='poor'?'brd':'bgo')+'" style="font-size:10px">'+esc(rm.rating||'—')+'</span></div><div style="font-size:11px;margin-top:4px">📍 '+esc(rm.spot)+' · '+esc(getDutySlots().find(s=>s.id===rm.slotId)?.label||rm.slotId)+'</div><div style="font-size:12px;margin-top:5px;color:var(--tx)">'+esc(rm.remark)+'</div><div style="font-size:10px;color:var(--tx3);margin-top:3px">By '+esc(rm.addedBy||'VP')+'</div></div>').join('')+(myRemarks.length>10?'<div style="text-align:center;padding:8px"><button class="btn bg2 bxs" onclick="vAllMyDutyRemarks()">View All '+myRemarks.length+' Remarks →</button></div>':'')+'</div>':'')
+
   +'<div class="cg g2"><div class="card"><div class="sh2"><h3>📅 Upcoming Duties</h3></div>'+(upcoming.length?upcoming.map(u=>'<div style="margin-bottom:11px"><div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:5px;background:var(--sf2);padding:6px 9px;border-radius:var(--rs)">📅 '+esc(u.day)+' · '+esc(u.date)+(u.date===today?' (Today)':'')+'</div>'+u.duties.map(d=>'<div style="padding:7px 11px;background:var(--sf2);border-radius:var(--rs);margin-bottom:4px;border-left:3px solid var(--ac);font-size:11px"><strong>'+esc(d.slotLabel)+'</strong> <span style="color:var(--tx3)">('+esc(d.time)+')</span><br>📍 '+esc(d.spot)+'</div>').join('')+'</div>').join(''):'<div class="emp" style="padding:14px"><div class="ei">📅</div><p style="font-size:11px">No duties scheduled in the next 14 days</p></div>')+'</div>'
   
   +'<div class="card"><div class="sh2"><h3>🔄 My Substitutions</h3></div>'+(mySubs.length?'<div style="background:var(--sf2);padding:9px 12px;border-radius:var(--rs);margin-bottom:10px;font-size:12px"><strong>📊 Total: '+mySubs.length+' substitutions</strong> · '+myUpcomingSubs.length+' pending · '+myPastSubs.length+' completed</div>'+(myUpcomingSubs.length?'<div style="font-size:11px;color:var(--tx3);margin-bottom:5px;font-weight:600">⏳ UPCOMING:</div>'+myUpcomingSubs.slice(0,5).map(s=>'<div style="padding:8px 11px;background:var(--sf2);border-radius:var(--rs);margin-bottom:5px;border-left:3px solid var(--gd);font-size:11px"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px"><strong>'+esc(s.date)+' · '+esc(s.period||'—')+'</strong>'+(s.date===today?'<span class="badge bgn" style="font-size:10px">Today</span>':'')+'</div><div style="margin-top:3px">'+esc(s.subject||'—')+(s.class?' · '+esc(s.class):'')+'</div><div style="color:var(--tx3);margin-top:2px">Covering: '+esc(s.absentName)+'</div></div>').join(''):'')+(myPastSubs.length?'<div style="font-size:11px;color:var(--tx3);margin:8px 0 5px;font-weight:600">📜 RECENT (last 5):</div>'+myPastSubs.slice(0,5).map(s=>'<div style="padding:6px 11px;background:var(--sf2);border-radius:var(--rs);margin-bottom:4px;border-left:3px solid var(--tx3);font-size:11px;opacity:.85"><strong>'+esc(s.date)+'</strong> · '+esc(s.period||'—')+' · '+esc(s.subject||'—')+' (covered '+esc(s.absentName)+')</div>').join('')+(mySubs.length>10?'<div style="text-align:center;margin-top:8px"><button class="btn bg2 bxs" onclick="vAllMySubsHistory()">📜 View All '+mySubs.length+' Substitutions →</button></div>':''):''):'<div class="emp" style="padding:14px"><div class="ei">🔄</div><p style="font-size:11px">No substitutions assigned</p></div>')+'</div></div>';
+}
+
+// Full duty remarks modal — for the logged-in teacher
+function vAllMyDutyRemarks(){
+  const myFullNameLower=((CU.firstName||'')+' '+(CU.lastName||'')).trim().toLowerCase();
+  const allRemarks=DB.get('duty_remarks')||[];
+  const myRemarks=allRemarks.filter(rm=>(rm.teacher||'').trim().toLowerCase()===myFullNameLower).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const good=myRemarks.filter(r=>r.rating==='good').length;
+  const avg=myRemarks.filter(r=>r.rating==='average').length;
+  const poor=myRemarks.filter(r=>r.rating==='poor').length;
+  openM('<div class="mh"><h3>📝 All VP Duty Remarks</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="cg g3" style="margin-bottom:12px"><div class="al ag" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;color:var(--gd);text-transform:uppercase;font-weight:700">Good</div><div style="font-size:24px;font-weight:bold;color:var(--gd)">'+good+'</div></div><div class="al aw" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;color:#856404;text-transform:uppercase;font-weight:700">Average</div><div style="font-size:24px;font-weight:bold;color:#856404">'+avg+'</div></div><div class="al ad" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;color:#721c24;text-transform:uppercase;font-weight:700">Poor</div><div style="font-size:24px;font-weight:bold;color:#721c24">'+poor+'</div></div></div>'
+  +(myRemarks.length?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Date</th><th>Slot</th><th>Place</th><th>Rating</th><th>Remark</th><th>By</th></tr></thead><tbody>'+myRemarks.map(rm=>'<tr><td class="mono">'+esc(rm.date)+'</td><td>'+esc(getDutySlots().find(s=>s.id===rm.slotId)?.label||rm.slotId)+'</td><td>'+esc(rm.spot)+'</td><td><span class="badge '+(rm.rating==='good'?'bgn':rm.rating==='poor'?'brd':'bgo')+'">'+esc(rm.rating||'—')+'</span></td><td>'+esc(rm.remark)+'</td><td style="font-size:10px;color:var(--tx3)">'+esc(rm.addedBy||'—')+'</td></tr>').join('')+'</tbody></table></div>':'<div class="emp"><div class="ei">📝</div><p>No remarks yet</p></div>')
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Close</button></div>',true);
 }
 
 // Full substitution history modal — for the logged-in teacher
