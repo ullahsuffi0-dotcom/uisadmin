@@ -379,7 +379,7 @@ async function migrateExistingDataToSchool(schoolId){
   const keys=['sv7','settings','accounts','students','teachers','complaints','tasks','infractions',
     'referrals','class_visits','notebook_checks','activities','activity_reports',
     'early_pickups','announcements','discipline_reports','activity_log','infraction_forms',
-    'visit_forms','task_requests','exam_absents','academic_calendar','attendance',
+    'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance',
     'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements',
     'reexam_schedules','sessions','active_session_id','behaviour'];
   let migrated=0;
@@ -847,6 +847,8 @@ function seed(){
 }
 // Lightweight migration: ensure new collections exist for existing users
 function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);if(!DB.get('attendance'))DB.set('attendance',[]);if(!DB.get('student_health'))DB.set('student_health',[]);if(!DB.get('remedial_plans'))DB.set('remedial_plans',[]);if(!DB.get('vp_reports'))DB.set('vp_reports',[]);if(!DB.get('warning_letters'))DB.set('warning_letters',[]);if(!DB.get('teacher_achievements'))DB.set('teacher_achievements',[]);if(!DB.get('reexam_schedules'))DB.set('reexam_schedules',[]);
+  // Auto-create exam_sessions from existing exam_absents examSession values
+  if(!DB.get('exam_sessions')){const abs=DB.get('exam_absents')||[];const names=[...new Set(abs.map(a=>a.examSession).filter(Boolean))];if(names.length){DB.set('exam_sessions',names.map(n=>({id:nid('es'),name:n,status:'active',createdBy:'System (migrated)',created:new Date().toISOString().split('T')[0]})));}else{DB.set('exam_sessions',[]);}}
   // Update school name from old default if still unchanged
   const s=DB.get('settings')||{};
   if(s.schoolName==='Al-Noor International School'){s.schoolName='UNAIZAH INTERNATIONAL SCHOOL';s.schoolNameAr='مدرسة عنيزة العالمية';s.city='Unaizah';DB.set('settings',s);}
@@ -3674,26 +3676,132 @@ function printPickupQR(){
 // No monkey-patching needed.
 
 // ═══════════════════════════════════════════════════════════
-// EXAM ABSENT — overhauled with three views (List / By Student / By Subject)
+// EXAM ABSENT — Session-based workflow
+// Admin creates exam sessions first, then adds absent students to a session
 // ═══════════════════════════════════════════════════════════
 
 function rExamAbsent(){
   const abs=DB.get('exam_absents')||[];
+  const sessions=DB.get('exam_sessions')||[];
   const canC=['admin_assistant','superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
   const canV=['superadmin','principal','vice_principal','academic_supervisor','student_advisor','admin_assistant','quality_incharge'].includes(CU.role);
   if(!canV){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
-  
+
+  // If inside a session, show that session's absent list
+  if(window._activeExamSession){
+    const sess=sessions.find(s=>s.id===window._activeExamSession);
+    if(!sess){window._activeExamSession=null;rExamAbsent();return;}
+    renderSessionAbsents(sess);
+    return;
+  }
+
   const uniqueStudents=new Set(abs.map(a=>a.studentId||a.studentName)).size;
   const uniqueSubjects=new Set(abs.map(a=>a.subject)).size;
-  
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📵 '+T('exam_absent')+' ('+abs.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="expAbsC()">📊 CSV</button><button class="btn bg2 bsm" onclick="expAbsP()">📄 PDF</button>'+(canC?'<button class="btn bp bsm" onclick="addAbsM()">+ Add</button>':'')+'</div></div></div>'
-  +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Absences</div><div class="sv">'+abs.length+'</div><div class="sic">📵</div></div><div class="stat go"><div class="sl2">Affected Students</div><div class="sv">'+uniqueStudents+'</div><div class="sic">👥</div></div><div class="stat gn"><div class="sl2">Subjects</div><div class="sv">'+uniqueSubjects+'</div><div class="sic">📚</div></div><div class="stat rd"><div class="sl2">Multi-Subject</div><div class="sv">'+countMultiSubject(abs)+'</div><div class="sb3">2+ subjects</div><div class="sic">⚠️</div></div></div>'
+
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📵 '+T('exam_absent')+'</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="expAbsC()">📊 CSV</button><button class="btn bg2 bsm" onclick="expAbsP()">📄 PDF</button>'+(canC?'<button class="btn bp bsm" onclick="addExamSessionM()">+ New Session</button>':'')+'</div></div></div>'
+  +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Absences</div><div class="sv">'+abs.length+'</div><div class="sic">📵</div></div><div class="stat go"><div class="sl2">Affected Students</div><div class="sv">'+uniqueStudents+'</div><div class="sic">👥</div></div><div class="stat gn"><div class="sl2">Sessions</div><div class="sv">'+sessions.length+'</div><div class="sic">📑</div></div><div class="stat rd"><div class="sl2">Multi-Subject</div><div class="sv">'+countMultiSubject(abs)+'</div><div class="sb3">2+ subjects</div><div class="sic">⚠️</div></div></div>'
+  +'<div id="sessview">'+buildSessionCards(sessions,abs,canC)+'</div>';
+}
+
+function buildSessionCards(sessions,abs,canC){
+  if(!sessions.length)return'<div class="card"><div class="emp"><div class="ei">📑</div><p>No exam sessions yet.'+(canC?' Click <strong>+ New Session</strong> to create one.':'')+'</p></div></div>';
+  return sessions.slice().sort((a,b)=>(b.created||'').localeCompare(a.created||'')).map(s=>{
+    const sAbs=abs.filter(a=>a.examSession===s.name);
+    const stuCount=new Set(sAbs.map(a=>a.studentId||a.studentName)).size;
+    const subjCount=new Set(sAbs.map(a=>a.subject)).size;
+    const statusBadge=s.status==='active'?'<span class="badge bgn">Active</span>':'<span class="badge bgr">Closed</span>';
+    return'<div class="card" style="margin-bottom:10px;cursor:pointer;border-left:4px solid '+(s.status==='active'?'var(--gd)':'var(--bd)')+'" onclick="enterExamSession(\''+s.id+'\')">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+    +'<div><div style="font-weight:700;font-size:15px;margin-bottom:4px">📑 '+esc(s.name)+'</div>'
+    +'<div style="display:flex;gap:10px;font-size:11px;color:var(--tx3);margin-bottom:6px">'+statusBadge+' <span>📵 '+sAbs.length+' absent</span> <span>👥 '+stuCount+' students</span> <span>📚 '+subjCount+' subjects</span></div>'
+    +'<div style="font-size:10px;color:var(--tx3)">Created '+esc(s.created||'')+' by '+esc(s.createdBy||'')+'</div></div>'
+    +'<div style="display:flex;gap:4px" onclick="event.stopPropagation()">'
+    +(canC?'<button class="btn bg2 bxs" onclick="editExamSessionM(\''+s.id+'\')">✏️</button><button class="btn bd3 bxs" onclick="delExamSession(\''+s.id+'\')">Del</button>':'')
+    +'</div></div></div>';
+  }).join('');
+}
+
+function addExamSessionM(){
+  openM('<div class="mh"><h3>📑 New Exam Session</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Session Name *</label><input id="es-name" placeholder="e.g. Mid-Term 2024-2025"></div><div class="fg"><label>Status</label><select id="es-status"><option value="active">Active</option><option value="closed">Closed</option></select></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveExamSession()">Create →</button></div>');
+}
+
+function saveExamSession(){
+  const name=document.getElementById('es-name').value.trim();
+  const status=document.getElementById('es-status').value;
+  if(!name){toast('Session name required','danger');return;}
+  const sessions=DB.get('exam_sessions')||[];
+  if(sessions.find(s=>s.name.toLowerCase()===name.toLowerCase())){toast('Session already exists','danger');return;}
+  sessions.push({id:nid('es'),name:name,status:status,createdBy:(CU.firstName||'')+' '+(CU.lastName||''),created:new Date().toISOString().split('T')[0]});
+  DB.set('exam_sessions',sessions);
+  logA('Created exam session: '+name);
+  closeM();toast('Session created','success');rExamAbsent();
+}
+
+function editExamSessionM(id){
+  const sessions=DB.get('exam_sessions')||[];
+  const s=sessions.find(x=>x.id===id);if(!s)return;
+  openM('<div class="mh"><h3>✏️ Edit Session</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Session Name *</label><input id="es-name" value="'+esc(s.name)+'"></div><div class="fg"><label>Status</label><select id="es-status"><option value="active"'+(s.status==='active'?' selected':'')+'>Active</option><option value="closed"'+(s.status==='closed'?' selected':'')+'>Closed</option></select></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveEditExamSession(\''+id+'\')">'+T('save')+' →</button></div>');
+}
+
+function saveEditExamSession(id){
+  const name=document.getElementById('es-name').value.trim();
+  const status=document.getElementById('es-status').value;
+  if(!name){toast('Session name required','danger');return;}
+  const sessions=DB.get('exam_sessions')||[];
+  const i=sessions.findIndex(s=>s.id===id);if(i<0)return;
+  const oldName=sessions[i].name;
+  // If name changed, update all absents linked to old name
+  if(oldName!==name){
+    const abs=DB.get('exam_absents')||[];
+    abs.forEach(a=>{if(a.examSession===oldName)a.examSession=name;});
+    DB.set('exam_absents',abs);
+  }
+  sessions[i].name=name;sessions[i].status=status;
+  DB.set('exam_sessions',sessions);
+  logA('Edited exam session: '+name);
+  closeM();toast('Updated','success');rExamAbsent();
+}
+
+function delExamSession(id){
+  const sessions=DB.get('exam_sessions')||[];
+  const s=sessions.find(x=>x.id===id);if(!s)return;
+  const abs=DB.get('exam_absents')||[];
+  const linked=abs.filter(a=>a.examSession===s.name).length;
+  if(!confirm('Delete session "'+s.name+'"?'+(linked?' This will NOT delete the '+linked+' absent record(s) linked to it.':'')))return;
+  DB.set('exam_sessions',sessions.filter(x=>x.id!==id));
+  logA('Deleted exam session: '+s.name);
+  toast('Session deleted','danger');rExamAbsent();
+}
+
+function enterExamSession(id){
+  window._activeExamSession=id;
+  window._absMode='list';
+  rExamAbsent();
+}
+
+function exitExamSession(){
+  window._activeExamSession=null;
+  rExamAbsent();
+}
+
+function renderSessionAbsents(sess){
+  const allAbs=DB.get('exam_absents')||[];
+  const abs=allAbs.filter(a=>a.examSession===sess.name);
+  const canC=['admin_assistant','superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
+  const uniqueStudents=new Set(abs.map(a=>a.studentId||a.studentName)).size;
+  const uniqueSubjects=new Set(abs.map(a=>a.subject)).size;
+
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;align-items:center;gap:8px"><button class="btn bg2 bxs" onclick="exitExamSession()" title="Back to sessions">←</button><h3>📑 '+esc(sess.name)+' <span class="badge '+(sess.status==='active'?'bgn':'bgr')+'">'+esc(sess.status)+'</span></h3></div><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="expAbsSessionC(\''+esc(sess.name).replace(/'/g,"\\'")+'\')" >📊 CSV</button><button class="btn bg2 bsm" onclick="expAbsSessionP(\''+esc(sess.name).replace(/'/g,"\\'")+'\')" >📄 PDF</button>'+(canC&&sess.status==='active'?'<button class="btn bp bsm" onclick="addAbsM(\''+esc(sess.name).replace(/'/g,"\\'")+'\')">+ Add Absent</button>':'')+'</div></div></div>'
+  +'<div class="cg g3" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Absences</div><div class="sv">'+abs.length+'</div><div class="sic">📵</div></div><div class="stat go"><div class="sl2">Students</div><div class="sv">'+uniqueStudents+'</div><div class="sic">👥</div></div><div class="stat gn"><div class="sl2">Subjects</div><div class="sv">'+uniqueSubjects+'</div><div class="sic">📚</div></div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap"><button id="abv-list" class="btn bp bsm" onclick="absView(\'list\')">📋 List View</button><button id="abv-stu" class="btn bg2 bsm" onclick="absView(\'student\')">👨‍🎓 Group by Student</button><button id="abv-sub" class="btn bg2 bsm" onclick="absView(\'subject\')">📚 Group by Subject</button></div></div>'
   +'<div id="absview"></div>';
-  
+
   if(!window._absMode)window._absMode='list';
   absView(window._absMode);
 }
+
+function expAbsSessionC(sessName){const l=(DB.get('exam_absents')||[]).filter(a=>a.examSession===sessName);expCSV(['Student','Grade','Section','Subject','Absent Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]),sessName.replace(/\s+/g,'_')+'_absents_'+new Date().toISOString().split('T')[0]);}
+function expAbsSessionP(sessName){const l=(DB.get('exam_absents')||[]).filter(a=>a.examSession===sessName);expPDF(sessName+' — Absent List',['Student','Grade','Section','Subject','Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]));}
 
 function countMultiSubject(abs){
   const map={};
@@ -3712,12 +3820,20 @@ function absView(mode){
   else if(mode==='subject')renderAbsBySubject();
 }
 
-function renderAbsList(){
+function getSessionAbs(){
   const abs=DB.get('exam_absents')||[];
+  if(!window._activeExamSession)return abs;
+  const sessions=DB.get('exam_sessions')||[];
+  const sess=sessions.find(s=>s.id===window._activeExamSession);
+  return sess?abs.filter(a=>a.examSession===sess.name):abs;
+}
+
+function renderAbsList(){
+  const abs=getSessionAbs();
   document.getElementById('absview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px"><input id="absq" placeholder="🔍 Search by student name, subject, or grade…" oninput="fltAbsList()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"></div><div id="absw">'+bAbsTbl(abs)+'</div></div>';
   window.fltAbsList=function(){
     const q=document.getElementById('absq').value.toLowerCase();
-    const list=q?(DB.get('exam_absents')||[]).filter(a=>(a.studentName+' '+a.subject+' '+(a.grade||'')+'-'+(a.section||'')).toLowerCase().includes(q)):(DB.get('exam_absents')||[]);
+    const list=q?getSessionAbs().filter(a=>(a.studentName+' '+a.subject+' '+(a.grade||'')+'-'+(a.section||'')).toLowerCase().includes(q)):getSessionAbs();
     document.getElementById('absw').innerHTML=bAbsTbl(list);
   };
 }
@@ -3729,7 +3845,7 @@ function bAbsTbl(list){
 }
 
 function renderAbsByStudent(){
-  const abs=DB.get('exam_absents')||[];
+  const abs=getSessionAbs();
   const map={};
   abs.forEach(a=>{
     const k=a.studentId||a.studentName;
@@ -3765,7 +3881,7 @@ function vAbsByStu(sid,sname){
 }
 
 function renderAbsBySubject(){
-  const abs=DB.get('exam_absents')||[];
+  const abs=getSessionAbs();
   const subjects=[...new Set(abs.map(a=>a.subject))].sort();
   document.getElementById('absview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px"><select id="abssubj" onchange="fltAbsSub()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><option value="">— Select a subject to see all absent students —</option>'+subjects.map(s=>'<option>'+esc(s)+'</option>').join('')+'</select></div><div id="abssubw">'+buildSubjectsList(abs,subjects)+'</div></div>';
   window.fltAbsSub=function(){
@@ -4288,7 +4404,7 @@ const SYNC_KEYS = [
   'settings','accounts','students','teachers','complaints','tasks','infractions',
   'referrals','class_visits','notebook_checks','activities','activity_reports',
   'early_pickups','announcements','discipline_reports','activity_log','infraction_forms',
-  'visit_forms','task_requests','exam_absents','academic_calendar','attendance',
+  'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions'
 ];
@@ -4603,15 +4719,17 @@ function rPickup(){const pus=DB.get('early_pickups')||[];const sb={Pending:'bgo'
 function bPuTbl(list,sb){if(!list.length)return'<div class="emp"><div class="ei">🚗</div><p>'+T('no_records')+'</p></div>';return'<div class="tw"><table><thead><tr><th>Student</th><th>'+T('grade')+'</th><th>'+T('guardian')+'</th><th>'+T('reason')+'</th><th>Time</th><th>'+T('status')+'</th><th>'+T('date')+'</th><th>Actions</th></tr></thead><tbody>'+list.map(p=>{const showQR=(p.status==='Approved'||p.status==='Student Released');return'<tr><td><strong>'+p.studentName+'</strong></td><td>'+p.grade+'</td><td>'+p.guardianName+'<br><span class="mono" style="font-size:10px;color:var(--tx3)">'+p.guardianPhone+'</span></td><td style="font-size:11px">'+p.reason+'</td><td class="mono" style="font-size:11px">'+p.pickupTime+'</td><td><span class="badge '+(sb[p.status]||'bgr')+'">'+p.status+'</span>'+(p.qrIssuedAt?'<br><span style="font-size:9px;color:var(--gd)">📱 QR issued</span>':'')+'</td><td style="font-size:10px;color:var(--tx3)">'+(p.created||'').split('T')[0]+'</td><td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn bg2 bxs" onclick="manPu(\''+p.id+'\')">Manage</button>'+(showQR?'<button class="btn bo bxs" onclick="viewPickupQR(\''+p.id+'\')" title="Generate / view QR slip">📱 QR</button>':'')+'</td></tr>';}).join('')+'</tbody></table></div>';}
 function manPu(id){const pus=DB.get('early_pickups')||[];const p=pus.find(x=>x.id===id);if(!p)return;const canA=['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role);const showQR=(p.status==='Approved'||p.status==='Student Released');const pickedByLabel=p.pickedBy?(p.pickedBy==='Father'||p.pickedBy==='Mother'?p.pickedBy:p.pickedBy+(p.pickedByName?' — '+p.pickedByName:'')):'—';openM('<div class="mh"><h3>🚗 Early Pickup — '+p.studentName+'</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="cg g2" style="margin-bottom:12px;font-size:12px"><div><div style="font-size:10px;color:var(--tx3)">Student</div><div style="font-weight:600">'+p.studentName+'</div><div style="font-size:11px;color:var(--tx3)">'+p.grade+'</div></div><div><div style="font-size:10px;color:var(--tx3)">'+T('guardian')+'</div><div style="font-weight:600">'+p.guardianName+'</div><div class="mono" style="font-size:11px;color:var(--tx3)">'+p.guardianPhone+'</div></div><div><div style="font-size:10px;color:var(--tx3)">'+T('reason')+'</div><div style="font-weight:600">'+p.reason+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Pickup Time</div><div class="mono" style="font-weight:600">'+p.pickupTime+'</div></div></div>'+(p.pickedBy?'<div class="al ai" style="margin-bottom:12px"><div style="font-size:10px;color:var(--tx3);text-transform:uppercase;font-weight:700;margin-bottom:3px">👤 Will Be Picked Up By</div><div style="font-size:13px;font-weight:600">'+esc(pickedByLabel)+'</div>'+(p.pickedByPhone?'<div class="mono" style="font-size:11px;margin-top:2px">📞 '+esc(p.pickedByPhone)+'</div>':'')+(p.pickedById?'<div style="font-size:11px;margin-top:2px">🆔 ID: '+esc(p.pickedById)+'</div>':'')+'</div>':'')+(p.notes?'<div class="fg"><label>Parent Note</label><div style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;color:var(--tx2)">'+p.notes+'</div></div>':'')+(canA?'<div class="fg"><label>'+T('status')+'</label><select id="pust">'+['Pending','Approved','Rejected','Student Released'].map(s=>'<option'+(p.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select></div><div class="fg"><label>Staff Note</label><textarea id="punt">'+(p.staffNotes||'')+'</textarea></div>':'')+(p.staffNotes&&!canA?'<div class="al ag">Staff: '+p.staffNotes+'</div>':'')+(showQR?'<div class="al ag" style="margin-bottom:0">📱 This pickup is <strong>'+p.status+'</strong>. Click "Generate QR Slip" below to print/share with the gate guard.</div>':'')+'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'+(showQR?'<button class="btn bo bsm" onclick="closeM();viewPickupQR(\''+id+'\')">📱 Generate QR Slip</button>':'')+(canA?'<button class="btn bp" onclick="savePu(\''+id+'\')">'+T('save')+' →</button>':'')+'</div>');}
 function savePu(id){const pus=DB.get('early_pickups')||[];const i=pus.findIndex(p=>p.id===id);if(i<0)return;const oldStatus=pus[i].status;pus[i].status=document.getElementById('pust').value;pus[i].staffNotes=document.getElementById('punt').value;pus[i].handledBy=CU.firstName+' '+CU.lastName;DB.set('early_pickups',pus);logA('Updated early pickup for '+pus[i].studentName+' → '+pus[i].status);closeM();toast('Updated','success');rPickup();const newStatus=pus[i].status;const p=pus[i];if(oldStatus!==newStatus&&(newStatus==='Approved'||newStatus==='Student Released')){setTimeout(()=>{notifyParentRelease(id);},250);}}
-function rExamAbsent(){
-  const abs=DB.get('exam_absents')||[];const canC=['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role);const canV=['superadmin','principal','vice_principal','academic_supervisor','student_advisor','admin_assistant','quality_incharge'].includes(CU.role);if(!canV){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
-  const absSessions=[...new Set(abs.map(a=>a.examSession).filter(Boolean))].sort();
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;gap:8px;flex:1"><input id="absq" placeholder="🔍 Search student name…" oninput="fltAbs()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="abssf" onchange="fltAbs()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px"><option value="">All Sessions</option>'+absSessions.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('')+'</select></div><div style="display:flex;gap:5px;margin-left:8px"><button class="btn bg2 bsm" onclick="expAbsC()">📊 Excel</button><button class="btn bg2 bsm" onclick="expAbsP()">📄 PDF</button>'+(canC?'<button class="btn bp bsm" onclick="addAbsM()">+</button>':'')+'</div></div></div><div class="card" id="absw">'+bAbsTbl(abs)+'</div>';
-  window.fltAbs=function(){const q=document.getElementById('absq').value.toLowerCase();const sf=document.getElementById('abssf').value;let list=DB.get('exam_absents')||[];if(q)list=list.filter(a=>a.studentName.toLowerCase().includes(q)||a.subject.toLowerCase().includes(q)||(a.grade||'').includes(q)||(a.examSession||'').toLowerCase().includes(q));if(sf)list=list.filter(a=>a.examSession===sf);document.getElementById('absw').innerHTML=bAbsTbl(list);};
+// Second rExamAbsent removed — the primary one at the top handles everything now
+// addAbsM: session-aware absent form. If sessionName given, pre-fills it (locked). Otherwise, shows dropdown of sessions.
+function addAbsM(sessionName){
+  const sessions=DB.get('exam_sessions')||[];
+  const activeSessions=sessions.filter(s=>s.status==='active');
+  if(!sessionName&&!activeSessions.length){toast('Please create an exam session first','danger');addExamSessionM();return;}
+  const sessOpts=activeSessions.map(s=>'<option value="'+esc(s.name)+'"'+(sessionName&&s.name===sessionName?' selected':'')+'>'+esc(s.name)+'</option>').join('');
+  const sessField=sessionName?'<input id="abs-session" value="'+esc(sessionName)+'" readonly style="background:var(--sf2);cursor:not-allowed">':'<select id="abs-session" style="width:100%;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><option value="">— Select Session —</option>'+sessOpts+'</select>';
+  openM('<div class="mh"><h3>📵 Add Exam Absent</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Exam Session *</label>'+sessField+'</div><div class="fg"><label>Student * (search by name)</label>'+sw('pickAbsStu','abssi','abssd')+'</div><div id="absss" style="display:none" class="al ai"></div><input type="hidden" id="abssid"><div class="fr f2"><div class="fg"><label>'+T('exam_subject')+' *</label><input id="abss" placeholder="e.g. Mathematics"></div><div class="fg"><label>'+T('absent_date')+' *</label><input type="date" id="absdt" value="'+new Date().toISOString().split('T')[0]+'"></div></div><div class="fg"><label>'+T('remarks')+'</label><textarea id="absrm"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveAbs()">Add →</button></div>');window.pickAbsStu=function(sid){const s=gS(sid);document.getElementById('abssid').value=sid;document.getElementById('abssi').value=fN(s);document.getElementById('abssd').style.display='none';document.getElementById('absss').style.display='block';document.getElementById('absss').textContent='✓ '+fN(s)+' — Gr '+s.grade+'-'+s.section;};
 }
-function bAbsTbl(list){if(!list.length)return'<div class="emp"><div class="ei">📵</div><p>'+T('no_records')+'</p></div>';const isQI=CU.role==='quality_incharge';return'<div class="tw"><table><thead><tr><th>Student</th><th>'+T('grade')+'</th><th>Exam Session</th><th>'+T('exam_subject')+'</th><th>'+T('absent_date')+'</th><th>'+T('remarks')+'</th><th>Added By</th>'+(isQI?'':'<th>Actions</th>')+'</tr></thead><tbody>'+list.map(a=>'<tr><td><strong>'+a.studentName+'</strong></td><td>Gr '+a.grade+'-'+(a.section||'')+'</td><td style="font-size:11px">'+(a.examSession?'<span class="badge bbl">'+esc(a.examSession)+'</span>':'—')+'</td><td><span class="badge brd">'+a.subject+'</span></td><td class="mono" style="font-size:11px">'+a.absentDate+'</td><td style="font-size:11px;color:var(--tx2)">'+(a.remarks||'—')+'</td><td style="font-size:11px;color:var(--tx3)">'+a.addedBy+'</td>'+(isQI?'':'<td><button class="btn bd3 bxs" onclick="delAbs(\''+a.id+'\')">Del</button></td>')+'</tr>').join('')+'</tbody></table></div>';}
-function addAbsM(){const existingSessions=[...new Set((DB.get('exam_absents')||[]).map(a=>a.examSession).filter(Boolean))].sort();const rexSessions=[...new Set((DB.get('reexam_schedules')||[]).map(r=>r.examSession).filter(Boolean))].sort();const allSessions=[...new Set([...existingSessions,...rexSessions])].sort();openM('<div class="mh"><h3>📵 Add Exam Absent</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Student * (search by name)</label>'+sw('pickAbsStu','abssi','abssd')+'</div><div id="absss" style="display:none" class="al ai"></div><input type="hidden" id="abssid"><div class="fg"><label>Exam Session *</label><input id="abs-session" list="abs-session-list" placeholder="e.g. Mid-Term 2024-2025"><datalist id="abs-session-list">'+allSessions.map(s=>'<option value="'+esc(s)+'">').join('')+'</datalist></div><div class="fr f2"><div class="fg"><label>'+T('exam_subject')+' *</label><input id="abss" placeholder="e.g. Mathematics"></div><div class="fg"><label>'+T('absent_date')+' *</label><input type="date" id="absdt" value="'+new Date().toISOString().split('T')[0]+'"></div></div><div class="fg"><label>'+T('remarks')+'</label><textarea id="absrm"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveAbs()">Add →</button></div>');window.pickAbsStu=function(sid){const s=gS(sid);document.getElementById('abssid').value=sid;document.getElementById('abssi').value=fN(s);document.getElementById('abssd').style.display='none';document.getElementById('absss').style.display='block';document.getElementById('absss').textContent='✓ '+fN(s)+' — Gr '+s.grade+'-'+s.section;};}
-function saveAbs(){const sid=document.getElementById('abssid').value,subj=document.getElementById('abss').value.trim(),dt=document.getElementById('absdt').value,session=(document.getElementById('abs-session')||{}).value||(document.getElementById('abs-session')||{}).value||'';if(!sid||!subj||!dt){toast('Fill required fields','danger');return;}if(!session.trim()){toast('Please enter the exam session','danger');return;}const s=gS(sid),abs=DB.get('exam_absents')||[];abs.push({id:nid('abs'),studentId:sid,studentName:fN(s),grade:s.grade,section:s.section,subject:subj,absentDate:dt,examSession:session.trim(),remarks:document.getElementById('absrm').value,addedBy:CU.firstName+' '+CU.lastName,created:new Date().toISOString()});DB.set('exam_absents',abs);logA('Exam absent: '+fN(s)+' — '+subj+' ('+session.trim()+')');closeM();toast('Added','success');rExamAbsent();}
+function saveAbs(){const sid=document.getElementById('abssid').value,subj=document.getElementById('abss').value.trim(),dt=document.getElementById('absdt').value,session=(document.getElementById('abs-session')||{}).value||'';if(!session.trim()){toast('Please select an exam session','danger');return;}if(!sid||!subj||!dt){toast('Fill required fields','danger');return;}const s=gS(sid),abs=DB.get('exam_absents')||[];abs.push({id:nid('abs'),studentId:sid,studentName:fN(s),grade:s.grade,section:s.section,subject:subj,absentDate:dt,examSession:session.trim(),remarks:document.getElementById('absrm').value,addedBy:CU.firstName+' '+CU.lastName,created:new Date().toISOString()});DB.set('exam_absents',abs);logA('Exam absent: '+fN(s)+' — '+subj+' ('+session.trim()+')');closeM();toast('Added','success');rExamAbsent();}
 function delAbs(id){if(!confirm('Delete?'))return;DB.set('exam_absents',(DB.get('exam_absents')||[]).filter(a=>a.id!==id));toast('Deleted','danger');rExamAbsent();}
 function expAbsC(){const l=DB.get('exam_absents')||[];expCSV(['Student','Grade','Section','Exam Session','Subject','Absent Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.examSession||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]),'exam_absents_'+new Date().toISOString().split('T')[0]);}
 function expAbsP(){const l=DB.get('exam_absents')||[];expPDF('Exam Absent List',['Student','Grade','Section','Exam Session','Subject','Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.examSession||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]));}
@@ -4624,14 +4742,14 @@ function addDrM(){openM('<div class="mh"><h3>🗂️ New Discipline Report</h3><
 function saveDr(){const t=document.getElementById('drt').value.trim(),d=document.getElementById('drd').value.trim();if(!t||!d){toast('Fill required fields','danger');return;}const rpts=DB.get('discipline_reports')||[];rpts.push({id:nid('dr'),title:t,grade:document.getElementById('drg').value,section:document.getElementById('drs').value,teacher:document.getElementById('drtc').value,description:d,actionTaken:document.getElementById('dra').value,date:document.getElementById('drdt').value,createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,principalAck:'',created:new Date().toISOString()});DB.set('discipline_reports',rpts);logA('Discipline report: "'+t+'"');closeM();toast('Submitted','success');rDiscipline();}
 function ackDr(id){openM('<div class="mh"><h3>🎯 Acknowledgment</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>'+T('note')+'</label><textarea id="drpk"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bo" onclick="saveDrAck(\''+id+'\')">Acknowledge →</button></div>');}
 function saveDrAck(id){const rpts=DB.get('discipline_reports')||[];const i=rpts.findIndex(r=>r.id===id);if(i<0)return;rpts[i].principalAck=document.getElementById('drpk').value;DB.set('discipline_reports',rpts);logA('Acknowledged discipline report: "'+rpts[i].title+'"');closeM();toast('Acknowledged','success');rDiscipline();}
-function rSettings(){const s=DB.get('settings')||{};const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="cg g2"><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🏫 School Information</h3></div><div class="fr f2"><div class="fg"><label>School Name (EN)</label><input id="ssn" value="'+esc(s.schoolName||'')+'"></div><div class="fg"><label>اسم المدرسة</label><input id="ssar" value="'+esc(s.schoolNameAr||'')+'" dir="rtl"></div></div><div class="fr f2"><div class="fg"><label>City</label><input id="scy" value="'+esc(s.city||'')+'"></div><div class="fg"><label>'+T('academic_year')+'</label><input id="say" value="'+esc(s.academicYear||'')+'"></div></div><div class="fr f2"><div class="fg"><label>'+T('phone')+'</label><input id="sph" value="'+esc(s.phone||'')+'"></div><div class="fg"><label>'+T('email')+'</label><input id="sem" value="'+esc(s.email||'')+'"></div></div><button class="btn bp" onclick="saveSettings()">'+T('save')+' & Apply →</button></div>'+(isSA?'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🖼️ School Logo</h3></div><div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:14px"><div id="logoprev" style="width:64px;height:64px;border-radius:12px;border:2px solid var(--bd);display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--sf2);font-size:26px">'+(s.logo&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'🎓'))+'</div><div style="flex:1"><div class="fg" style="margin-bottom:8px"><label>'+T('upload_logo')+'</label><input type="file" id="logof" accept="image/*" onchange="prevLogo()" style="padding:6px"></div><div class="fg"><label>'+T('logo_emoji')+'</label><input id="logoem" value="'+(!s.logo||s.logo.startsWith('data:')?'🎓':s.logo)+'" style="width:80px;font-size:20px;text-align:center"></div></div></div><button class="btn bp" onclick="saveLogo()">Save Logo →</button></div>':'')+(isSA?'<div class="card"><div class="sh2"><h3>🔐 Production Status</h3></div><div class="al ag" style="margin-bottom:0">✅ <strong>Live Mode Active</strong> — Demo credentials are permanently hidden from the login screen for production deployment. Staff log in with their personal usernames only.</div></div>':'')+'</div><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>📊 System Stats</h3></div><table style="font-size:12px;width:100%">'+[['Students',(DB.get('students')||[]).length],['Teachers',(DB.get('teachers')||[]).length],['Staff Accounts',(DB.get('accounts')||[]).length],['Complaints',(DB.get('complaints')||[]).length],['Tasks',(DB.get('tasks')||[]).length],['Infractions',(DB.get('infractions')||[]).length],['Referrals',(DB.get('referrals')||[]).length],['Class Visits',(DB.get('class_visits')||[]).length],['Notebook Checks',(DB.get('notebook_checks')||[]).length],['Activities',(DB.get('activities')||[]).length],['Activity Reports',(DB.get('activity_reports')||[]).length],['Exam Absents',(DB.get('exam_absents')||[]).length]].map(([k,v])=>'<tr><td style="color:var(--tx3);padding:6px 0;border-bottom:1px solid var(--bd)">'+k+'</td><td style="font-weight:500;text-align:right;border-bottom:1px solid var(--bd)">'+v+'</td></tr>').join('')+'</table></div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🚀 Deploy & Go Live</h3></div><div style="font-size:12px;color:var(--tx2);line-height:1.9;background:var(--sf2);border-radius:var(--rs);padding:12px"><strong style="color:var(--ac)">Quick Deploy (5 min):</strong><br>1. Save this file as <code>index.html</code><br>2. Go to <a href="https://app.netlify.com/drop" target="_blank" style="color:var(--ac)">app.netlify.com/drop</a><br>3. Drag the file in<br>4. Get live URL<br><br><strong style="color:var(--ac)">Or GitHub Pages:</strong><br>1. Push index.html to a GitHub repo<br>2. Settings → Pages → Deploy from main<br>3. Get live URL ✅</div></div>'+(isSA?'<div class="card"><div class="sh2"><h3>🗄️ Backup & Restore</h3></div><div style="display:flex;flex-direction:column;gap:8px"><button class="btn bg2 bsm" onclick="expAll()">📥 Export Full Backup</button><button class="btn bg2 bsm" onclick="impAllM()">📤 Restore from Backup</button><button class="btn bd3 bsm" onclick="if(confirm(\'RESET ALL DATA?\'))resetAll()">⚠️ Factory Reset</button></div></div>':'')+'</div></div>';}
+function rSettings(){const s=DB.get('settings')||{};const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="cg g2"><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🏫 School Information</h3></div><div class="fr f2"><div class="fg"><label>School Name (EN)</label><input id="ssn" value="'+esc(s.schoolName||'')+'"></div><div class="fg"><label>اسم المدرسة</label><input id="ssar" value="'+esc(s.schoolNameAr||'')+'" dir="rtl"></div></div><div class="fr f2"><div class="fg"><label>City</label><input id="scy" value="'+esc(s.city||'')+'"></div><div class="fg"><label>'+T('academic_year')+'</label><input id="say" value="'+esc(s.academicYear||'')+'"></div></div><div class="fr f2"><div class="fg"><label>'+T('phone')+'</label><input id="sph" value="'+esc(s.phone||'')+'"></div><div class="fg"><label>'+T('email')+'</label><input id="sem" value="'+esc(s.email||'')+'"></div></div><button class="btn bp" onclick="saveSettings()">'+T('save')+' & Apply →</button></div>'+(isSA?'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🖼️ School Logo</h3></div><div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:14px"><div id="logoprev" style="width:64px;height:64px;border-radius:12px;border:2px solid var(--bd);display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--sf2);font-size:26px">'+(s.logo&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'🎓'))+'</div><div style="flex:1"><div class="fg" style="margin-bottom:8px"><label>'+T('upload_logo')+'</label><input type="file" id="logof" accept="image/*" onchange="prevLogo()" style="padding:6px"></div><div class="fg"><label>'+T('logo_emoji')+'</label><input id="logoem" value="'+(!s.logo||s.logo.startsWith('data:')?'🎓':s.logo)+'" style="width:80px;font-size:20px;text-align:center"></div></div></div><button class="btn bp" onclick="saveLogo()">Save Logo →</button></div>':'')+(isSA?'<div class="card"><div class="sh2"><h3>🔐 Production Status</h3></div><div class="al ag" style="margin-bottom:0">✅ <strong>Live Mode Active</strong> — Demo credentials are permanently hidden from the login screen for production deployment. Staff log in with their personal usernames only.</div></div>':'')+'</div><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>📊 System Stats</h3></div><table style="font-size:12px;width:100%">'+[['Students',(DB.get('students')||[]).length],['Teachers',(DB.get('teachers')||[]).length],['Staff Accounts',(DB.get('accounts')||[]).length],['Complaints',(DB.get('complaints')||[]).length],['Tasks',(DB.get('tasks')||[]).length],['Infractions',(DB.get('infractions')||[]).length],['Referrals',(DB.get('referrals')||[]).length],['Class Visits',(DB.get('class_visits')||[]).length],['Notebook Checks',(DB.get('notebook_checks')||[]).length],['Activities',(DB.get('activities')||[]).length],['Activity Reports',(DB.get('activity_reports')||[]).length],['Exam Sessions',(DB.get('exam_sessions')||[]).length],['Exam Absents',(DB.get('exam_absents')||[]).length]].map(([k,v])=>'<tr><td style="color:var(--tx3);padding:6px 0;border-bottom:1px solid var(--bd)">'+k+'</td><td style="font-weight:500;text-align:right;border-bottom:1px solid var(--bd)">'+v+'</td></tr>').join('')+'</table></div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🚀 Deploy & Go Live</h3></div><div style="font-size:12px;color:var(--tx2);line-height:1.9;background:var(--sf2);border-radius:var(--rs);padding:12px"><strong style="color:var(--ac)">Quick Deploy (5 min):</strong><br>1. Save this file as <code>index.html</code><br>2. Go to <a href="https://app.netlify.com/drop" target="_blank" style="color:var(--ac)">app.netlify.com/drop</a><br>3. Drag the file in<br>4. Get live URL<br><br><strong style="color:var(--ac)">Or GitHub Pages:</strong><br>1. Push index.html to a GitHub repo<br>2. Settings → Pages → Deploy from main<br>3. Get live URL ✅</div></div>'+(isSA?'<div class="card"><div class="sh2"><h3>🗄️ Backup & Restore</h3></div><div style="display:flex;flex-direction:column;gap:8px"><button class="btn bg2 bsm" onclick="expAll()">📥 Export Full Backup</button><button class="btn bg2 bsm" onclick="impAllM()">📤 Restore from Backup</button><button class="btn bd3 bsm" onclick="if(confirm(\'RESET ALL DATA?\'))resetAll()">⚠️ Factory Reset</button></div></div>':'')+'</div></div>';}
 function saveSettings(){const s=DB.get('settings')||{};Object.assign(s,{schoolName:document.getElementById('ssn').value,schoolNameAr:document.getElementById('ssar').value,city:document.getElementById('scy').value,academicYear:document.getElementById('say').value,phone:document.getElementById('sph').value,email:document.getElementById('sem').value});DB.set('settings',s);applyBrand(s);logA('Updated school settings');toast('Settings saved & applied','success');}
 function prevLogo(){const file=document.getElementById('logof').files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{document.getElementById('logoprev').innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:contain">';};reader.readAsDataURL(file);}
 function saveLogo(){const file=document.getElementById('logof').files[0],emoji=document.getElementById('logoem').value;if(file){const reader=new FileReader();reader.onload=e=>{const s=DB.get('settings')||{};s.logo=e.target.result;DB.set('settings',s);applyBrand(s);logA('Updated school logo (image)');toast('Logo saved','success');};reader.readAsDataURL(file);}else if(emoji){const s=DB.get('settings')||{};s.logo=emoji;DB.set('settings',s);applyBrand(s);logA('Updated school logo: '+emoji);toast('Logo saved','success');}}
 function setLiveMode(val){toast('Live Mode is no longer needed — demo panel has been permanently removed for production.','info');}
-function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
+function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
 function impAllM(){openM('<div class="mh"><h3>📤 Restore Backup</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ad">⚠️ This will overwrite ALL data. Export a backup first!</div><div class="fg"><label>Backup JSON File</label><input type="file" id="impjf" accept=".json"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bd3" onclick="procRestore()">Restore →</button></div>');window.procRestore=function(){const file=document.getElementById('impjf').files[0];if(!file){toast('Select file','danger');return;}const reader=new FileReader();reader.onload=e=>{try{const data=JSON.parse(e.target.result);Object.entries(data).forEach(([k,v])=>{if(k!=='exportedAt')DB.set(k,v);});closeM();toast('Data restored!','success');setTimeout(()=>{applyBrand(DB.get('settings')||{});navigate('dashboard');},500);}catch{toast('Invalid backup file','danger');}};reader.readAsText(file);};}
-function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
+function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
 function rInfForms(){const forms=DB.get('infraction_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>⚠️ '+T('infraction_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'infraction_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'infraction_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'infraction_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📄</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function rVisitForms(){const forms=DB.get('visit_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>📝 '+T('visit_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'visit_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'visit_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'visit_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📋</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function upFormM(k){openM('<div class="mh"><h3>📤 Upload Form</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Form Name *</label><input id="ufn"></div><div class="fg"><label>File *</label><input type="file" id="uff" accept=".pdf,.jpg,.png,.docx"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveForm(\''+k+'\')">Upload →</button></div>');}
