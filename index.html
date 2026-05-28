@@ -4365,10 +4365,10 @@ function runAutoExamSchedule(){
   const dateMap={};let subjectsToday=0;
   const curDate=new Date(startDate+'T00:00:00');
   // Advance to first valid school day
-  while(curDate.getDay()===5||curDate.getDay()===0)curDate.setDate(curDate.getDate()+1);
+  while(curDate.getDay()===5||curDate.getDay()===6)curDate.setDate(curDate.getDate()+1);
   allSubjects.forEach(subj=>{
     if(subjectsToday>=perDay){curDate.setDate(curDate.getDate()+1);subjectsToday=0;
-      while(curDate.getDay()===5||curDate.getDay()===0)curDate.setDate(curDate.getDate()+1);
+      while(curDate.getDay()===5||curDate.getDay()===6)curDate.setDate(curDate.getDate()+1);
     }
     dateMap[subj]=curDate.toISOString().split('T')[0];
     subjectsToday++;
