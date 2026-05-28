@@ -849,6 +849,7 @@ function seed(){
 function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);if(!DB.get('attendance'))DB.set('attendance',[]);if(!DB.get('student_health'))DB.set('student_health',[]);if(!DB.get('remedial_plans'))DB.set('remedial_plans',[]);if(!DB.get('vp_reports'))DB.set('vp_reports',[]);if(!DB.get('warning_letters'))DB.set('warning_letters',[]);if(!DB.get('teacher_achievements'))DB.set('teacher_achievements',[]);if(!DB.get('reexam_schedules'))DB.set('reexam_schedules',[]);
   if(!DB.get('duty_places'))DB.set('duty_places',[]);
   if(!DB.get('duty_remarks'))DB.set('duty_remarks',[]);
+  if(!DB.get('classroom_discipline'))DB.set('classroom_discipline',[]);
   // Auto-create exam_sessions from existing exam_absents examSession values
   if(!DB.get('exam_sessions')){const abs=DB.get('exam_absents')||[];const names=[...new Set(abs.map(a=>a.examSession).filter(Boolean))];if(names.length){DB.set('exam_sessions',names.map(n=>({id:nid('es'),name:n,status:'active',createdBy:'System (migrated)',created:new Date().toISOString().split('T')[0]})));}else{DB.set('exam_sessions',[]);}}
   // Update school name from old default if still unchanged
@@ -1178,14 +1179,14 @@ function checkEvts(){
 const NAV={
   superadmin:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'activity_log',i:'⚡',k:'activity_log'},{s:'management'},{id:'students',i:'👨‍🎓',k:'students'},{id:'teachers',i:'👨‍🏫',k:'teachers'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'accounts',i:'👥',k:'accounts'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'tasks',i:'✅',k:'tasks'},{id:'infractions',i:'⚠️',k:'infractions'},{id:'referrals',i:'🔀',k:'referrals'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'vp_reports',i:'📋',k:'vp_reports'},{id:'warning_letters',i:'📝',k:'warning_letters'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'early_pickup',i:'🚗',k:'early_pickup'},{id:'pickup_qr',i:'📱',k:'pickup_qr'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'duty_roster',i:'📋',k:'duty_roster'},{id:'substitutions',i:'🔄',k:'substitutions'},{id:'announcements',i:'📢',k:'announcements'},{s:'system'},{id:'sessions',i:'📅',k:'sessions'},{id:'parent_qr',i:'📱',k:'parent_qr'},{id:'academic_calendar',i:'📅',k:'academic_calendar'},{id:'settings',i:'⚙️',k:'settings'},{id:'infraction_forms',i:'📄',k:'infraction_forms'},{id:'visit_forms',i:'📋',k:'visit_forms'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
   principal:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'management'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'tasks',i:'✅',k:'tasks'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'infractions',i:'⚠️',k:'infractions'},{id:'referrals',i:'🔀',k:'referrals'},{id:'discipline_reports',i:'🗂️',k:'discipline_reports'},{id:'vp_reports',i:'📋',k:'vp_reports'},{id:'warning_letters',i:'📝',k:'warning_letters'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'early_pickup',i:'🚗',k:'early_pickup'},{id:'pickup_qr',i:'📱',k:'pickup_qr'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'duty_roster',i:'📋',k:'duty_roster'},{id:'substitutions',i:'🔄',k:'substitutions'},{id:'announcements',i:'📢',k:'announcements'},{id:'parent_qr',i:'📱',k:'parent_qr'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
-  vice_principal:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'discipline'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'infractions',i:'⚠️',k:'infractions'},{id:'discipline_reports',i:'🗂️',k:'discipline_reports'},{id:'referrals',i:'🔀',k:'referrals'},{s:'reporting'},{id:'vp_reports',i:'📋',k:'vp_reports'},{id:'warning_letters',i:'📝',k:'warning_letters'},{id:'my_warnings',i:'📝',k:'my_warnings'},{s:'management'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests',b:'itr'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'duty_roster',i:'📋',k:'duty_roster'},{id:'substitutions',i:'🔄',k:'substitutions'},{id:'announcements',i:'📢',k:'announcements'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
+  vice_principal:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'discipline'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'infractions',i:'⚠️',k:'infractions'},{id:'classroom_discipline',i:'📋',k:'classroom_discipline'},{id:'discipline_reports',i:'🗂️',k:'discipline_reports'},{id:'referrals',i:'🔀',k:'referrals'},{s:'reporting'},{id:'vp_reports',i:'📋',k:'vp_reports'},{id:'warning_letters',i:'📝',k:'warning_letters'},{id:'my_warnings',i:'📝',k:'my_warnings'},{s:'management'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests',b:'itr'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'duty_roster',i:'📋',k:'duty_roster'},{id:'substitutions',i:'🔄',k:'substitutions'},{id:'announcements',i:'📢',k:'announcements'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
   academic_supervisor:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'academic'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'referrals',i:'🔀',k:'referrals'},{id:'activity_reports',i:'📋',k:'activity_reports'},{s:'management'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests',b:'itr'},{id:'complaints',i:'📋',k:'complaints',b:'cop'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'my_warnings',i:'📝',k:'my_warnings'},{id:'announcements',i:'📢',k:'announcements'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
   student_advisor:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'students'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'remedial_plans',i:'📚',k:'remedial_plans'},{id:'referrals',i:'🔀',k:'referrals',b:'mref'},{id:'behaviour',i:'🧠',k:'behaviour'},{s:'my_work'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'announcements',i:'📢',k:'announcements'},{id:'export_data',i:'📥',k:'export_data'},{id:'my_profile',i:'👤',k:'my_profile'}],
   activity_incharge:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'student_health',i:'🩺',k:'student_health'},{id:'activities',i:'🏃',k:'activities'},{id:'activity_reports',i:'📋',k:'activity_reports'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
   quality_supervisor:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'students',i:'👨‍🎓',k:'students'},{id:'student_health',i:'🩺',k:'student_health'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'notebook_checks',i:'📓',k:'notebook_checks'},{id:'tasks',i:'✅',k:'tasks'},{id:'task_requests',i:'📨',k:'task_requests'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
   quality_incharge:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{s:'monitoring'},{id:'class_visits',i:'📝',k:'class_visits'},{id:'teacher_reports',i:'📊',k:'teacher_reports'},{id:'teacher_achievements',i:'🏆',k:'teacher_achievements'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
   admin_assistant:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'student_health',i:'🩺',k:'student_health'},{id:'early_pickup',i:'🚗',k:'early_pickup',b:'pup'},{id:'pickup_qr',i:'📱',k:'pickup_qr'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'duty_roster',i:'📋',k:'duty_roster'},{id:'tasks',i:'✅',k:'tasks'},{id:'my_warnings',i:'📝',k:'my_warnings'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
-  teacher:[{s:'overview'},{id:'dashboard',i:'🏠',k:'dashboard'},{s:'my_work'},{id:'my_class_visits',i:'📝',k:'my_class_visits'},{id:'my_duties',i:'📋',k:'my_duties'},{id:'my_warnings',i:'📝',k:'my_warnings'},{id:'my_remedials',i:'📚',k:'my_remedials'},{id:'my_achievements',i:'🏆',k:'my_achievements'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
+  teacher:[{s:'overview'},{id:'dashboard',i:'🏠',k:'dashboard'},{s:'my_work'},{id:'my_class_visits',i:'📝',k:'my_class_visits'},{id:'my_duties',i:'📋',k:'my_duties'},{id:'my_discipline_reports',i:'📋',k:'my_discipline_reports'},{id:'my_warnings',i:'📝',k:'my_warnings'},{id:'my_remedials',i:'📚',k:'my_remedials'},{id:'my_achievements',i:'🏆',k:'my_achievements'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
 };
 function buildNav(){
   const items=NAV[CU.role]||NAV.admin_assistant;
@@ -1204,7 +1205,7 @@ function navigate(page){
   }
   _page=page;document.querySelectorAll('.ni').forEach(el=>el.classList.remove('act'));const el=document.getElementById('nav-'+page);if(el)el.classList.add('act');
   document.getElementById('tbt').textContent=T(page)||page.replace(/_/g,' ');document.getElementById('tbs').textContent='';
-  const map={dashboard:(CU&&CU.role==='teacher'&&typeof rTeacherDashboard==='function'?rTeacherDashboard:rDash),activity_log:rActLog,students:rStudents,accounts:rAccounts,complaints:rComplaints,tasks:rTasks,infractions:rInfractions,referrals:rReferrals,class_visits:rClassVisits,notebook_checks:rNbChecks,activities:rActivities,early_pickup:rPickup,exam_absent:rExamAbsent,announcements:rAnnouncements,settings:rSettings,infraction_forms:rInfForms,visit_forms:rVisitForms,behaviour:rBehaviour,discipline_reports:rDiscipline,task_requests:rTaskReqs,my_profile:rProfile,export_data:rExport,academic_calendar:rCalendar,parent_qr:rQRCode,activity_reports:rActivityReports,teachers:rTeachers,teacher_reports:rTeacherReports,daily_attendance:rAttendance,student_health:rStudentHealth,remedial_plans:rRemedial,vp_reports:rVPReports,warning_letters:rWarnings,teacher_achievements:rTeacherAchievements,reexam_schedule:rReexam,pickup_qr:rPickupQR,sessions:rSessions,my_class_visits:rMyClassVisits,my_warnings:rMyWarnings,my_remedials:rMyRemedials,my_achievements:rMyAchievements,duty_roster:rDutyRoster,substitutions:rSubstitutions,my_duties:rMyDuties};
+  const map={dashboard:(CU&&CU.role==='teacher'&&typeof rTeacherDashboard==='function'?rTeacherDashboard:rDash),activity_log:rActLog,students:rStudents,accounts:rAccounts,complaints:rComplaints,tasks:rTasks,infractions:rInfractions,referrals:rReferrals,class_visits:rClassVisits,notebook_checks:rNbChecks,activities:rActivities,early_pickup:rPickup,exam_absent:rExamAbsent,announcements:rAnnouncements,settings:rSettings,infraction_forms:rInfForms,visit_forms:rVisitForms,behaviour:rBehaviour,discipline_reports:rDiscipline,task_requests:rTaskReqs,my_profile:rProfile,export_data:rExport,academic_calendar:rCalendar,parent_qr:rQRCode,activity_reports:rActivityReports,teachers:rTeachers,teacher_reports:rTeacherReports,daily_attendance:rAttendance,student_health:rStudentHealth,remedial_plans:rRemedial,vp_reports:rVPReports,warning_letters:rWarnings,teacher_achievements:rTeacherAchievements,reexam_schedule:rReexam,pickup_qr:rPickupQR,sessions:rSessions,my_class_visits:rMyClassVisits,my_warnings:rMyWarnings,my_remedials:rMyRemedials,my_achievements:rMyAchievements,duty_roster:rDutyRoster,substitutions:rSubstitutions,my_duties:rMyDuties,classroom_discipline:rClassroomDiscipline,my_discipline_reports:rMyDisciplineReports};
   if(map[page])map[page]();buildNav();
 }
 function toast(msg,type='info'){const el=document.createElement('div');el.className='toast '+type;el.innerHTML='<span>'+({success:'✅',danger:'❌',info:'ℹ️'}[type]||'ℹ️')+'</span><span>'+msg+'</span>';document.getElementById('tr').appendChild(el);setTimeout(()=>el.remove(),3500);}
@@ -1546,9 +1547,33 @@ function addInfM(){openM('<div class="mh"><h3>⚠️ Add Infraction</h3><button 
   window.ldInfT=function(){const deg=document.getElementById('infde').value;document.getElementById('infty').innerHTML='<option value="">— Select —</option>'+(INF_VIOLATIONS[deg]||[]).map(t=>'<option>'+t+'</option>').join('');updInfProc();};
   window.updInfProc=function(){const deg=document.getElementById('infde').value,occ=document.getElementById('infoc').value;if(deg&&occ&&INF_PROCEDURES[deg]&&INF_PROCEDURES[deg][occ]){const p=INF_PROCEDURES[deg][occ];document.getElementById('infprocd').innerHTML='<div><div style="font-weight:600;color:var(--tx);margin-bottom:3px">'+esc(p.label)+'</div><div style="font-size:11px"><span class="badge '+(p.points>=10?'brd':p.points>=3?'bgo':'bbl')+'">Deducts '+p.points+' point(s)</span></div></div>';document.getElementById('infproc').value=p.label;document.getElementById('infpts').value=p.points;}else{document.getElementById('infprocd').innerHTML='<em style="color:var(--tx3)">Select degree and occurrence first…</em>';document.getElementById('infproc').value='';document.getElementById('infpts').value=0;}};
 }
-function saveInf(){const sid=document.getElementById('infsid').value,deg=document.getElementById('infde').value,occ=document.getElementById('infoc').value,type=document.getElementById('infty').value,desc=document.getElementById('infd').value.trim();if(!sid||!deg||!occ||!type||!desc){toast('Fill required fields (student, degree, occurrence, violation, description)','danger');return;}const s=gS(sid),inf=DB.get('infractions')||[];const proc=document.getElementById('infproc').value,pts=parseInt(document.getElementById('infpts').value)||0;inf.push({id:nid('inf'),studentId:sid,studentName:fN(s),grade:s.grade,section:s.section,degree:deg,occurrence:occ,type,description:desc,procedure:proc,pointsDeducted:pts,guardianContact:document.getElementById('infgc').value,followUpStatus:document.getElementById('inffu').value,actionTaken:document.getElementById('infat').value,date:document.getElementById('infdt').value,createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,principalAck:'',created:new Date().toISOString()});DB.set('infractions',inf);logA(deg.split(' — ')[0]+' infraction for '+fN(s)+' ('+occ+', -'+pts+' pts): '+type);closeM();toast('Recorded ('+pts+' pts deducted)','success');rInfractions();}
-function vInf(id){const inf=DB.get('infractions')||[];const i=inf.find(x=>x.id===id);if(!i)return;const canAck=['superadmin','principal'].includes(CU.role);const stuTotal=i.studentId?studentInfPoints(i.studentId):0;openM('<div class="mh"><h3>⚠️ Infraction Record</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap"><span class="badge '+infBadge(i.degree)+'">'+i.degree+'</span><span class="badge bpu">'+(i.occurrence||'—')+'</span><span class="badge brd">-'+(i.pointsDeducted||0)+' pts</span>'+(i.guardianContact?'<span class="badge '+(i.guardianContact==='Contacted'?'bgn':i.guardianContact==='Pending'?'bgo':i.guardianContact==='No Response'?'brd':'bbl')+'">📞 '+i.guardianContact+'</span>':'')+(i.followUpStatus?'<span class="badge '+(i.followUpStatus==='Resolved'?'bgn':i.followUpStatus==='Needs Additional Intervention'?'brd':'bgo')+'">'+i.followUpStatus+'</span>':'')+'</div><div class="cg g3" style="margin-bottom:12px;font-size:12px"><div><div style="font-size:10px;color:var(--tx3)">Student</div><div style="font-weight:600">'+i.studentName+'</div><div style="font-size:11px;color:var(--tx3)">Gr '+i.grade+'-'+i.section+'</div></div><div><div style="font-size:10px;color:var(--tx3)">'+T('date')+'</div><div style="font-weight:600">'+i.date+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Recorded By</div><div style="font-weight:600">'+i.createdByName+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Student Total Points Deducted</div><div style="font-weight:700;color:var(--dn);font-size:16px">'+stuTotal+'</div></div></div><div class="fg"><label>Violation Type</label><div style="background:var(--sf2);padding:9px;border-radius:var(--rs);font-size:12px;color:var(--tx);font-weight:600">'+esc(i.type||'—')+'</div></div>'+(i.procedure?'<div class="fg"><label>Procedure Applied (Policy Rubric)</label><div style="background:var(--ac2);border:1px solid var(--ac3);padding:10px;border-radius:var(--rs);font-size:12px;color:var(--tx);line-height:1.5"><strong>'+esc(i.procedure)+'</strong></div></div>':'')+'<div class="fg"><label>'+T('description')+' / Detail</label><div style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;color:var(--tx2);line-height:1.6">'+esc(i.description||'—')+'</div></div>'+(i.actionTaken?'<div class="fg"><label>Notes / Action Taken</label><div style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;color:var(--tx2);line-height:1.6">'+esc(i.actionTaken)+'</div></div>':'')+(canAck?'<div class="fg"><label>'+T('principal_ack')+'</label><input id="ipk" value="'+esc(i.principalAck||'')+'" placeholder="Acknowledgment / final note…"></div>':i.principalAck?'<div class="al ag">🎯 <strong>Principal Ack:</strong> '+esc(i.principalAck)+'</div>':'')+'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="window.print()">🖨️</button>'+(canAck?'<button class="btn bo" onclick="saveInfAck(\''+id+'\')">Save Ack →</button>':'')+'</div>');}
+function saveInf(){const sid=document.getElementById('infsid').value,deg=document.getElementById('infde').value,occ=document.getElementById('infoc').value,type=document.getElementById('infty').value,desc=document.getElementById('infd').value.trim();if(!sid||!deg||!occ||!type||!desc){toast('Fill required fields (student, degree, occurrence, violation, description)','danger');return;}const s=gS(sid),inf=DB.get('infractions')||[];const proc=document.getElementById('infproc').value,pts=parseInt(document.getElementById('infpts').value)||0;const newInf={id:nid('inf'),studentId:sid,studentName:fN(s),grade:s.grade,section:s.section,degree:deg,occurrence:occ,type,description:desc,procedure:proc,pointsDeducted:pts,guardianContact:document.getElementById('infgc').value,followUpStatus:document.getElementById('inffu').value,actionTaken:document.getElementById('infat').value,date:document.getElementById('infdt').value,createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,principalAck:'',created:new Date().toISOString()};inf.push(newInf);DB.set('infractions',inf);logA(deg.split(' — ')[0]+' infraction for '+fN(s)+' ('+occ+', -'+pts+' pts): '+type);closeM();toast('Recorded ('+pts+' pts deducted)','success');rInfractions();promptInfReferral(newInf.studentId,newInf.studentName,newInf.grade,newInf.section,deg,type);}
+function vInf(id){const inf=DB.get('infractions')||[];const i=inf.find(x=>x.id===id);if(!i)return;const canAck=['superadmin','principal'].includes(CU.role);const stuTotal=i.studentId?studentInfPoints(i.studentId):0;openM('<div class="mh"><h3>⚠️ Infraction Record</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap"><span class="badge '+infBadge(i.degree)+'">'+i.degree+'</span><span class="badge bpu">'+(i.occurrence||'—')+'</span><span class="badge brd">-'+(i.pointsDeducted||0)+' pts</span>'+(i.guardianContact?'<span class="badge '+(i.guardianContact==='Contacted'?'bgn':i.guardianContact==='Pending'?'bgo':i.guardianContact==='No Response'?'brd':'bbl')+'">📞 '+i.guardianContact+'</span>':'')+(i.followUpStatus?'<span class="badge '+(i.followUpStatus==='Resolved'?'bgn':i.followUpStatus==='Needs Additional Intervention'?'brd':'bgo')+'">'+i.followUpStatus+'</span>':'')+'</div><div class="cg g3" style="margin-bottom:12px;font-size:12px"><div><div style="font-size:10px;color:var(--tx3)">Student</div><div style="font-weight:600">'+i.studentName+'</div><div style="font-size:11px;color:var(--tx3)">Gr '+i.grade+'-'+i.section+'</div></div><div><div style="font-size:10px;color:var(--tx3)">'+T('date')+'</div><div style="font-weight:600">'+i.date+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Recorded By</div><div style="font-weight:600">'+i.createdByName+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Student Total Points Deducted</div><div style="font-weight:700;color:var(--dn);font-size:16px">'+stuTotal+'</div></div></div><div class="fg"><label>Violation Type</label><div style="background:var(--sf2);padding:9px;border-radius:var(--rs);font-size:12px;color:var(--tx);font-weight:600">'+esc(i.type||'—')+'</div></div>'+(i.procedure?'<div class="fg"><label>Procedure Applied (Policy Rubric)</label><div style="background:var(--ac2);border:1px solid var(--ac3);padding:10px;border-radius:var(--rs);font-size:12px;color:var(--tx);line-height:1.5"><strong>'+esc(i.procedure)+'</strong></div></div>':'')+'<div class="fg"><label>'+T('description')+' / Detail</label><div style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;color:var(--tx2);line-height:1.6">'+esc(i.description||'—')+'</div></div>'+(i.actionTaken?'<div class="fg"><label>Notes / Action Taken</label><div style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;color:var(--tx2);line-height:1.6">'+esc(i.actionTaken)+'</div></div>':'')+(canAck?'<div class="fg"><label>'+T('principal_ack')+'</label><input id="ipk" value="'+esc(i.principalAck||'')+'" placeholder="Acknowledgment / final note…"></div>':i.principalAck?'<div class="al ag">🎯 <strong>Principal Ack:</strong> '+esc(i.principalAck)+'</div>':'')+'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="window.print()">🖨️</button><button class="btn bgo bsm" onclick="closeM();promptInfReferral(\''+esc(i.studentId)+'\',\''+esc(i.studentName).replace(/'/g,"\\'")+'\',\''+esc(i.grade)+'\',\''+esc(i.section||'')+'\',\''+esc(i.degree).replace(/'/g,"\\'")+'\',\''+esc(i.type).replace(/'/g,"\\'")+'\')">🔀 Refer to Advisor</button>'+(canAck?'<button class="btn bo" onclick="saveInfAck(\''+id+'\')">Save Ack →</button>':'')+'</div>');}
 function saveInfAck(id){const inf=DB.get('infractions')||[];const i=inf.findIndex(x=>x.id===id);if(i<0)return;inf[i].principalAck=document.getElementById('ipk').value;DB.set('infractions',inf);logA('Acknowledged infraction for '+inf[i].studentName);closeM();toast('Acknowledged','success');rInfractions();}
+function promptInfReferral(sid,sName,grade,section,degree,violation){
+  const advisors=(DB.get('accounts')||[]).filter(a=>a.active&&(a.role==='student_advisor'||a.role==='academic_supervisor'));
+  if(!advisors.length){toast('No student advisors available for referral','info');return;}
+  openM('<div class="mh"><h3>🔀 Refer Student to Advisor?</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al aw">⚠️ An infraction was just recorded for <strong>'+esc(sName)+'</strong> (Gr '+esc(grade)+'-'+esc(section||'')+'). Would you like to refer this student to a Student Advisor?</div>'
+  +'<div style="background:var(--sf2);padding:10px;border-radius:var(--rs);margin-bottom:12px;font-size:12px"><strong>'+esc(degree)+'</strong><br>'+esc(violation)+'</div>'
+  +'<div class="fg"><label>Refer To *</label><select id="infref-to"><option value="">— Select Advisor —</option>'+advisors.map(a=>'<option value="'+a.id+'">'+a.firstName+' '+a.lastName+' ('+rL(a.role)+')</option>').join('')+'</select></div>'
+  +'<div class="fg"><label>Additional Notes</label><textarea id="infref-desc" placeholder="Any additional context for the advisor…">Infraction: '+esc(degree)+' — '+esc(violation)+'</textarea></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Skip</button><button class="btn bp" onclick="saveInfReferral(\''+esc(sid)+'\',\''+esc(sName).replace(/'/g,"\\'")+'\',\''+esc(grade)+'\',\''+esc(section||'')+'\')">🔀 Refer Now →</button></div>');
+}
+function saveInfReferral(sid,sName,grade,section){
+  const toId=document.getElementById('infref-to').value;
+  const desc=document.getElementById('infref-desc').value.trim();
+  if(!toId){toast('Select an advisor','danger');return;}
+  const u=gA(toId);const refs=DB.get('referrals')||[];
+  refs.push({id:nid('r'),studentId:sid,studentName:sName,grade:grade,section:section,
+    referredBy:CU.id,referredByName:CU.firstName+' '+CU.lastName,
+    referredTo:toId,referredToName:u.firstName+' '+u.lastName,
+    reason:'Discipline Issue',description:desc,status:'Active',notes:[],principalAck:'',
+    created:new Date().toISOString().split('T')[0]});
+  DB.set('referrals',refs);
+  logA('Referred '+sName+' to '+u.firstName+' '+u.lastName+' after infraction');
+  closeM();toast('Referral created','success');
+}
 function rReferrals(){
   const isP=['superadmin','principal','quality_incharge'].includes(CU.role);const refs=DB.get('referrals')||[];const myR=isP?refs:refs.filter(r=>r.referredTo===CU.id||r.referredBy===CU.id);const canC=['superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="flex:1">'+sw('pickRefSV','refsvi','refsvd')+'</div>'+(canC?'<button class="btn bp bsm" onclick="addRefM()" style="margin-left:8px">+ Refer</button>':'')+'</div></div><div class="card"><div class="tw"><table><thead><tr><th>Student</th><th>'+T('grade')+'</th><th>'+T('reason')+'</th><th>From</th><th>To</th><th>'+T('status')+'</th><th>'+T('date')+'</th><th>Actions</th></tr></thead><tbody>'+myR.map(r=>'<tr><td><strong>'+r.studentName+'</strong></td><td>Gr '+r.grade+'-'+(r.section||'')+'</td><td><span class="badge bpu">'+r.reason+'</span></td><td style="font-size:11px">'+r.referredByName+'</td><td style="font-size:11px">'+r.referredToName+'</td><td><span class="badge '+(r.status==='Active'?'bbl':r.status==='Resolved'?'bgn':'bgr')+'">'+r.status+'</span></td><td style="font-size:10px;color:var(--tx3)">'+r.created+'</td><td><button class="btn bg2 bxs" onclick="vRef(\''+r.id+'\')">Manage</button></td></tr>').join('')+'</tbody></table></div>'+(myR.length===0?'<div class="emp"><div class="ei">🔀</div><p>'+T('no_records')+'</p></div>':'')+'</div>';
@@ -3955,7 +3980,7 @@ function rReexam(){
 
   const list=DB.get('reexam_schedules')||[];
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📝 '+T('reexam_schedule')+' ('+list.length+')</h3></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Click any absent student to create or edit their re-exam schedule.</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📝 '+T('reexam_schedule')+' ('+list.length+')</h3>'+(canEdit?'<button class="btn bs bsm" onclick="autoExamScheduleM()">🤖 Auto Generate Schedule</button>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Click any absent student to create or edit their re-exam schedule. Use Auto Generate to create schedules for all absent students at once.</div></div>'
 
   // View tabs: Absent Students | Schedules | By Date | By Session
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button id="rxv-absent" class="btn bp bsm" onclick="reexView(\'absent\')">👨‍🎓 Absent Students</button>':'')+'<button id="rxv-list" class="btn bg2 bsm" onclick="reexView(\'list\')">📋 Schedules</button><button id="rxv-date" class="btn bg2 bsm" onclick="reexView(\'date\')">📅 By Exam Date</button><button id="rxv-session" class="btn bg2 bsm" onclick="reexView(\'session\')">📑 By Session</button></div></div>'
@@ -4293,6 +4318,71 @@ function saveReexam(){
   DB.set('reexam_schedules',list);closeM();rReexam();
 }
 
+// ─── AUTO EXAM SCHEDULE GENERATOR ────────────────────────
+function autoExamScheduleM(){
+  const abs=DB.get('exam_absents')||[];
+  if(!abs.length){toast('No exam absences recorded','danger');return;}
+  const sessions=(DB.get('exam_sessions')||[]).filter(s=>s.status==='active');
+  const sessOpts=sessions.map(s=>'<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>').join('');
+  // Count students without schedules
+  const schedules=DB.get('reexam_schedules')||[];
+  const stuMap={};
+  abs.forEach(a=>{const k=a.studentId||a.studentName;if(!stuMap[k])stuMap[k]={studentId:a.studentId,studentName:a.studentName,grade:a.grade,section:a.section,subjects:[]};stuMap[k].subjects.push(a.subject);});
+  const allStudents=Object.values(stuMap);
+  const unscheduled=allStudents.filter(s=>!schedules.find(r=>(s.studentId&&r.studentId===s.studentId)||r.studentName===s.studentName));
+  openM('<div class="mh"><h3>🤖 Auto Generate Re-exam Schedule</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai">This will auto-create re-exam schedules for all absent students who don\'t have one yet. You can edit any schedule afterwards.</div>'
+  +'<div class="cg g3" style="margin-bottom:12px"><div class="al ag" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;text-transform:uppercase;font-weight:700">Total Absent</div><div style="font-size:22px;font-weight:bold">'+allStudents.length+'</div></div><div class="al aw" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;text-transform:uppercase;font-weight:700">Unscheduled</div><div style="font-size:22px;font-weight:bold">'+unscheduled.length+'</div></div><div class="al ai" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;text-transform:uppercase;font-weight:700">Already Scheduled</div><div style="font-size:22px;font-weight:bold">'+(allStudents.length-unscheduled.length)+'</div></div></div>'
+  +'<div class="fg"><label>Exam Session *</label><select id="auto-rex-session" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"><option value="">— Select Session —</option>'+sessOpts+'</select></div>'
+  +'<div class="fg"><label>Starting Re-exam Date *</label><input type="date" id="auto-rex-start" value="'+new Date(Date.now()+7*86400000).toISOString().split('T')[0]+'" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"></div>'
+  +'<div class="fg"><label>Exams Per Day</label><input type="number" id="auto-rex-perday" value="3" min="1" max="10" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"></div>'
+  +'<div class="fg"><label>Default Venue</label><input id="auto-rex-venue" placeholder="e.g. Exam Hall, Room 10A" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"></div>'
+  +'<div class="al aw" style="margin-bottom:0">'+(unscheduled.length?'Will create <strong>'+unscheduled.length+'</strong> schedule(s). Existing schedules are not affected.':'<strong>All students already have schedules.</strong> No new schedules will be created.')+'</div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button>'+(unscheduled.length?'<button class="btn bp" onclick="runAutoExamSchedule()">🤖 Generate '+unscheduled.length+' Schedule(s) →</button>':'')+'</div>',true);
+}
+
+function runAutoExamSchedule(){
+  const session=document.getElementById('auto-rex-session').value;
+  if(!session){toast('Select an exam session','danger');return;}
+  const startDate=document.getElementById('auto-rex-start').value;
+  if(!startDate){toast('Select a starting date','danger');return;}
+  const perDay=parseInt(document.getElementById('auto-rex-perday').value)||3;
+  const venue=document.getElementById('auto-rex-venue').value.trim();
+  const abs=DB.get('exam_absents')||[];
+  const schedules=DB.get('reexam_schedules')||[];
+  // Build unique students map
+  const stuMap={};
+  abs.forEach(a=>{const k=a.studentId||a.studentName;if(!stuMap[k])stuMap[k]={studentId:a.studentId,studentName:a.studentName,grade:a.grade,section:a.section,subjects:{}};if(!stuMap[k].subjects[a.subject])stuMap[k].subjects[a.subject]={subject:a.subject,absentDates:[a.absentDate]};else stuMap[k].subjects[a.subject].absentDates.push(a.absentDate);});
+  const unscheduled=Object.values(stuMap).filter(s=>!schedules.find(r=>(s.studentId&&r.studentId===s.studentId)||r.studentName===s.studentName));
+  if(!unscheduled.length){toast('All students already scheduled','info');closeM();return;}
+  // Collect all unique subjects across all students for scheduling
+  const allSubjects=[...new Set(abs.map(a=>a.subject).filter(Boolean))];
+  // Assign dates: spread subjects across days
+  const dateMap={};let dayOffset=0,subjectsToday=0;
+  allSubjects.forEach(subj=>{
+    if(subjectsToday>=perDay){dayOffset++;subjectsToday=0;}
+    const d=new Date(startDate+'T00:00:00');d.setDate(d.getDate()+dayOffset);
+    // Skip Friday/Saturday
+    while(d.getDay()===5||d.getDay()===6)d.setDate(d.getDate()+1);
+    dateMap[subj]=d.toISOString().split('T')[0];
+    subjectsToday++;
+  });
+  // Create schedules
+  let created=0;
+  unscheduled.forEach(stu=>{
+    const subjects=Object.values(stu.subjects).map(s=>({
+      subject:s.subject,examDate:dateMap[s.subject]||startDate,startTime:'',endTime:'',
+      venue:venue,invigilator:'',examStatus:'Pending',remarks:'',absentDates:s.absentDates
+    }));
+    schedules.push({id:nid('rex'),studentId:stu.studentId||null,studentName:stu.studentName,grade:stu.grade||'',section:stu.section||'',examSession:session,subjects,status:'Scheduled',notes:'Auto-generated',createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,created:new Date().toISOString()});
+    created++;
+  });
+  DB.set('reexam_schedules',schedules);
+  logA('Auto-generated '+created+' re-exam schedules for session: '+session);
+  closeM();toast(created+' re-exam schedule(s) created — click any to edit details','success');
+  rReexam();
+}
+
 function vReexam(id){
   const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
   const canEdit=['academic_supervisor','admin_assistant','vice_principal','superadmin'].includes(CU.role);
@@ -4436,7 +4526,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
-  'duty_places','duty_remarks'
+  'duty_places','duty_remarks','classroom_discipline'
 ];
 
 function isSessionScopedKey(k){
@@ -4462,6 +4552,7 @@ const AUTO_REFRESH_MAP = {
   reexam_schedules:['rReexam'],
   duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
   duty_places:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
+  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],
   sessions:['rSessions'],active_session_id:['rSessions']
 };
 
@@ -4778,9 +4869,9 @@ function saveSettings(){const s=DB.get('settings')||{};Object.assign(s,{schoolNa
 function prevLogo(){const file=document.getElementById('logof').files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{document.getElementById('logoprev').innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:contain">';};reader.readAsDataURL(file);}
 function saveLogo(){const file=document.getElementById('logof').files[0],emoji=document.getElementById('logoem').value;if(file){const reader=new FileReader();reader.onload=e=>{const s=DB.get('settings')||{};s.logo=e.target.result;DB.set('settings',s);applyBrand(s);logA('Updated school logo (image)');toast('Logo saved','success');};reader.readAsDataURL(file);}else if(emoji){const s=DB.get('settings')||{};s.logo=emoji;DB.set('settings',s);applyBrand(s);logA('Updated school logo: '+emoji);toast('Logo saved','success');}}
 function setLiveMode(val){toast('Live Mode is no longer needed — demo panel has been permanently removed for production.','info');}
-function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
+function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','classroom_discipline'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
 function impAllM(){openM('<div class="mh"><h3>📤 Restore Backup</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ad">⚠️ This will overwrite ALL data. Export a backup first!</div><div class="fg"><label>Backup JSON File</label><input type="file" id="impjf" accept=".json"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bd3" onclick="procRestore()">Restore →</button></div>');window.procRestore=function(){const file=document.getElementById('impjf').files[0];if(!file){toast('Select file','danger');return;}const reader=new FileReader();reader.onload=e=>{try{const data=JSON.parse(e.target.result);Object.entries(data).forEach(([k,v])=>{if(k!=='exportedAt')DB.set(k,v);});closeM();toast('Data restored!','success');setTimeout(()=>{applyBrand(DB.get('settings')||{});navigate('dashboard');},500);}catch{toast('Invalid backup file','danger');}};reader.readAsText(file);};}
-function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
+function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','classroom_discipline','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
 function rInfForms(){const forms=DB.get('infraction_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>⚠️ '+T('infraction_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'infraction_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'infraction_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'infraction_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📄</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function rVisitForms(){const forms=DB.get('visit_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>📝 '+T('visit_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'visit_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'visit_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'visit_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📋</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function upFormM(k){openM('<div class="mh"><h3>📤 Upload Form</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Form Name *</label><input id="ufn"></div><div class="fg"><label>File *</label><input type="file" id="uff" accept=".pdf,.jpg,.png,.docx"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveForm(\''+k+'\')">Upload →</button></div>');}
@@ -5380,18 +5471,18 @@ function getMyWarningLetters(){
 function rMyWarnings(){
   const warnings=getMyWarningLetters();
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📝 My Explanation Letters ('+warnings.length+')</h3></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Letters issued to you by school administration. You can reply in writing.</div></div>'
-  +'<div class="card">'+(warnings.length?warnings.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(w=>{const hasReply=w.replyText||w.replyAttachment;return'<div class="card" style="margin-bottom:9px;border-left:4px solid '+(hasReply?'var(--gd)':'#d63838')+';padding:13px"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:7px;margin-bottom:5px"><div><div style="font-weight:700;font-size:13px;color:'+(hasReply?'var(--gd)':'#a52424')+'">📝 '+esc(w.type||'Explanation Letter')+'</div><div style="font-size:11px;color:var(--tx3)">Issued '+esc(w.date||'—')+' by '+esc(w.issuedByName||'—')+'</div></div><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bxs" onclick="vMyWarning(\''+w.id+'\')">📄 Read Letter</button>'+(hasReply?'<span class="badge bgn" style="font-size:10px;align-self:center">✓ Reply submitted</span>':'<button class="btn bp bxs" onclick="myWarningReplyM(\''+w.id+'\')">✍️ Write Reply</button>')+'</div></div><div style="font-size:13px;font-weight:600;margin-bottom:4px">Subject: '+esc(w.subject||'—')+'</div>'+(w.content?'<div style="font-size:12px;color:var(--tx2);line-height:1.5;white-space:pre-wrap;max-height:90px;overflow:hidden;position:relative">'+esc(w.content.length>200?w.content.slice(0,200)+'…':w.content)+'</div>':'')+'</div>';}).join(''):'<div class="emp"><div class="ei">✅</div><p>No explanation letters — keep up the good work!</p></div>')+'</div>';
+  +'<div class="card">'+(warnings.length?warnings.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(w=>{const hasReply=!!w.replyText;return'<div class="card" style="margin-bottom:9px;border-left:4px solid '+(hasReply?'var(--gd)':'#d63838')+';padding:13px"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:7px;margin-bottom:5px"><div><div style="font-weight:700;font-size:13px;color:'+(hasReply?'var(--gd)':'#a52424')+'">📝 '+esc(w.type||'Explanation Letter')+'</div><div style="font-size:11px;color:var(--tx3)">Issued '+esc(w.date||'—')+' by '+esc(w.issuedByName||'—')+'</div></div><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bxs" onclick="vMyWarning(\''+w.id+'\')">📄 Read Letter</button>'+(hasReply?'<span class="badge bgn" style="font-size:10px;align-self:center">✓ Reply submitted</span>':'<button class="btn bp bxs" onclick="myWarningReplyM(\''+w.id+'\')">✍️ Write Reply</button>')+'</div></div><div style="font-size:13px;font-weight:600;margin-bottom:4px">Subject: '+esc(w.subject||'—')+'</div>'+(w.content?'<div style="font-size:12px;color:var(--tx2);line-height:1.5;white-space:pre-wrap;max-height:90px;overflow:hidden;position:relative">'+esc(w.content.length>200?w.content.slice(0,200)+'…':w.content)+'</div>':'')+'</div>';}).join(''):'<div class="emp"><div class="ei">✅</div><p>No explanation letters — keep up the good work!</p></div>')+'</div>';
 }
 
 function vMyWarning(id){
   const w=(DB.get('warning_letters')||[]).find(x=>x.id===id);if(!w)return;
-  const hasReply=w.replyText||w.replyAttachment;
+  const hasReply=!!w.replyText;
   openM('<div class="mh"><h3>📝 Explanation Letter</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
   +'<div class="cg g2" style="margin-bottom:12px;font-size:12px"><div><div style="font-size:10px;color:var(--tx3)">To</div><div style="font-weight:600">'+esc(w.recipientName||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Date</div><div style="font-weight:600">'+esc(w.date||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">From</div><div style="font-weight:600">'+esc(w.issuedByName||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Reference</div><div class="mono" style="font-size:11px">'+esc(w.id)+'</div></div></div>'
   +'<div style="background:var(--sf2);padding:11px 14px;border-left:4px solid var(--ac);border-radius:var(--rs);margin-bottom:12px"><div style="font-size:13px;font-weight:bold;margin-bottom:5px">'+esc(w.type||'Explanation Letter')+'</div><div style="font-size:13px;font-weight:600;color:var(--ac)">Subject: '+esc(w.subject||'—')+'</div></div>'
   +(w.content?'<div class="fg"><label>Letter Content</label><div style="background:var(--sf);border:1px solid var(--bd);padding:12px;border-radius:var(--rs);font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow-y:auto">'+esc(w.content)+'</div></div>':'')
-  +(hasReply?'<div class="al ag" style="margin-bottom:0">✓ <strong>Your reply was submitted on '+esc((w.replyDate||'').split('T')[0])+'</strong>'+(w.replyText?'<div style="margin-top:6px;font-size:12px;white-space:pre-wrap;line-height:1.5">'+esc(w.replyText.length>300?w.replyText.slice(0,300)+'…':w.replyText)+'</div>':'')+'</div>':'')
-  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'+(!hasReply?'<button class="btn bp" onclick="closeM();myWarningReplyM(\''+w.id+'\')">✍️ Write Reply</button>':'<button class="btn bg2" onclick="closeM();myWarningReplyM(\''+w.id+'\')">Edit Reply</button>')+'</div>',true);
+  +(hasReply?'<div class="al ag" style="margin-bottom:0">✓ <strong>Your reply was submitted on '+esc((w.replyDate||'').split('T')[0])+'</strong><div style="margin-top:6px;font-size:12px;white-space:pre-wrap;line-height:1.5">'+esc(w.replyText.length>300?w.replyText.slice(0,300)+'…':w.replyText)+'</div></div>':'')
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expWarningPDF(\''+w.id+'\')">📄 PDF</button>'+(!hasReply?'<button class="btn bp" onclick="closeM();myWarningReplyM(\''+w.id+'\')">✍️ Write Reply</button>':'<button class="btn bg2" onclick="closeM();myWarningReplyM(\''+w.id+'\')">✏️ Edit Reply</button>')+'</div>',true);
 }
 
 function myWarningReplyM(id){
@@ -5399,39 +5490,24 @@ function myWarningReplyM(id){
   openM('<div class="mh"><h3>✍️ Reply to Explanation Letter</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
   +'<div class="al ai">📋 Write your reply to: <strong>'+esc(w.subject||w.type)+'</strong>. Your written response will be visible to the principal.</div>'
   +'<div class="fg"><label>Your Written Reply *</label><textarea id="my-warning-reply" placeholder="Write your explanation, acknowledgment, or response here…" style="min-height:200px">'+(w.replyText?esc(w.replyText):'')+'</textarea></div>'
-  +'<div class="fg"><label>Attach File (optional)</label><input type="file" id="my-warning-file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" style="padding:6px"><div style="font-size:10px;color:var(--tx3);margin-top:3px">Max 1MB. Optional supporting document.</div></div>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveMyWarningReply(\''+id+'\')">✍️ Submit Reply →</button></div>');
 }
 
 function saveMyWarningReply(id){
   const text=document.getElementById('my-warning-reply').value.trim();
-  const fileInput=document.getElementById('my-warning-file');
-  if(!text&&!fileInput.files.length){toast('Please write a reply or attach a file','danger');return;}
-  
+  if(!text){toast('Please write a reply','danger');return;}
+
   const list=DB.get('warning_letters')||[];
   const i=list.findIndex(w=>w.id===id);if(i<0)return;
-  
-  const finalize=(attachmentData)=>{
-    list[i].replyText=text;
-    list[i].replyAttachment=attachmentData||list[i].replyAttachment||null;
-    list[i].replyDate=new Date().toISOString();
-    list[i].repliedBy=CU.firstName+' '+CU.lastName;
-    DB.set('warning_letters',list);
-    logA('Submitted reply to explanation letter: '+(list[i].subject||list[i].type));
-    toast('Reply submitted','success');
-    closeM();
-    rMyWarnings();
-  };
-  
-  if(fileInput.files.length){
-    const f=fileInput.files[0];
-    if(f.size>1024*1024){toast('File must be under 1MB','danger');return;}
-    const r=new FileReader();
-    r.onload=e=>finalize({name:f.name,type:f.type,size:f.size,data:e.target.result});
-    r.readAsDataURL(f);
-  }else{
-    finalize();
-  }
+
+  list[i].replyText=text;
+  list[i].replyDate=new Date().toISOString();
+  list[i].repliedBy=CU.firstName+' '+CU.lastName;
+  DB.set('warning_letters',list);
+  logA('Submitted reply to explanation letter: '+(list[i].subject||list[i].type));
+  toast('Reply submitted','success');
+  closeM();
+  rMyWarnings();
 }
 
 function rMyRemedials(){
@@ -7059,6 +7135,201 @@ function vAllMySubsHistory(){
     return'<div style="margin-bottom:13px"><div style="font-size:12px;font-weight:700;color:var(--ac);background:var(--sf2);padding:6px 10px;border-radius:var(--rs);margin-bottom:6px">📅 '+monthName+' ('+monthSubs.length+')</div><div class="tw"><table style="font-size:11px"><thead><tr><th>Date</th><th>Day</th><th>Period</th><th>Class</th><th>Subject</th><th>Absent Teacher</th><th>Notes</th></tr></thead><tbody>'+monthSubs.map(s=>'<tr'+(s.date>=today?' style="background:var(--gdbg)"':'')+'><td class="mono">'+esc(s.date)+'</td><td>'+esc(s.day||'—')+'</td><td><strong>'+esc(s.period||'—')+'</strong></td><td>'+esc(s.class||'—')+'</td><td>'+esc(s.subject||'—')+'</td><td>'+esc(s.absentName||'—')+'</td><td style="font-size:10px;color:var(--tx3);max-width:160px">'+esc((s.notes||'').slice(0,60))+((s.notes||'').length>60?'…':'')+'</td></tr>').join('')+'</tbody></table></div></div>';
   }).join(''):'<div class="emp"><div class="ei">🔄</div><p>No substitutions yet</p></div>')
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
+}
+
+// ═══════════════════════════════════════════════════════════
+// CLASSROOM DISCIPLINE REPORTS
+// Teachers report discipline issues; VP views all reports.
+// ═══════════════════════════════════════════════════════════
+
+const DISCIPLINE_ISSUES=[
+  'Talking during lesson','Not bringing required materials','Not following teacher\'s instructions',
+  'Coming late to class','Fighting with classmates','Damaging school property','Littering',
+  'Not wearing proper uniform','Misbehaving/Disrespectful','Using foul/inappropriate language',
+  'Using phone inside class','Other'
+];
+const DISCIPLINE_ACTIONS=[
+  'Verbal Warning','Written Warning','Time-out/Seat Change','Parent Contacted',
+  'Sent to Student Advisor','Confiscated item','Extra classwork/Homework assigned',
+  'Apology written/Verbal apology','Behavior contract/agreement signed','Referred to Vice Principal'
+];
+
+// VP page — view all discipline reports
+function rClassroomDiscipline(){
+  if(!['superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role)){
+    document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;
+  }
+  const reports=(DB.get('classroom_discipline')||[]).slice().sort((a,b)=>(b.created||'').localeCompare(a.created||''));
+  const pending=reports.filter(r=>r.status!=='Resolved'&&r.status!=='Closed');
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Classroom Discipline Reports ('+reports.length+')</h3></div>'
+  +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Reports submitted by teachers about classroom discipline issues.</div></div>'
+  +'<div class="cg g4" style="margin-bottom:13px">'
+  +'<div class="stat bl"><div class="sl2">Total Reports</div><div class="sv">'+reports.length+'</div><div class="sic">📋</div></div>'
+  +'<div class="stat rd"><div class="sl2">Pending</div><div class="sv">'+pending.length+'</div><div class="sic">⏳</div></div>'
+  +'<div class="stat gn"><div class="sl2">Resolved</div><div class="sv">'+reports.filter(r=>r.status==='Resolved').length+'</div><div class="sic">✅</div></div>'
+  +'<div class="stat go"><div class="sl2">This Week</div><div class="sv">'+reports.filter(r=>{const d=new Date(r.date||r.created);const now=new Date();const w=new Date(now);w.setDate(now.getDate()-7);return d>=w;}).length+'</div><div class="sic">📅</div></div></div>'
+  +'<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'
+  +'<input id="cdq" placeholder="🔍 Search by student, teacher, class…" oninput="fltClassDisc()" style="flex:1;min-width:200px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
+  +'<select id="cdsf" onchange="fltClassDisc()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Status</option><option>Pending</option><option>Reviewed</option><option>Resolved</option><option>Closed</option></select></div>'
+  +'<div id="cdlist">'+buildDiscList(reports)+'</div></div>';
+}
+
+function buildDiscList(reports){
+  if(!reports.length)return'<div class="emp"><div class="ei">📋</div><p>No discipline reports</p></div>';
+  return'<div class="tw"><table><thead><tr><th>Date</th><th>Student</th><th>Class</th><th>Issues</th><th>Actions Taken</th><th>Reported By</th><th>Status</th><th></th></tr></thead><tbody>'
+  +reports.map(r=>'<tr><td class="mono" style="font-size:11px">'+(r.date||'').split('T')[0]+'</td>'
+  +'<td><strong>'+esc(r.studentName||'—')+'</strong></td>'
+  +'<td>'+esc(r.className||'—')+'</td>'
+  +'<td style="font-size:11px;max-width:200px">'+(r.issues||[]).slice(0,2).map(i=>'<span class="badge brd" style="font-size:10px;margin:1px">'+esc(i)+'</span>').join('')+((r.issues||[]).length>2?'<span style="font-size:10px;color:var(--tx3)"> +'+((r.issues||[]).length-2)+' more</span>':'')+'</td>'
+  +'<td style="font-size:11px;max-width:180px">'+(r.actionsTaken||[]).slice(0,2).map(a=>'<span class="badge bbl" style="font-size:10px;margin:1px">'+esc(a)+'</span>').join('')+((r.actionsTaken||[]).length>2?'<span style="font-size:10px;color:var(--tx3)"> +'+((r.actionsTaken||[]).length-2)+' more</span>':'')+'</td>'
+  +'<td style="font-size:11px">'+esc(r.teacherName||'—')+'</td>'
+  +'<td><span class="badge '+(r.status==='Resolved'?'bgn':r.status==='Reviewed'?'bbl':r.status==='Closed'?'bgr':'bgo')+'">'+(r.status||'Pending')+'</span></td>'
+  +'<td><button class="btn bg2 bxs" onclick="vDiscReport(\''+r.id+'\')">View</button></td></tr>').join('')
+  +'</tbody></table></div>';
+}
+
+function fltClassDisc(){
+  const q=(document.getElementById('cdq').value||'').toLowerCase().trim();
+  const sf=document.getElementById('cdsf').value;
+  let list=(DB.get('classroom_discipline')||[]).slice().sort((a,b)=>(b.created||'').localeCompare(a.created||''));
+  if(q)list=list.filter(r=>((r.studentName||'')+(r.teacherName||'')+(r.className||'')+(r.issues||[]).join(' ')).toLowerCase().includes(q));
+  if(sf)list=list.filter(r=>(r.status||'Pending')===sf);
+  document.getElementById('cdlist').innerHTML=buildDiscList(list);
+}
+
+function vDiscReport(id){
+  const r=(DB.get('classroom_discipline')||[]).find(x=>x.id===id);if(!r)return;
+  const canManage=['superadmin','principal','vice_principal'].includes(CU.role);
+  openM('<div class="mh"><h3>📋 Discipline Report</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="cg g3" style="margin-bottom:12px;font-size:12px"><div><div style="font-size:10px;color:var(--tx3)">Student</div><div style="font-weight:700">'+esc(r.studentName||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Class</div><div style="font-weight:600">'+esc(r.className||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Date</div><div style="font-weight:600">'+(r.date||'').split('T')[0]+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Reported By</div><div style="font-weight:600">'+esc(r.teacherName||'—')+'</div></div></div>'
+  +'<div class="fg"><label>Discipline Issues</label><div style="display:flex;gap:5px;flex-wrap:wrap">'+(r.issues||[]).map(i=>'<span class="badge brd">'+esc(i)+'</span>').join('')+'</div></div>'
+  +(r.otherIssue?'<div class="fg"><label>Other Issue Detail</label><div style="background:var(--sf2);padding:9px;border-radius:var(--rs);font-size:12px">'+esc(r.otherIssue)+'</div></div>':'')
+  +'<div class="fg"><label>Actions Taken</label><div style="display:flex;gap:5px;flex-wrap:wrap">'+(r.actionsTaken||[]).map(a=>'<span class="badge bbl">'+esc(a)+'</span>').join('')+'</div></div>'
+  +(r.additionalNotes?'<div class="fg"><label>Additional Notes</label><div style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;line-height:1.6;white-space:pre-wrap">'+esc(r.additionalNotes)+'</div></div>':'')
+  +(r.vpRemarks?'<div class="al ag">📝 <strong>VP Remarks:</strong> '+esc(r.vpRemarks)+'</div>':'')
+  +(canManage?'<div class="fg"><label>Status</label><select id="cd-st">'+['Pending','Reviewed','Resolved','Closed'].map(s=>'<option'+(s===(r.status||'Pending')?' selected':'')+'>'+s+'</option>').join('')+'</select></div>'
+  +'<div class="fg"><label>VP Remarks</label><textarea id="cd-vpr" placeholder="Add remarks or follow-up notes…">'+(r.vpRemarks?esc(r.vpRemarks):'')+'</textarea></div>':'')
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expDiscPDF(\''+r.id+'\')">📄 PDF</button>'
+  +(canManage?'<button class="btn bp" onclick="saveDiscStatus(\''+id+'\')">Save →</button>':'')+'</div>',true);
+}
+
+function saveDiscStatus(id){
+  const list=DB.get('classroom_discipline')||[];
+  const i=list.findIndex(x=>x.id===id);if(i<0)return;
+  const st=document.getElementById('cd-st');
+  const vp=document.getElementById('cd-vpr');
+  if(st)list[i].status=st.value;
+  if(vp)list[i].vpRemarks=vp.value.trim();
+  list[i].reviewedBy=CU.firstName+' '+CU.lastName;
+  list[i].reviewedAt=new Date().toISOString();
+  DB.set('classroom_discipline',list);
+  logA('Updated discipline report status for '+list[i].studentName+': '+list[i].status);
+  toast('Updated','success');closeM();rClassroomDiscipline();
+}
+
+function expDiscPDF(id){
+  const r=(DB.get('classroom_discipline')||[]).find(x=>x.id===id);if(!r)return;
+  const s=DB.get('settings')||{};
+  const w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Discipline Report</title><style>body{font-family:Arial,sans-serif;padding:30px;max-width:700px;margin:0 auto}h2{color:#1a5f7a;border-bottom:2px solid #1a5f7a;padding-bottom:8px}.field{margin-bottom:14px}.label{font-size:10px;color:#666;text-transform:uppercase;font-weight:700;margin-bottom:3px}.val{font-size:13px}.badge{display:inline-block;padding:3px 9px;border-radius:10px;font-size:11px;margin:2px;background:#f0f0f0}@media print{button{display:none}}</style></head><body>'
+  +pdfHeaderHTML({subtitle:'Classroom Discipline Report'})
+  +'<div style="display:flex;gap:30px;margin-bottom:20px"><div class="field"><div class="label">Student Name</div><div class="val"><strong>'+esc(r.studentName)+'</strong></div></div><div class="field"><div class="label">Class</div><div class="val">'+esc(r.className)+'</div></div><div class="field"><div class="label">Date</div><div class="val">'+(r.date||'').split('T')[0]+'</div></div><div class="field"><div class="label">Reported By</div><div class="val">'+esc(r.teacherName)+'</div></div></div>'
+  +'<div class="field"><div class="label">Discipline Issues</div><div class="val">'+(r.issues||[]).map(i=>'<span class="badge" style="background:#fde2e2;color:#a52424">'+esc(i)+'</span>').join(' ')+'</div></div>'
+  +(r.otherIssue?'<div class="field"><div class="label">Other Issue</div><div class="val">'+esc(r.otherIssue)+'</div></div>':'')
+  +'<div class="field"><div class="label">Actions Taken</div><div class="val">'+(r.actionsTaken||[]).map(a=>'<span class="badge" style="background:#d4edfc;color:#1a5f7a">'+esc(a)+'</span>').join(' ')+'</div></div>'
+  +(r.additionalNotes?'<div class="field"><div class="label">Additional Notes</div><div class="val" style="white-space:pre-wrap">'+esc(r.additionalNotes)+'</div></div>':'')
+  +(r.vpRemarks?'<div class="field" style="margin-top:20px;padding:10px;background:#e8f4f8;border-radius:4px"><div class="label">VP Remarks</div><div class="val">'+esc(r.vpRemarks)+'</div></div>':'')
+  +'<div style="margin-top:40px;display:flex;justify-content:space-between"><div style="text-align:center;width:40%"><div style="border-top:1px solid #333;padding-top:5px;font-size:11px">Teacher\'s Signature</div></div><div style="text-align:center;width:40%"><div style="border-top:1px solid #333;padding-top:5px;font-size:11px">Student\'s Signature</div></div></div>'
+  +'<button onclick="window.print()" style="margin-top:20px;padding:8px 18px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">🖨️ Print</button></body></html>');
+  w.document.close();
+}
+
+// Teacher page — my discipline reports
+function rMyDisciplineReports(){
+  if(CU.role!=='teacher'){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>This page is only available to teachers</p></div>';return;}
+  const myName=((CU.firstName||'')+' '+(CU.lastName||'')).trim().toLowerCase();
+  const reports=(DB.get('classroom_discipline')||[]).filter(r=>(r.teacherId===CU.id)||(r.teacherName||'').trim().toLowerCase()===myName).sort((a,b)=>(b.created||'').localeCompare(a.created||''));
+
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 My Discipline Reports ('+reports.length+')</h3><button class="btn bp bsm" onclick="addClassDisciplineM()">+ New Report</button></div>'
+  +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Report classroom discipline issues. These are visible to the Vice Principal.</div></div>'
+  +'<div class="card">'+(reports.length?'<div class="tw"><table><thead><tr><th>Date</th><th>Student</th><th>Class</th><th>Issues</th><th>Actions Taken</th><th>Status</th><th></th></tr></thead><tbody>'
+  +reports.map(r=>'<tr><td class="mono" style="font-size:11px">'+(r.date||'').split('T')[0]+'</td><td><strong>'+esc(r.studentName||'—')+'</strong></td><td>'+esc(r.className||'—')+'</td>'
+  +'<td style="font-size:11px">'+(r.issues||[]).slice(0,2).map(i=>'<span class="badge brd" style="font-size:10px;margin:1px">'+esc(i)+'</span>').join('')+((r.issues||[]).length>2?'<span style="font-size:10px;color:var(--tx3)"> +'+((r.issues||[]).length-2)+'</span>':'')+'</td>'
+  +'<td style="font-size:11px">'+(r.actionsTaken||[]).slice(0,2).map(a=>'<span class="badge bbl" style="font-size:10px;margin:1px">'+esc(a)+'</span>').join('')+'</td>'
+  +'<td><span class="badge '+(r.status==='Resolved'?'bgn':r.status==='Reviewed'?'bbl':r.status==='Closed'?'bgr':'bgo')+'">'+(r.status||'Pending')+'</span></td>'
+  +'<td><button class="btn bg2 bxs" onclick="vMyDiscReport(\''+r.id+'\')">View</button></td></tr>').join('')
+  +'</tbody></table></div>':'<div class="emp"><div class="ei">📋</div><p>No discipline reports submitted yet. Click "+ New Report" to report an issue.</p></div>')+'</div>';
+}
+
+function addClassDisciplineM(){
+  const students=DB.get('students')||[];
+  const grades=[...new Set(students.map(s=>s.grade))].sort((a,b)=>a-b);
+  openM('<div class="mh"><h3>📋 Classroom Discipline Report</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai">📋 Report a classroom discipline issue. This report will be visible to the Vice Principal.</div>'
+  +'<div class="fr f2"><div class="fg"><label>Student *</label>'+sw('pickDiscStu','cd-si','cd-sd')+'</div><input type="hidden" id="cd-sid"></div>'
+  +'<div id="cd-stuinfo" style="display:none" class="al ai" style="margin-bottom:8px"></div>'
+  +'<div class="fr f2"><div class="fg"><label>Class / Grade-Section *</label><input id="cd-class" placeholder="e.g. Grade 9-A" readonly></div><div class="fg"><label>Date *</label><input type="date" id="cd-date" value="'+new Date().toISOString().split('T')[0]+'"></div></div>'
+  +'<div class="fg"><label>Discipline Issues * <span style="font-size:10px;color:var(--tx3)">(select all that apply)</span></label>'
+  +'<div id="cd-issues" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">'+DISCIPLINE_ISSUES.map((iss,idx)=>'<label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);cursor:pointer;font-size:12px"><input type="checkbox" value="'+esc(iss)+'" class="cd-iss-chk"> '+esc(iss)+'</label>').join('')+'</div></div>'
+  +'<div id="cd-other-wrap" style="display:none" class="fg"><label>Specify Other Issue *</label><input id="cd-other" placeholder="Describe the issue…"></div>'
+  +'<div class="fg"><label>Actions Taken * <span style="font-size:10px;color:var(--tx3)">(select all that apply)</span></label>'
+  +'<div id="cd-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">'+DISCIPLINE_ACTIONS.map((act,idx)=>'<label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);cursor:pointer;font-size:12px"><input type="checkbox" value="'+esc(act)+'" class="cd-act-chk"> '+esc(act)+'</label>').join('')+'</div></div>'
+  +'<div class="fg"><label>Additional Notes (optional)</label><textarea id="cd-notes" placeholder="Any additional details, context, or follow-up needed…"></textarea></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveClassDiscipline()">📋 Submit Report →</button></div>',true);
+  // Toggle Other field
+  document.querySelectorAll('.cd-iss-chk').forEach(cb=>{cb.addEventListener('change',()=>{
+    const otherCb=[...document.querySelectorAll('.cd-iss-chk')].find(c=>c.value==='Other');
+    document.getElementById('cd-other-wrap').style.display=(otherCb&&otherCb.checked)?'block':'none';
+  });});
+  window.pickDiscStu=function(sid){
+    const s=gS(sid);if(!s)return;
+    document.getElementById('cd-sid').value=sid;
+    document.getElementById('cd-si').value=fN(s);
+    document.getElementById('cd-sd').style.display='none';
+    document.getElementById('cd-class').value='Grade '+s.grade+'-'+(s.section||'');
+    const info=document.getElementById('cd-stuinfo');
+    info.style.display='block';info.textContent='✓ '+fN(s)+' — Gr '+s.grade+'-'+(s.section||'')+' · SN:'+s.sn;
+  };
+}
+
+function saveClassDiscipline(){
+  const sid=document.getElementById('cd-sid').value;
+  const className=document.getElementById('cd-class').value.trim();
+  const date=document.getElementById('cd-date').value;
+  const issues=[...document.querySelectorAll('.cd-iss-chk:checked')].map(cb=>cb.value);
+  const actionsTaken=[...document.querySelectorAll('.cd-act-chk:checked')].map(cb=>cb.value);
+  const otherIssue=issues.includes('Other')?document.getElementById('cd-other').value.trim():'';
+  const notes=document.getElementById('cd-notes').value.trim();
+
+  if(!sid){toast('Select a student','danger');return;}
+  if(!issues.length){toast('Select at least one discipline issue','danger');return;}
+  if(!actionsTaken.length){toast('Select at least one action taken','danger');return;}
+  if(issues.includes('Other')&&!otherIssue){toast('Specify the other issue','danger');return;}
+
+  const s=gS(sid);
+  const list=DB.get('classroom_discipline')||[];
+  list.push({
+    id:nid('cd'),studentId:sid,studentName:fN(s),grade:s.grade,section:s.section,
+    className,date,issues,otherIssue,actionsTaken,additionalNotes:notes,
+    teacherId:CU.id,teacherName:CU.firstName+' '+CU.lastName,
+    status:'Pending',created:new Date().toISOString()
+  });
+  DB.set('classroom_discipline',list);
+  logA('Discipline report for '+fN(s)+': '+issues.join(', '));
+  toast('Discipline report submitted','success');closeM();rMyDisciplineReports();
+}
+
+function vMyDiscReport(id){
+  const r=(DB.get('classroom_discipline')||[]).find(x=>x.id===id);if(!r)return;
+  openM('<div class="mh"><h3>📋 Discipline Report</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="cg g3" style="margin-bottom:12px;font-size:12px"><div><div style="font-size:10px;color:var(--tx3)">Student</div><div style="font-weight:700">'+esc(r.studentName||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Class</div><div style="font-weight:600">'+esc(r.className||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Date</div><div style="font-weight:600">'+(r.date||'').split('T')[0]+'</div></div></div>'
+  +'<div class="fg"><label>Discipline Issues</label><div style="display:flex;gap:5px;flex-wrap:wrap">'+(r.issues||[]).map(i=>'<span class="badge brd">'+esc(i)+'</span>').join('')+'</div></div>'
+  +(r.otherIssue?'<div class="fg"><label>Other Issue</label><div style="background:var(--sf2);padding:9px;border-radius:var(--rs);font-size:12px">'+esc(r.otherIssue)+'</div></div>':'')
+  +'<div class="fg"><label>Actions Taken</label><div style="display:flex;gap:5px;flex-wrap:wrap">'+(r.actionsTaken||[]).map(a=>'<span class="badge bbl">'+esc(a)+'</span>').join('')+'</div></div>'
+  +(r.additionalNotes?'<div class="fg"><label>Additional Notes</label><div style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;line-height:1.6;white-space:pre-wrap">'+esc(r.additionalNotes)+'</div></div>':'')
+  +'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)"><span class="badge '+(r.status==='Resolved'?'bgn':r.status==='Reviewed'?'bbl':r.status==='Closed'?'bgr':'bgo')+'" style="font-size:12px;padding:5px 12px">'+(r.status||'Pending')+'</span>'
+  +(r.vpRemarks?'<div class="al ag" style="margin-top:8px">📝 <strong>VP Remarks:</strong> '+esc(r.vpRemarks)+'</div>':'')+'</div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expDiscPDF(\''+r.id+'\')">📄 PDF</button></div>',true);
 }
 
 // ═══════════════════════════════════════════════════════════
