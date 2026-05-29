@@ -4569,9 +4569,9 @@ function autoExamScheduleM(){
   +'<div class="al ai">This will auto-create re-exam schedules for all absent students who don\'t have one yet. You can edit any schedule afterwards.</div>'
   +'<div class="cg g3" style="margin-bottom:12px"><div class="al ag" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;text-transform:uppercase;font-weight:700">Total Absent</div><div style="font-size:22px;font-weight:bold">'+allStudents.length+'</div></div><div class="al aw" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;text-transform:uppercase;font-weight:700">Unscheduled</div><div style="font-size:22px;font-weight:bold">'+unscheduled.length+'</div></div><div class="al ai" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;text-transform:uppercase;font-weight:700">Already Scheduled</div><div style="font-size:22px;font-weight:bold">'+(allStudents.length-unscheduled.length)+'</div></div></div>'
   +'<div class="fg"><label>Exam Session *</label><select id="auto-rex-session" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"><option value="">— Select Session —</option>'+sessOpts+'</select></div>'
-  +'<div class="fg"><label>Starting Re-exam Date *</label><input type="date" id="auto-rex-start" value="'+new Date(Date.now()+7*86400000).toISOString().split('T')[0]+'" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"></div>'
-  +'<div class="fg"><label>Exams Per Day</label><input type="number" id="auto-rex-perday" value="3" min="1" max="10" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"></div>'
+  +'<div class="fg"><label>Starting Re-exam Date *</label><input type="date" id="auto-rex-start" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"></div>'
   +'<div class="fg"><label>Default Venue</label><input id="auto-rex-venue" placeholder="e.g. Exam Hall, Room 10A" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%"></div>'
+  +'<div class="al ai" style="font-size:11px">📌 One subject per day. Same subject = same day for all students. Max 1 exam per student per day. Fridays and Saturdays are skipped.</div>'
   +'<div class="al aw" style="margin-bottom:0">'+(unscheduled.length?'Will create <strong>'+unscheduled.length+'</strong> schedule(s). Existing schedules are not affected.':'<strong>All students already have schedules.</strong> No new schedules will be created.')+'</div>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button>'+(unscheduled.length?'<button class="btn bp" onclick="runAutoExamSchedule()">🤖 Generate '+unscheduled.length+' Schedule(s) →</button>':'')+'</div>',true);
 }
@@ -4581,34 +4581,55 @@ function runAutoExamSchedule(){
   if(!session){toast('Select an exam session','danger');return;}
   const startDate=document.getElementById('auto-rex-start').value;
   if(!startDate){toast('Select a starting date','danger');return;}
-  const perDay=parseInt(document.getElementById('auto-rex-perday').value)||3;
   const venue=document.getElementById('auto-rex-venue').value.trim();
   const abs=DB.get('exam_absents')||[];
   const schedules=DB.get('reexam_schedules')||[];
-  // Build unique students map
+  // Timezone-safe date formatter (avoids UTC shift from toISOString)
+  function fmtD(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+  // Advance to next school day (skip Fri=5, Sat=6)
+  function nextSchoolDay(d){d.setDate(d.getDate()+1);while(d.getDay()===5||d.getDay()===6)d.setDate(d.getDate()+1);return d;}
+  // Build unique students map with subjects
   const stuMap={};
   abs.forEach(a=>{const k=a.studentId||a.studentName;if(!stuMap[k])stuMap[k]={studentId:a.studentId,studentName:a.studentName,grade:a.grade,section:a.section,subjects:{}};if(!stuMap[k].subjects[a.subject])stuMap[k].subjects[a.subject]={subject:a.subject,absentDates:[a.absentDate]};else stuMap[k].subjects[a.subject].absentDates.push(a.absentDate);});
   const unscheduled=Object.values(stuMap).filter(s=>!schedules.find(r=>(s.studentId&&r.studentId===s.studentId)||r.studentName===s.studentName));
   if(!unscheduled.length){toast('All students already scheduled','info');closeM();return;}
-  // Helper: advance date to next valid school day (skip Fri/Sat)
-  function nextSchoolDay(d){d.setDate(d.getDate()+1);while(d.getDay()===5||d.getDay()===6)d.setDate(d.getDate()+1);return d;}
-  // Create schedules: max 1 exam per student per day, no exam before startDate
+  // Step 1: Collect all unique subjects across all unscheduled students
+  const allSubjects=new Set();
+  unscheduled.forEach(stu=>Object.keys(stu.subjects).forEach(sub=>allSubjects.add(sub)));
+  // Step 2: Assign one subject per school day globally (same subject = same day for everyone)
+  const subjectDateMap={};
+  const curDate=new Date(startDate+'T12:00:00');// noon to avoid timezone edge cases
+  // Ensure start date itself is a school day
+  while(curDate.getDay()===5||curDate.getDay()===6)curDate.setDate(curDate.getDate()+1);
+  allSubjects.forEach(sub=>{
+    subjectDateMap[sub]=fmtD(curDate);
+    nextSchoolDay(curDate);
+  });
+  // Step 3: For each student, check if they have >1 subject on the same day (shouldn't happen
+  // with 1 subject per day globally, but handle edge case of duplicate subject names)
+  // Then build each student's schedule
   let created=0;
   unscheduled.forEach(stu=>{
     const stuSubjects=Object.values(stu.subjects);
+    // Collect assigned dates per student to enforce max 1 per day
+    const usedDates=new Set();
     const subjects=[];
-    const stuDate=new Date(startDate+'T00:00:00');
-    while(stuDate.getDay()===5||stuDate.getDay()===6)stuDate.setDate(stuDate.getDate()+1);
-    let examsOnDay=0;
+    // Use a copy of curDate for overflow subjects
+    const overflowDate=new Date(curDate.getTime());
     stuSubjects.forEach(s=>{
-      if(examsOnDay>=perDay){nextSchoolDay(stuDate);examsOnDay=0;}
-      // Max 1 exam per student per day
-      if(examsOnDay>=1){nextSchoolDay(stuDate);examsOnDay=0;}
+      let examDate=subjectDateMap[s.subject];
+      // If this student already has an exam on this date (duplicate subject edge case), find next free day
+      if(usedDates.has(examDate)){
+        const d=new Date(examDate+'T12:00:00');
+        nextSchoolDay(d);
+        while(usedDates.has(fmtD(d)))nextSchoolDay(d);
+        examDate=fmtD(d);
+      }
+      usedDates.add(examDate);
       subjects.push({
-        subject:s.subject,examDate:stuDate.toISOString().split('T')[0],startTime:'',endTime:'',
+        subject:s.subject,examDate:examDate,startTime:'',endTime:'',
         venue:venue,invigilator:'',examStatus:'Pending',remarks:'',absentDates:s.absentDates
       });
-      examsOnDay++;
     });
     schedules.push({id:nid('rex'),studentId:stu.studentId||null,studentName:stu.studentName,grade:stu.grade||'',section:stu.section||'',examSession:session,subjects,status:'Scheduled',notes:'Auto-generated',createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,created:new Date().toISOString()});
     created++;
