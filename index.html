@@ -4065,10 +4065,14 @@ function delExamSession(id){
   const s=sessions.find(x=>x.id===id);if(!s)return;
   const abs=DB.get('exam_absents')||[];
   const linked=abs.filter(a=>a.examSession===s.name).length;
-  if(!confirm('Delete session "'+s.name+'"?'+(linked?' This will NOT delete the '+linked+' absent record(s) linked to it.':'')))return;
+  const schedules=DB.get('reexam_schedules')||[];
+  const linkedSch=schedules.filter(r=>r.examSession===s.name).length;
+  if(!confirm('Delete session "'+s.name+'"?\n\n'+(linked?'• '+linked+' absent record(s) will be DELETED\n':'• No absent records linked\n')+(linkedSch?'• '+linkedSch+' re-exam schedule(s) will be DELETED\n':'• No re-exam schedules linked\n')+'\nThis cannot be undone.'))return;
   DB.set('exam_sessions',sessions.filter(x=>x.id!==id));
-  logA('Deleted exam session: '+s.name);
-  toast('Session deleted','danger');rExamAbsent();
+  if(linked){DB.set('exam_absents',abs.filter(a=>a.examSession!==s.name));}
+  if(linkedSch){DB.set('reexam_schedules',schedules.filter(r=>r.examSession!==s.name));}
+  logA('Deleted exam session: '+s.name+' (removed '+linked+' absents, '+linkedSch+' schedules)');
+  toast('Session "'+s.name+'" deleted with all linked data','danger');rExamAbsent();
 }
 
 function enterExamSession(id){
@@ -4224,7 +4228,7 @@ function rReexam(){
 
   const list=DB.get('reexam_schedules')||[];
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📝 '+T('reexam_schedule')+' ('+list.length+')</h3>'+(canEdit?'<button class="btn bs bsm" onclick="autoExamScheduleM()">🤖 Auto Generate Schedule</button>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Click any absent student to create or edit their re-exam schedule. Use Auto Generate to create schedules for all absent students at once.</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📝 '+T('reexam_schedule')+' ('+list.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bs bsm" onclick="autoExamScheduleM()">🤖 Auto Generate Schedule</button>':'')+(canEdit&&list.length?'<button class="btn bd3 bsm" onclick="clearAllReexamSchedules()">🗑️ Delete All Schedules</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Click any absent student to create or edit their re-exam schedule. Use Auto Generate to create schedules for all absent students at once.</div></div>'
 
   // View tabs: Absent Students | Schedules | By Date | By Session
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button id="rxv-absent" class="btn bp bsm" onclick="reexView(\'absent\')">👨‍🎓 Absent Students</button>':'')+'<button id="rxv-list" class="btn bg2 bsm" onclick="reexView(\'list\')">📋 Schedules</button><button id="rxv-date" class="btn bg2 bsm" onclick="reexView(\'date\')">📅 By Exam Date</button><button id="rxv-session" class="btn bg2 bsm" onclick="reexView(\'session\')">📑 By Session</button></div></div>'
@@ -4350,28 +4354,87 @@ function buildRexList(list,canEdit,canShare){
 
 function renderRexByDate(){
   const list=DB.get('reexam_schedules')||[];
+  const canEdit=['academic_supervisor','admin_assistant','vice_principal','superadmin'].includes(CU.role);
   // Build flat list: each row = one student + one subject + one date
   const rows=[];
-  list.forEach(r=>{(r.subjects||[]).forEach(s=>{
-    if(s.examDate)rows.push({scheduleId:r.id,studentName:r.studentName,grade:r.grade,section:r.section,subject:s.subject,examDate:s.examDate,startTime:s.startTime,endTime:s.endTime,venue:s.venue,invigilator:s.invigilator,status:r.status,examStatus:s.examStatus||'Pending',remarks:s.remarks||''});
+  list.forEach(r=>{(r.subjects||[]).forEach((s,si)=>{
+    if(s.examDate)rows.push({scheduleId:r.id,subjectIdx:si,studentName:r.studentName,grade:r.grade,section:r.section,subject:s.subject,examDate:s.examDate,startTime:s.startTime,endTime:s.endTime,venue:s.venue,invigilator:s.invigilator,status:r.status,examStatus:s.examStatus||'Pending',remarks:s.remarks||''});
   });});
   // Get all unique dates
   const allDates=[...new Set(rows.map(r=>r.examDate))].sort();
   document.getElementById('rexview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap"><label style="font-size:12px;font-weight:600">📅 Pick exam date:</label><input type="date" id="rexdate" onchange="fltRexDate()" value="'+(allDates[0]||'')+'" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'+(allDates.length?'<span style="font-size:11px;color:var(--tx3)">('+allDates.length+' date(s) with scheduled exams)</span>':'')+'</div>'
-  +(allDates.length?'<div style="margin-bottom:11px"><div style="font-size:11px;color:var(--tx3);margin-bottom:5px">Quick pick:</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+allDates.map(d=>{const c=rows.filter(r=>r.examDate===d).length;return'<button class="btn bg2 bxs" onclick="document.getElementById(\'rexdate\').value=\''+d+'\';fltRexDate()">'+d+' <span style="background:var(--ac);color:#fff;padding:1px 6px;border-radius:8px;margin-left:4px">'+c+'</span></button>';}).join('')+'</div></div>':'')
-  +'<div id="rexdatew">'+buildRexByDateTbl(rows,allDates[0]||'')+'</div></div>';
+  +(allDates.length?'<div style="margin-bottom:11px"><div style="font-size:11px;color:var(--tx3);margin-bottom:5px">Quick pick:</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+allDates.map(d=>{const c=rows.filter(r=>r.examDate===d).length;const done=rows.filter(r=>r.examDate===d&&r.examStatus==='Conducted').length;return'<button class="btn bg2 bxs" onclick="document.getElementById(\'rexdate\').value=\''+d+'\';fltRexDate()" style="'+(done===c&&c>0?'border-color:var(--gd)':'')+'">'+d+' <span style="background:'+(done===c&&c>0?'var(--gd)':'var(--ac)')+';color:#fff;padding:1px 6px;border-radius:8px;margin-left:4px">'+(done===c&&c>0?'✓ '+c:c)+'</span></button>';}).join('')+'</div></div>':'')
+  +'<div id="rexdatew">'+buildRexByDateTbl(rows,allDates[0]||'',canEdit)+'</div></div>';
+  window._rexDateRows=rows;
+  window._rexDateCanEdit=canEdit;
   window.fltRexDate=function(){
     const d=document.getElementById('rexdate').value;
-    document.getElementById('rexdatew').innerHTML=buildRexByDateTbl(rows,d);
+    document.getElementById('rexdatew').innerHTML=buildRexByDateTbl(window._rexDateRows,d,window._rexDateCanEdit);
   };
 }
 
-function buildRexByDateTbl(rows,date){
+function buildRexByDateTbl(rows,date,canEdit){
   if(!date)return'<div class="emp"><p style="font-size:12px">Select a date above</p></div>';
   const filtered=rows.filter(r=>r.examDate===date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
   if(!filtered.length)return'<div class="emp"><p style="font-size:12px">No re-exams scheduled on '+esc(date)+'</p></div>';
-  return'<div class="al aw" style="margin-bottom:11px"><strong>📅 '+esc(date)+':</strong> '+filtered.length+' student-subject combination(s) scheduled</div>'
-  +'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Subject</th><th>Time</th><th>Venue</th><th>Invigilator</th><th>Status</th><th>Remarks</th><th>Action</th></tr></thead><tbody>'+filtered.map(r=>'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><span class="badge brd">'+esc(r.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(r.startTime||'—')+(r.endTime?' - '+esc(r.endTime):'')+'</td><td style="font-size:11px">'+esc(r.venue||'—')+'</td><td style="font-size:11px">'+esc(r.invigilator||'—')+'</td><td><span class="badge '+(r.examStatus==='Conducted'?'bgn':r.examStatus==='Not Conducted'?'bgr':'bgo')+'">'+esc(r.examStatus)+'</span></td><td style="font-size:11px;max-width:120px">'+esc(r.remarks||'—')+'</td><td><button class="btn bg2 bxs" onclick="vReexam(\''+r.scheduleId+'\')">View</button></td></tr>').join('')+'</tbody></table></div>';
+  const conducted=filtered.filter(r=>r.examStatus==='Conducted').length;
+  const notConducted=filtered.filter(r=>r.examStatus==='Not Conducted').length;
+  const pending=filtered.filter(r=>r.examStatus==='Pending').length;
+  return'<div class="al aw" style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div><strong>📅 '+esc(date)+':</strong> '+filtered.length+' student-subject combination(s)</div><div style="display:flex;gap:8px;font-size:11px"><span style="color:#16a34a">✓ Conducted: <strong>'+conducted+'</strong></span><span style="color:#dc2626">✗ Not Conducted: <strong>'+notConducted+'</strong></span><span style="color:#d97706">⏳ Pending: <strong>'+pending+'</strong></span></div></div></div>'
+  +(canEdit?'<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;flex-wrap:wrap"><button class="btn bp bsm" onclick="saveBulkRexStatus(\''+esc(date)+'\')">💾 Save All Status</button><button class="btn bg2 bxs" onclick="setBulkRexStatus(\'Conducted\')">✓ Set All Conducted</button><button class="btn bg2 bxs" onclick="setBulkRexStatus(\'Not Conducted\')">✗ Set All Not Conducted</button><button class="btn bg2 bxs" onclick="setBulkRexStatus(\'Pending\')">⏳ Set All Pending</button><span style="font-size:10px;color:var(--tx3)">Update status for each exam below, then click Save All.</span></div>':'')
+  +'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Subject</th><th>Time</th><th>Venue</th><th>Invigilator</th><th>Status</th><th>Remarks</th><th>Action</th></tr></thead><tbody>'+filtered.map((r,idx)=>{
+    const stColor=r.examStatus==='Conducted'?'border-left:4px solid var(--gd)':r.examStatus==='Not Conducted'?'border-left:4px solid #d63838':'border-left:4px solid var(--yw)';
+    return'<tr style="'+stColor+'"><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><span class="badge brd">'+esc(r.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(r.startTime||'—')+(r.endTime?' - '+esc(r.endTime):'')+'</td><td style="font-size:11px">'+esc(r.venue||'—')+'</td><td style="font-size:11px">'+esc(r.invigilator||'—')+'</td><td>'+(canEdit?'<select id="bst-'+idx+'" data-sid="'+esc(r.scheduleId)+'" data-sidx="'+r.subjectIdx+'" style="padding:5px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:11px;width:100%"><option value="Pending"'+(r.examStatus==='Pending'?' selected':'')+'>⏳ Pending</option><option value="Conducted"'+(r.examStatus==='Conducted'?' selected':'')+'>✓ Conducted</option><option value="Not Conducted"'+(r.examStatus==='Not Conducted'?' selected':'')+'>✗ Not Conducted</option><option value="Postponed"'+(r.examStatus==='Postponed'?' selected':'')+'>↻ Postponed</option></select>':'<span class="badge '+(r.examStatus==='Conducted'?'bgn':r.examStatus==='Not Conducted'?'bgr':'bgo')+'">'+esc(r.examStatus)+'</span>')+'</td><td>'+(canEdit?'<input id="brm-'+idx+'" value="'+esc(r.remarks||'')+'" data-sid="'+esc(r.scheduleId)+'" data-sidx="'+r.subjectIdx+'" placeholder="Remarks…" style="padding:5px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:11px;width:100%;min-width:100px">':'<span style="font-size:11px;max-width:120px">'+esc(r.remarks||'—')+'</span>')+'</td><td><button class="btn bg2 bxs" onclick="vReexam(\''+r.scheduleId+'\')">View</button></td></tr>';
+  }).join('')+'</tbody></table></div>';
+}
+
+function setBulkRexStatus(val){
+  let idx=0;
+  while(true){const el=document.getElementById('bst-'+idx);if(!el)break;el.value=val;idx++;}
+  toast('All set to '+val,'info');
+}
+
+function saveBulkRexStatus(date){
+  const list=DB.get('reexam_schedules')||[];
+  const changes={};// scheduleId -> {subjectIdx -> {examStatus,remarks}}
+  let idx=0;
+  while(true){
+    const stEl=document.getElementById('bst-'+idx);
+    const rmEl=document.getElementById('brm-'+idx);
+    if(!stEl)break;
+    const sid=stEl.dataset.sid;
+    const sidx=parseInt(stEl.dataset.sidx);
+    if(!changes[sid])changes[sid]={};
+    changes[sid][sidx]={examStatus:stEl.value,remarks:rmEl?rmEl.value.trim():''};
+    idx++;
+  }
+  if(!idx){toast('No exams to update','info');return;}
+  let updated=0;
+  Object.keys(changes).forEach(sid=>{
+    const ri=list.findIndex(r=>r.id===sid);if(ri<0)return;
+    Object.keys(changes[sid]).forEach(si=>{
+      const s=parseInt(si);
+      if(list[ri].subjects&&list[ri].subjects[s]){
+        list[ri].subjects[s].examStatus=changes[sid][si].examStatus;
+        list[ri].subjects[s].remarks=changes[sid][si].remarks;
+        updated++;
+      }
+    });
+    // Auto-update overall status based on subject statuses
+    const subjs=list[ri].subjects||[];
+    const allConducted=subjs.every(s=>s.examStatus==='Conducted');
+    const allDone=subjs.every(s=>s.examStatus==='Conducted'||s.examStatus==='Not Conducted');
+    const anyStarted=subjs.some(s=>s.examStatus==='Conducted'||s.examStatus==='Not Conducted');
+    if(allConducted)list[ri].status='Completed';
+    else if(allDone)list[ri].status='Completed';
+    else if(anyStarted)list[ri].status='In Progress';
+    list[ri].statusUpdatedBy=CU.firstName+' '+CU.lastName;
+    list[ri].statusUpdatedAt=new Date().toISOString();
+  });
+  DB.set('reexam_schedules',list);
+  logA('Bulk updated '+updated+' exam status(es) for date '+date);
+  toast(updated+' exam status(es) updated for '+date,'success');
+  rReexam();
 }
 
 // ─── By Session view ─────────────────────────────────────────
@@ -4680,6 +4743,16 @@ function delReexam(id){
   if(!confirm('Delete this re-exam schedule?'))return;
   DB.set('reexam_schedules',(DB.get('reexam_schedules')||[]).filter(r=>r.id!==id));
   logA('Deleted re-exam schedule');toast('Deleted','danger');rReexam();
+}
+
+function clearAllReexamSchedules(){
+  const list=DB.get('reexam_schedules')||[];
+  if(!list.length){toast('No schedules to delete','info');return;}
+  if(!confirm('⚠️ Delete ALL '+list.length+' re-exam schedule(s)?\n\nThis will remove every created schedule. Exam absent records will NOT be affected.\n\nThis cannot be undone.'))return;
+  DB.set('reexam_schedules',[]);
+  logA('Cleared all re-exam schedules ('+list.length+' schedules)');
+  toast('All '+list.length+' re-exam schedule(s) deleted','danger');
+  rReexam();
 }
 
 // ─── Update per-subject exam status & remarks ────────────
