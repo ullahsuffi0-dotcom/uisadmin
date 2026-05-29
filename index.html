@@ -1191,13 +1191,34 @@ const NAV={
 function buildNav(){
   const items=NAV[CU.role]||NAV.admin_assistant;
   const bc={cop:(DB.get('complaints')||[]).filter(c=>c.status==='Open').length,mref:(DB.get('referrals')||[]).filter(r=>r.referredTo===CU.id&&r.status==='Active').length,pup:(DB.get('early_pickups')||[]).filter(p=>p.status==='Pending').length,itr:(DB.get('task_requests')||[]).filter(r=>r.requestedTo===CU.id&&r.status==='Pending').length};
-  document.getElementById('snav').innerHTML=items.map(item=>{
+  const roleIds=new Set(items.filter(i=>i.id).map(i=>i.id));
+  // Build extra items granted via permissions but not in role's default nav
+  const up=CU.role!=='superadmin'?(DB.get('user_permissions')||{})[CU.id]:null;
+  const extras=[];
+  if(up){
+    // Icon lookup from all NAV entries
+    const iconMap={};Object.values(NAV).forEach(arr=>arr.forEach(i=>{if(i.id&&i.i)iconMap[i.id]=i.i;}));
+    Object.keys(up).forEach(fid=>{
+      if(!roleIds.has(fid)&&(up[fid]==='full'||up[fid]==='view')){
+        extras.push({id:fid,i:iconMap[fid]||'📌',k:fid});
+      }
+    });
+  }
+  let html=items.map(item=>{
     if(item.s)return'<div class="ns">'+T(item.s)+'</div>';
     if(canDo(item.id)==='disabled')return '';
     const cnt=item.b?(bc[item.b]||0):0;
     const vo=canDo(item.id)==='view';
     return'<div class="ni'+(vo?' vo':'')+'" id="nav-'+item.id+'" onclick="navigate(\''+item.id+'\')">'+(vo?'<span class="nx" style="opacity:.5">👁️</span>':'<span class="nx">'+item.i+'</span>')+T(item.k)+(cnt>0?'<span class="nb2">'+cnt+'</span>':'')+'</div>';
   }).join('');
+  if(extras.length){
+    html+='<div class="ns">Extra Access</div>';
+    extras.forEach(item=>{
+      const vo=canDo(item.id)==='view';
+      html+='<div class="ni'+(vo?' vo':'')+'" id="nav-'+item.id+'" onclick="navigate(\''+item.id+'\')">'+(vo?'<span class="nx" style="opacity:.5">👁️</span>':'<span class="nx">'+item.i+'</span>')+T(item.k)+'</div>';
+    });
+  }
+  document.getElementById('snav').innerHTML=html;
 }
 function navigate(page){
   // Permission check — disabled features redirect to dashboard
@@ -1262,8 +1283,12 @@ function canDo(tabId){
   if(!CU)return 'full';
   if(CU.role==='superadmin')return 'full';
   const perms=(DB.get('user_permissions')||{})[CU.id];
-  if(!perms||perms[tabId]===undefined)return 'full';
-  return perms[tabId];
+  // If superadmin set an explicit permission, use it
+  if(perms&&perms[tabId]!==undefined)return perms[tabId];
+  // Default: features in user's role nav = full, others = disabled
+  const roleNav=NAV[CU.role]||[];
+  const inRole=roleNav.some(i=>i.id===tabId);
+  return inRole?'full':'disabled';
 }
 function applyViewOnly(){
   const pc=document.getElementById('pc');if(!pc)return;
@@ -1634,16 +1659,17 @@ function editPermsM(uid){
   const roleNav=NAV[a.role]||[];
   const roleFeatures=new Set(roleNav.filter(i=>i.id).map(i=>i.id));
   let html='<div class="mh"><h3>🔐 Permissions: '+esc(a.firstName)+' '+esc(a.lastName)+'</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
-  +'<div class="al ai" style="margin-bottom:12px">Set access level for each feature. Only features available to the <strong>'+rL(a.role)+'</strong> role are shown. Unmodified features use <strong>Full Access</strong> by default.</div>'
-  +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="setAllPerms(\'full\')">✅ All Full Access</button><button class="btn bg2 bsm" onclick="setAllPerms(\'view\')">👁️ All View Only</button><button class="btn bg2 bsm" onclick="setAllPerms(\'disabled\')">🚫 All Disabled</button></div>';
+  +'<div class="al ai" style="margin-bottom:12px">Set access level for <strong>every</strong> feature. <span class="badge bgn" style="font-size:10px">Role Default</span> = included in '+rL(a.role)+' role. <span class="badge bgr" style="font-size:10px">Extra</span> = not in role by default — enable here to grant access.</div>'
+  +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="setAllPerms(\'full\')">✅ All Full</button><button class="btn bg2 bsm" onclick="setAllPerms(\'view\')">👁️ All View</button><button class="btn bg2 bsm" onclick="setAllPerms(\'disabled\')">🚫 All Off</button><button class="btn bg2 bsm" onclick="resetRoleDefaults()">🔄 Reset to Role Defaults</button></div>';
   APP_FEATURES.forEach(grp=>{
-    const items=grp.items.filter(f=>roleFeatures.has(f.id));
-    if(!items.length)return;
     html+='<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--tx3);letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--bd)">'+esc(grp.g)+'</div>';
-    items.forEach(f=>{
-      const cur=up[f.id]||'full';
-      html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--bd)" data-feat="'+f.id+'">'
-      +'<div style="font-size:13px;font-weight:500;min-width:180px">'+esc(f.l)+'</div>'
+    grp.items.forEach(f=>{
+      const inRole=roleFeatures.has(f.id);
+      // Default: 'full' if in role, 'disabled' if not
+      const def=inRole?'full':'disabled';
+      const cur=up[f.id]!==undefined?up[f.id]:def;
+      html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--bd)" data-feat="'+f.id+'" data-default="'+def+'">'
+      +'<div style="font-size:13px;font-weight:500;min-width:180px">'+esc(f.l)+' <span class="badge '+(inRole?'bgn':'bgr')+'" style="font-size:9px;vertical-align:middle">'+(inRole?'Role Default':'Extra')+'</span></div>'
       +'<div style="display:flex;gap:4px">'
       +'<label style="display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--rs);cursor:pointer;font-size:11px;background:'+(cur==='full'?'var(--gdbg)':'var(--sf2)')+';border:1px solid '+(cur==='full'?'var(--gd)':'var(--bd)')+'"><input type="radio" name="perm_'+f.id+'" value="full"'+(cur==='full'?' checked':'')+' class="perm-radio"> ✅ Full</label>'
       +'<label style="display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--rs);cursor:pointer;font-size:11px;background:'+(cur==='view'?'#fff3cd':'var(--sf2)')+';border:1px solid '+(cur==='view'?'#ffc107':'var(--bd)')+'"><input type="radio" name="perm_'+f.id+'" value="view"'+(cur==='view'?' checked':'')+' class="perm-radio"> 👁️ View</label>'
@@ -1664,6 +1690,13 @@ function editPermsM(uid){
     else{lbl.style.background='#f8d7da';lbl.style.borderColor='#dc3545';}
   }));
 }
+function resetRoleDefaults(){
+  document.querySelectorAll('[data-feat]').forEach(row=>{
+    const def=row.dataset.default||'disabled';
+    const radio=row.querySelector('input[value="'+def+'"]');
+    if(radio){radio.checked=true;radio.dispatchEvent(new Event('change'));}
+  });
+}
 function setAllPerms(val){
   document.querySelectorAll('.perm-radio').forEach(r=>{
     if(r.value===val){r.checked=true;r.dispatchEvent(new Event('change'));}
@@ -1674,16 +1707,18 @@ function savePerms(uid){
   const up={};
   document.querySelectorAll('[data-feat]').forEach(row=>{
     const fid=row.dataset.feat;
+    const def=row.dataset.default||'disabled';
     const sel=row.querySelector('.perm-radio:checked');
-    if(sel&&sel.value!=='full')up[fid]=sel.value;
-    // Only store non-default (non-full) entries to keep it clean
+    // Only store entries that differ from role default
+    if(sel&&sel.value!==def)up[fid]=sel.value;
   });
   if(Object.keys(up).length)perms[uid]=up;
   else delete perms[uid];
   DB.set('user_permissions',perms);
   const a=gA(uid);
   logA('Updated permissions for '+(a?a.firstName+' '+a.lastName:'user'));
-  closeM();toast('Permissions saved','success');rPermissions();
+  closeM();toast('Permissions saved','success');
+  if(typeof rPermissions==='function'&&_page==='permissions')rPermissions();
 }
 function resetPerms(uid){
   if(!confirm('Reset all custom permissions for this user back to full access?'))return;
