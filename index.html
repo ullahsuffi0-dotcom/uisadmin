@@ -4943,6 +4943,33 @@ let SYNC_ENABLED=false;
 let SYNC_INITIAL_LOAD=false;
 let SYNC_ECHO={};
 
+// ─── Pending Writes Tracker ───
+// Tracks DB keys whose Firebase write hasn't been confirmed yet.
+// On next boot, these are flushed BEFORE pulling from Firebase,
+// preventing stale cloud data from overwriting fresh local changes.
+function getPendingWrites(){try{return JSON.parse(localStorage.getItem(DB._pfx+'__pendingWrites')||'[]');}catch{return [];}}
+function addPendingWrite(k){const pw=getPendingWrites();if(!pw.includes(k)){pw.push(k);localStorage.setItem(DB._pfx+'__pendingWrites',JSON.stringify(pw));}}
+function removePendingWrite(k){const pw=getPendingWrites().filter(x=>x!==k);localStorage.setItem(DB._pfx+'__pendingWrites',JSON.stringify(pw));}
+async function flushPendingWrites(){
+  if(!window.__FB)return;
+  const pending=getPendingWrites();
+  if(!pending.length)return;
+  console.log('[Sync] Flushing '+pending.length+' pending writes before pull:',pending);
+  const{db,ref,set}=window.__FB;
+  const fbPath=getFirebaseSchoolPath();
+  for(const k of pending){
+    try{
+      const raw=localStorage.getItem(DB._pfx+k);
+      if(raw!==null){
+        const v=JSON.parse(raw);
+        await set(ref(db,fbPath+k),v);
+        console.log('[Sync] Flushed pending write: '+k);
+      }
+      removePendingWrite(k);
+    }catch(e){console.error('[Sync] Failed to flush pending write '+k+':',e);}
+  }
+}
+
 function updateSyncStatus(connected){
   const dot=document.getElementById('syncdot'),txt=document.getElementById('synctext'),ind=document.getElementById('syncind');
   if(!dot||!txt)return;
@@ -4965,6 +4992,9 @@ function waitForFirebase(maxMs){
 
 async function syncDownAll(){
   if(!window.__FB)return false;
+  // Flush any pending local writes to Firebase BEFORE pulling,
+  // so we never overwrite fresh local data with stale cloud data.
+  await flushPendingWrites();
   const{db,ref,get}=window.__FB;
   try{
     const fbPath=getFirebaseSchoolPath();
@@ -4980,7 +5010,7 @@ async function syncDownAll(){
               const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
             }
           }
-          // Always accept Firebase data as source of truth (last-write-wins)
+          // Accept Firebase data as source of truth (pending writes already flushed above)
           localStorage.setItem(DB._pfx+k,JSON.stringify(v));
         }
       });
@@ -5028,13 +5058,19 @@ if(!DB._raw_set){
     if(SYNC_ENABLED&&window.__FB&&shouldSyncKey(k)){
       const{db,ref,set}=window.__FB;
       SYNC_ECHO[k]=Date.now();
+      addPendingWrite(k);
       const path=getFirebaseSchoolPath()+k;
       set(ref(db,path),v).then(()=>{
+        removePendingWrite(k);
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#1dcd6c';
       }).catch(e=>{
         logFBError(k,e);
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#d63838';
+        // Keep in pending — will be retried on next boot
       });
+    } else if(shouldSyncKey(k)&&CURRENT_SCHOOL_ID){
+      // Sync not active — mark as pending so it gets flushed on next boot
+      addPendingWrite(k);
     }
   };
 }else{
@@ -5048,13 +5084,17 @@ if(!DB._raw_set){
     if(SYNC_ENABLED&&window.__FB&&shouldSyncKey(k)){
       const{db,ref,set}=window.__FB;
       SYNC_ECHO[k]=Date.now();
+      addPendingWrite(k);
       const path=getFirebaseSchoolPath()+k;
       set(ref(db,path),v).then(()=>{
+        removePendingWrite(k);
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#1dcd6c';
       }).catch(e=>{
         logFBError(k,e);
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#d63838';
       });
+    } else if(shouldSyncKey(k)&&CURRENT_SCHOOL_ID){
+      addPendingWrite(k);
     }
   };
 }
