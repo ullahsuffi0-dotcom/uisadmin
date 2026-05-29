@@ -873,29 +873,6 @@ function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);
   acc.forEach(a=>{if(a.password&&!a.passwordHash)needsHash=true;});
   if(needsHash){Promise.all(acc.map(async a=>{if(a.password&&!a.passwordHash){a.passwordHash=await hashPassword(a.password);delete a.password;}})).then(()=>DB.set('accounts',acc));}
   if(modified)DB.set('accounts',acc);
-  // Cleanup orphaned teacher accounts: accounts with role='teacher' whose teacher record no longer exists
-  cleanupOrphanedTeacherAccounts();
-}
-function cleanupOrphanedTeacherAccounts(){
-  const teachers=DB.get('teachers')||[];
-  const accounts=DB.get('accounts')||[];
-  if(!accounts.length)return;
-  const tchIds=new Set(teachers.map(t=>t.id));
-  const tchNames=new Set(teachers.map(t=>(t.name||'').trim().toLowerCase()).filter(Boolean));
-  const orphans=accounts.filter(a=>{
-    if(a.role!=='teacher')return false;
-    // If linked by teacherId, check if teacher still exists
-    if(a.teacherId)return !tchIds.has(a.teacherId);
-    // If no teacherId, match by name
-    const accName=((a.firstName||'')+' '+(a.lastName||'')).trim().toLowerCase();
-    if(!accName)return false;
-    return !tchNames.has(accName);
-  });
-  if(orphans.length){
-    const cleaned=accounts.filter(a=>!orphans.find(o=>o.id===a.id));
-    DB.set('accounts',cleaned);
-    console.log('[Migrate] Removed '+orphans.length+' orphaned teacher account(s): '+orphans.map(a=>a.username).join(', '));
-  }
 }
 let CU=null,SAR=null,SAIMP=false,_page='';
 function loginLang(l){setLang(l);['en','ar'].forEach(x=>{const e=document.getElementById('ll-'+x);if(e)e.className='lb'+(l===x?' act':'');});document.getElementById('lwl').textContent=l==='ar'?'مرحباً بعودتك':'Welcome';document.getElementById('ll-u').textContent=T('username');document.getElementById('ll-p').textContent=T('password');document.getElementById('lbtn').textContent=T('sign_in')+' →';}
@@ -1475,8 +1452,6 @@ function addEvt(){openM('<div class="mh"><h3>📅 '+T('add_event')+'</h3><button
 function saveEvt(){const n=document.getElementById('evn').value.trim(),d=document.getElementById('evd').value;if(!n||!d){toast('Fill required fields','danger');return;}const evts=DB.get('academic_calendar')||[];evts.push({id:nid('ev'),name:n,date:d,note:document.getElementById('evnt').value});DB.set('academic_calendar',evts);logA('Added calendar event: '+n);closeM();toast('Event added','success');rCalendar();}
 function delEvt(id){if(!confirm('Delete?'))return;DB.set('academic_calendar',(DB.get('academic_calendar')||[]).filter(e=>e.id!==id));rCalendar();}
 function rAccounts(){
-  // Cleanup orphaned teacher accounts when viewing accounts page (safe — all data loaded by now)
-  if(CU.role==='superadmin')cleanupOrphanedTeacherAccounts();
   const acc=DB.get('accounts')||[];
   const isSA=CU.role==='superadmin';
   const noEmail=acc.filter(a=>!a.email||!a.email.trim()).length;
