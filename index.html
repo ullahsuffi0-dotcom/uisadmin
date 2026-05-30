@@ -7741,6 +7741,7 @@ function vDiscReport(id){
   +'</div>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expDiscPDF(\''+r.id+'\')">📄 PDF</button>'
   +(!r.teacherAck&&r.teacherId===CU.id?'<button class="btn bs bsm" onclick="ackDiscReport(\''+id+'\',\'teacher\')">✓ Acknowledge</button>':'')
+  +(canManage?'<button class="btn bd3 bsm" onclick="issueInfLetterFromDiscM(\''+id+'\')">📄 Infraction Letter</button>':'')
   +(canManage&&!r.referralId?'<button class="btn bgo bsm" onclick="closeM();referDiscToAdvisorM(\''+id+'\')">🔀 Refer to Advisor</button>':'')
   +(CU.role==='superadmin'||r.teacherId===CU.id?'<button class="btn bd3 bsm" onclick="delDiscReport(\''+id+'\')">Delete</button>':'')
   +(canManage?'<button class="btn bp" onclick="saveDiscStatus(\''+id+'\')">Save →</button>':'')+'</div>',true);
@@ -7913,7 +7914,7 @@ function rMyDisciplineReports(){
   +'<td style="font-size:11px">'+(r.issues||[]).map(i=>'<span class="badge brd" style="font-size:10px;margin:1px">'+esc(i)+'</span>').join('')+'</td>'
   +'<td style="font-size:11px">'+(r.actionsTaken||[]).map(a=>'<span class="badge bbl" style="font-size:10px;margin:1px">'+esc(a)+'</span>').join('')+'</td>'
   +'<td><span class="badge '+(r.status==='Resolved'?'bgn':r.status==='Reviewed'?'bbl':r.status==='Closed'?'bgr':'bgo')+'">'+(r.status||'Pending')+'</span></td>'
-  +'<td><button class="btn bg2 bxs" onclick="vMyDiscReport(\''+r.id+'\')">View</button></td></tr>').join('')
+  +'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="vMyDiscReport(\''+r.id+'\')">View</button>'+((r.status||'Pending')==='Pending'&&!r.vpRemarks&&!r.referralId?'<button class="btn bg2 bxs" onclick="editDiscReportM(\''+r.id+'\')">Edit</button><button class="btn bd3 bxs" onclick="delMyDiscReport(\''+r.id+'\')">🗑️</button>':'')+'</td></tr>').join('')
   +'</tbody></table></div>':'<div class="emp"><div class="ei">📋</div><p>No discipline reports submitted yet. Click "+ New Report" to report an issue.</p></div>')+'</div>';
 }
 
@@ -7989,9 +7990,135 @@ function vMyDiscReport(id){
   +'</div>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expDiscPDF(\''+r.id+'\')">📄 PDF</button>'
   +(!r.teacherAck?'<button class="btn bs bsm" onclick="ackDiscReport(\''+r.id+'\',\'teacher\')">✓ Acknowledge</button>':'')
+  +((r.status||'Pending')==='Pending'&&!r.vpRemarks&&!r.referralId?'<button class="btn bg2 bsm" onclick="closeM();editDiscReportM(\''+r.id+'\')">✏️ Edit</button><button class="btn bd3 bsm" onclick="delMyDiscReport(\''+r.id+'\')">🗑️ Delete</button>':'')
   +'</div>',true);
 }
 
+function editDiscReportM(id){
+  const r=(DB.get('classroom_discipline')||[]).find(x=>x.id===id);if(!r)return;
+  if((r.status||'Pending')!=='Pending'||r.vpRemarks||r.referralId){toast('Cannot edit — VP has already taken action','danger');return;}
+  openM('<div class="mh"><h3>✏️ Edit Discipline Report</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="fg"><label>Student</label><div style="background:var(--sf2);padding:9px;border-radius:var(--rs);font-size:13px;font-weight:600">'+esc(r.studentName||'—')+' — '+esc(r.className||'—')+'</div></div>'
+  +'<div class="fg"><label>Date</label><input type="date" id="ecd-date" value="'+(r.date||'').split('T')[0]+'"></div>'
+  +'<div class="fg"><label>Discipline Issues <span style="font-size:10px;color:var(--tx3)">(select all that apply)</span></label>'
+  +'<div id="ecd-issues" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">'+DISCIPLINE_ISSUES.map(iss=>'<label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);cursor:pointer;font-size:12px"><input type="checkbox" value="'+esc(iss)+'" class="ecd-iss-chk"'+((r.issues||[]).includes(iss)?' checked':'')+'>'+esc(iss)+'</label>').join('')+'</div></div>'
+  +(r.otherIssue||((r.issues||[]).includes('Other'))?'<div class="fg"><label>Specify Other Issue</label><input id="ecd-other" value="'+esc(r.otherIssue||'')+'"></div>':'<div id="ecd-other-wrap" style="display:none" class="fg"><label>Specify Other Issue</label><input id="ecd-other" value=""></div>')
+  +'<div class="fg"><label>Actions Taken <span style="font-size:10px;color:var(--tx3)">(select all that apply)</span></label>'
+  +'<div id="ecd-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">'+DISCIPLINE_ACTIONS.map(act=>'<label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);cursor:pointer;font-size:12px"><input type="checkbox" value="'+esc(act)+'" class="ecd-act-chk"'+((r.actionsTaken||[]).includes(act)?' checked':'')+'>'+esc(act)+'</label>').join('')+'</div></div>'
+  +'<div class="fg"><label>Additional Notes</label><textarea id="ecd-notes">'+esc(r.additionalNotes||'')+'</textarea></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveEditDiscReport(\''+id+'\')">'+T('save')+' →</button></div>',true);
+  document.querySelectorAll('.ecd-iss-chk').forEach(cb=>{cb.addEventListener('change',()=>{
+    const otherCb=[...document.querySelectorAll('.ecd-iss-chk')].find(c=>c.value==='Other');
+    const wrap=document.getElementById('ecd-other-wrap');if(wrap)wrap.style.display=(otherCb&&otherCb.checked)?'block':'none';
+  });});
+}
+function saveEditDiscReport(id){
+  const list=DB.get('classroom_discipline')||[];const i=list.findIndex(x=>x.id===id);if(i<0)return;
+  if((list[i].status||'Pending')!=='Pending'){toast('Cannot edit — VP has already taken action','danger');return;}
+  const issues=[...document.querySelectorAll('.ecd-iss-chk:checked')].map(cb=>cb.value);
+  const actionsTaken=[...document.querySelectorAll('.ecd-act-chk:checked')].map(cb=>cb.value);
+  if(!issues.length){toast('Select at least one issue','danger');return;}
+  if(!actionsTaken.length){toast('Select at least one action taken','danger');return;}
+  list[i].date=document.getElementById('ecd-date').value;
+  list[i].issues=issues;
+  list[i].otherIssue=issues.includes('Other')?(document.getElementById('ecd-other').value.trim()):'';
+  list[i].actionsTaken=actionsTaken;
+  list[i].additionalNotes=document.getElementById('ecd-notes').value.trim();
+  DB.set('classroom_discipline',list);
+  logA('Edited discipline report for '+list[i].studentName);
+  closeM();toast('Report updated','success');rMyDisciplineReports();
+}
+function delMyDiscReport(id){
+  const list=DB.get('classroom_discipline')||[];const r=list.find(x=>x.id===id);
+  if(!r){toast('Report not found','danger');return;}
+  if((r.status||'Pending')!=='Pending'||r.vpRemarks||r.referralId){toast('Cannot delete — VP has already taken action','danger');return;}
+  if(!confirm('Delete this discipline report?'))return;
+  DB.set('classroom_discipline',list.filter(x=>x.id!==id));
+  logA('Deleted discipline report for '+(r.studentName||'unknown'));
+  closeM();toast('Report deleted','danger');rMyDisciplineReports();
+}
+function issueInfLetterFromDiscM(id){
+  const r=(DB.get('classroom_discipline')||[]).find(x=>x.id===id);if(!r)return;
+  const issueText=(r.issues||[]).join(', ')+(r.otherIssue?' — '+r.otherIssue:'');
+  openM('<div class="mh"><h3>📄 Issue Infraction Letter</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai" style="margin-bottom:10px">Student: <strong>'+esc(r.studentName||'')+'</strong> — '+esc(r.className||'')+'</div>'
+  +'<input type="hidden" id="il2-sid" value="'+(r.studentId||'')+'">'
+  +'<div class="fr f2">'
+  +'<div class="fg"><label>Degree of Violation *</label><select id="il2-deg"><option value="1">Degree 1 — Minor</option><option value="2">Degree 2 — Moderate</option><option value="3">Degree 3 — Serious</option><option value="4" selected>Degree 4 — Severe</option><option value="5">Degree 5 — Critical</option></select></div>'
+  +'<div class="fg"><label>Date</label><input type="date" id="il2-date" value="'+((r.date||'').split('T')[0]||new Date().toISOString().split('T')[0])+'"></div>'
+  +'</div>'
+  +'<div class="fg"><label>Violation Description *</label><textarea id="il2-desc" rows="3">'+esc(issueText)+'</textarea></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="genInfLetterFromDisc(\''+id+'\')">📄 Generate & Print</button></div>',true);
+}
+function genInfLetterFromDisc(discId){
+  const r=(DB.get('classroom_discipline')||[]).find(x=>x.id===discId);if(!r)return;
+  const sid=document.getElementById('il2-sid').value;
+  const degVal=document.getElementById('il2-deg').value;
+  const date=document.getElementById('il2-date').value;
+  const desc=document.getElementById('il2-desc').value.trim();
+  if(!desc){toast('Enter violation description','danger');return;}
+  const s=sid?gS(sid):null;
+  const stuName=s?fN(s):(r.studentName||'Unknown');
+  const classLabel=s?grSec(s.grade,s.section):(r.className||'').replace(/^Grade\s*/i,'');
+  const settings=DB.get('settings')||{};
+  const fDate=date?new Date(date+'T00:00:00').toLocaleDateString('en-GB'):'';
+  const logo=settings.logo||'';
+  const isImg=logo.startsWith&&logo.startsWith('data:');
+  const logoHTML=isImg?'<img src="'+logo+'" style="width:50px;height:50px;object-fit:contain">':'<div style="font-size:30px">'+(logo||'🎓')+'</div>';
+  const w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Infraction Letter — '+esc(stuName)+'</title>'
+  +'<style>'
+  +'body{font-family:Arial,sans-serif;margin:20px;color:#222}'
+  +'table.letter{width:100%;border-collapse:collapse;border:2px solid #222}'
+  +'table.letter td{border:1px solid #222;padding:10px 14px;vertical-align:top}'
+  +'.lbl{font-weight:700;font-size:13px}'
+  +'.stu-name{font-size:20px;font-weight:700}'
+  +'.class-lbl{font-size:16px;font-weight:700}'
+  +'.body-text{font-size:13px;line-height:1.8}'
+  +'.section-title{font-weight:700;font-size:16px;text-align:center;padding:10px;background:#f5f5f5}'
+  +'.sig-line{border-bottom:1px solid #222;height:28px;margin-bottom:6px}'
+  +'.pledge-text{font-size:13px;line-height:2}'
+  +'@media print{.no-print{display:none !important}}'
+  +'</style></head><body>'
+  +'<div class="no-print" style="text-align:center;margin-bottom:14px"><button onclick="window.print()" style="padding:10px 28px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨️ Print Letter</button></div>'
+  +'<table class="letter">'
+  +'<tr><td colspan="2" style="padding:14px">'
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'+logoHTML+'<div><div style="font-size:14px;font-weight:700;color:#1a5f7a">'+esc(settings.schoolName||'School')+'</div>'+(settings.schoolNameAr?'<div style="font-size:11px;color:#555;direction:rtl">'+esc(settings.schoolNameAr)+'</div>':'')+'</div></div>'
+  +'<div><span class="lbl">Student\'s name: </span><span class="stu-name">'+esc(stuName)+'</span> <span class="class-lbl">Class '+esc(classLabel)+'</span></div>'
+  +'<div class="body-text" style="margin-top:8px">'
+  +'We inform you that your son has committed a behavioral violation of degree '+degVal+', ( '+esc(desc)+' ). '
+  +'We would appreciate your immediate attention and support in ensuring that your child does not engage in similar actions again.'
+  +'</div>'
+  +'<div style="margin-top:8px"><span class="lbl">Date: </span> '+fDate+'</div>'
+  +'</td></tr>'
+  +'<tr><td colspan="2">'
+  +'<div class="section-title">Student\'s Ratification</div>'
+  +'<div style="height:24px"></div>'
+  +'<div class="sig-line"></div><div class="sig-line"></div><div class="sig-line"></div>'
+  +'<div style="text-align:right;font-weight:700;font-size:13px;margin-top:4px">signature</div>'
+  +'</td></tr>'
+  +'<tr><td colspan="2" style="padding:14px">'
+  +'<div class="section-title" style="margin-bottom:10px">Parents\' Pledge</div>'
+  +'<div class="pledge-text">'
+  +'I, the parent of _________________________________________ , '
+  +'pledge that my child won\'t repeat this behavior or any other behavioral infraction. '
+  +'In case of repetition, the school has right to take a suitable action in accordance with its disciplinary policies.'
+  +'</div>'
+  +'<div style="display:flex;justify-content:space-between;margin-top:24px;font-weight:700;font-size:13px">'
+  +'<div><u>Parent\'s name</u> : _______________________</div>'
+  +'<div>Signature : _______________________</div>'
+  +'</div>'
+  +'</td></tr>'
+  +'</table></body></html>');
+  w.document.close();
+  // Mark report as actioned
+  const list=DB.get('classroom_discipline')||[];const idx=list.findIndex(x=>x.id===discId);
+  if(idx>=0&&(list[idx].status||'Pending')==='Pending'){list[idx].status='Reviewed';DB.set('classroom_discipline',list);}
+  logA('Issued infraction letter for '+stuName+' (Degree '+degVal+') from discipline report');
+  closeM();toast('Infraction letter generated','success');
+}
 // ═══════════════════════════════════════════════════════════
 // TEACHER EXCEL IMPORT + DUAL ROLE SUPPORT
 //
