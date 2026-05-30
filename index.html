@@ -8116,8 +8116,16 @@ function genInfLetterFromDisc(discId){
   // Mark report as actioned
   const list=DB.get('classroom_discipline')||[];const idx=list.findIndex(x=>x.id===discId);
   if(idx>=0&&(list[idx].status||'Pending')==='Pending'){list[idx].status='Reviewed';DB.set('classroom_discipline',list);}
-  logA('Issued infraction letter for '+stuName+' (Degree '+degVal+') from discipline report');
-  closeM();toast('Infraction letter generated','success');
+  // Auto-create infraction record so it shows in student record
+  const degMap={'1':'Degree 1 — Minor','2':'Degree 2 — Moderate','3':'Degree 3 — Serious','4':'Degree 4 — Severe','5':'Degree 5 — Critical'};
+  const fullDeg=degMap[degVal]||('Degree '+degVal);
+  const inf=DB.get('infractions')||[];
+  const grade=s?s.grade:(r.grade||'');
+  const section=s?s.section:(r.section||'');
+  inf.push({id:nid('inf'),studentId:sid||r.studentId||'',studentName:stuName,grade:grade,section:section,degree:fullDeg,occurrence:'First Time',type:desc,description:'Auto-recorded from classroom discipline report. Teacher: '+(r.teacherName||'')+'.\nIssues: '+(r.issues||[]).join(', ')+(r.otherIssue?' — '+r.otherIssue:'')+'.\nActions taken: '+(r.actionsTaken||[]).join(', '),procedure:'',pointsDeducted:0,guardianContact:'',followUpStatus:'',actionTaken:'Infraction letter issued',date:date||new Date().toISOString().split('T')[0],createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,principalAck:'',created:new Date().toISOString()});
+  DB.set('infractions',inf);
+  logA('Issued infraction letter for '+stuName+' ('+fullDeg+') from discipline report');
+  closeM();toast('Infraction letter generated & infraction recorded','success');
 }
 // ═══════════════════════════════════════════════════════════
 // TEACHER EXCEL IMPORT + DUAL ROLE SUPPORT
