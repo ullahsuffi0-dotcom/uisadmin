@@ -5292,11 +5292,98 @@ function rAnnouncements(){const anns=DB.get('announcements')||[];const canP=['su
 function addAnnM(){openM('<div class="mh"><h3>📢 Post</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Title *</label><input id="ant"></div><div class="fg"><label>Message *</label><textarea id="anb" style="min-height:100px"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveAnn()">Post →</button></div>');}
 function saveAnn(){const t=document.getElementById('ant').value.trim(),b=document.getElementById('anb').value.trim();if(!t||!b){toast('Fill all fields','danger');return;}const anns=DB.get('announcements')||[];anns.push({id:nid('an'),title:t,body:b,postedBy:CU.firstName+' '+CU.lastName,date:new Date().toISOString().split('T')[0]});DB.set('announcements',anns);logA('Posted: "'+t+'"');closeM();toast('Posted','success');rAnnouncements();}
 function delAnn(id){if(!confirm('Delete?'))return;DB.set('announcements',(DB.get('announcements')||[]).filter(a=>a.id!==id));rAnnouncements();}
-function rDiscipline(){const rpts=DB.get('discipline_reports')||[];const canC=['superadmin','principal','vice_principal'].includes(CU.role);document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('discipline_reports')+' ('+rpts.length+')</h3>'+(canC?'<button class="btn bp bsm" onclick="addDrM()">+</button>':'')+'</div></div>'+rpts.map(r=>'<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between"><div><div style="font-weight:600;margin-bottom:3px">'+r.title+'</div><div style="font-size:11px;color:var(--tx3)">Gr '+grSec(r.grade,r.section)+' · '+(r.teacher||'—')+' · '+r.date+'</div><div style="font-size:12px;color:var(--tx2);margin-top:3px">'+r.description+'</div>'+(r.principalAck?'<div style="font-size:11px;color:var(--gd);margin-top:3px">🎯 '+r.principalAck+'</div>':'')+'</div>'+(['superadmin','principal'].includes(CU.role)?'<button class="btn bo bsm" onclick="ackDr(\''+r.id+'\')">'+T('acknowledge')+'</button>':'')+'</div></div>').join('')||'<div class="card"><div class="emp"><div class="ei">🗂️</div><p>'+T('no_records')+'</p></div></div>';}
+function rDiscipline(){const rpts=DB.get('discipline_reports')||[];const canC=['superadmin','principal','vice_principal'].includes(CU.role);document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('discipline_reports')+' ('+rpts.length+')</h3>'+(canC?'<button class="btn bp bsm" onclick="addDrM()">+</button>':'')+'</div></div>'+rpts.map(r=>'<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between"><div><div style="font-weight:600;margin-bottom:3px">'+r.title+'</div><div style="font-size:11px;color:var(--tx3)">Gr '+grSec(r.grade,r.section)+' · '+(r.teacher||'—')+' · '+r.date+'</div><div style="font-size:12px;color:var(--tx2);margin-top:3px">'+r.description+'</div>'+(r.principalAck?'<div style="font-size:11px;color:var(--gd);margin-top:3px">🎯 '+r.principalAck+'</div>':'')+'</div>'+('<div style="display:flex;gap:4px;flex-direction:column;align-items:flex-end">'+(['superadmin','principal','vice_principal'].includes(CU.role)?'<button class="btn bd3 bsm" onclick="issueInfLetterM(\''+r.id+'\')">📄 Letter</button>':'')+(['superadmin','principal'].includes(CU.role)?'<button class="btn bo bsm" onclick="ackDr(\''+r.id+'\')">'+T('acknowledge')+'</button>':'')+'</div>')+'</div></div>').join('')||'<div class="card"><div class="emp"><div class="ei">🗂️</div><p>'+T('no_records')+'</p></div></div>';}
 function addDrM(){openM('<div class="mh"><h3>🗂️ New Discipline Report</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Title *</label><input id="drt"></div><div class="fr f3"><div class="fg"><label>'+T('grade')+'</label><input id="drg"></div><div class="fg"><label>'+T('section')+'</label><input id="drs"></div><div class="fg"><label>'+T('teacher')+'</label><input id="drtc"></div></div><div class="fg"><label>'+T('description')+' *</label><textarea id="drd"></textarea></div><div class="fg"><label>'+T('action_taken')+'</label><textarea id="dra"></textarea></div><div class="fg"><label>'+T('date')+'</label><input type="date" id="drdt" value="'+new Date().toISOString().split('T')[0]+'"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveDr()">Submit →</button></div>');}
 function saveDr(){const t=document.getElementById('drt').value.trim(),d=document.getElementById('drd').value.trim();if(!t||!d){toast('Fill required fields','danger');return;}const rpts=DB.get('discipline_reports')||[];rpts.push({id:nid('dr'),title:t,grade:document.getElementById('drg').value,section:document.getElementById('drs').value,teacher:document.getElementById('drtc').value,description:d,actionTaken:document.getElementById('dra').value,date:document.getElementById('drdt').value,createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,principalAck:'',created:new Date().toISOString()});DB.set('discipline_reports',rpts);logA('Discipline report: "'+t+'"');closeM();toast('Submitted','success');rDiscipline();}
 function ackDr(id){openM('<div class="mh"><h3>🎯 Acknowledgment</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>'+T('note')+'</label><textarea id="drpk"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bo" onclick="saveDrAck(\''+id+'\')">Acknowledge →</button></div>');}
 function saveDrAck(id){const rpts=DB.get('discipline_reports')||[];const i=rpts.findIndex(r=>r.id===id);if(i<0)return;rpts[i].principalAck=document.getElementById('drpk').value;DB.set('discipline_reports',rpts);logA('Acknowledged discipline report: "'+rpts[i].title+'"');closeM();toast('Acknowledged','success');rDiscipline();}
+function issueInfLetterM(id){
+  const rpts=DB.get('discipline_reports')||[];const r=rpts.find(x=>x.id===id);if(!r)return;
+  openM('<div class="mh"><h3>📄 Issue Infraction Letter</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="fg"><label>Student *</label>'+sw('pickInfLetStu','il-si','il-sd')+'</div>'
+  +'<input type="hidden" id="il-sid">'
+  +'<div id="il-ss" style="display:none" class="al ai"></div>'
+  +'<div class="fr f2">'
+  +'<div class="fg"><label>Degree of Violation *</label><select id="il-deg"><option value="1">Degree 1 — Minor</option><option value="2">Degree 2 — Moderate</option><option value="3">Degree 3 — Serious</option><option value="4" selected>Degree 4 — Severe</option><option value="5">Degree 5 — Critical</option></select></div>'
+  +'<div class="fg"><label>Date</label><input type="date" id="il-date" value="'+(r.date||new Date().toISOString().split('T')[0])+'"></div>'
+  +'</div>'
+  +'<div class="fg"><label>Violation Description *</label><textarea id="il-desc" rows="3">'+esc(r.description||r.title||'')+'</textarea></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="genInfLetter()">📄 Generate & Print</button></div>',true);
+  window.pickInfLetStu=function(sid){const s=gS(sid);document.getElementById('il-sid').value=sid;document.getElementById('il-si').value=fN(s);document.getElementById('il-sd').style.display='none';document.getElementById('il-ss').style.display='block';document.getElementById('il-ss').textContent='✓ '+fN(s)+' — Gr '+grSec(s.grade,s.section);};
+}
+function genInfLetter(){
+  const sid=document.getElementById('il-sid').value;
+  const degVal=document.getElementById('il-deg').value;
+  const date=document.getElementById('il-date').value;
+  const desc=document.getElementById('il-desc').value.trim();
+  if(!sid){toast('Select a student','danger');return;}
+  if(!desc){toast('Enter violation description','danger');return;}
+  const s=gS(sid);if(!s){toast('Student not found','danger');return;}
+  const settings=DB.get('settings')||{};
+  const stuName=fN(s);
+  const classLabel=grSec(s.grade,s.section);
+  const fDate=date?new Date(date+'T00:00:00').toLocaleDateString('en-GB'):'';
+  const logo=settings.logo||'';
+  const isImg=logo.startsWith&&logo.startsWith('data:');
+  const logoHTML=isImg?'<img src="'+logo+'" style="width:50px;height:50px;object-fit:contain">':'<div style="font-size:30px">'+(logo||'🎓')+'</div>';
+  const w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Infraction Letter — '+esc(stuName)+'</title>'
+  +'<style>'
+  +'body{font-family:Arial,sans-serif;margin:20px;color:#222}'
+  +'table.letter{width:100%;border-collapse:collapse;border:2px solid #222}'
+  +'table.letter td,table.letter th{border:1px solid #222;padding:10px 14px;vertical-align:top}'
+  +'.lbl{font-weight:700;font-size:13px}'
+  +'.stu-name{font-size:20px;font-weight:700}'
+  +'.class-lbl{font-size:16px;font-weight:700}'
+  +'.body-text{font-size:13px;line-height:1.8}'
+  +'.section-title{font-weight:700;font-size:16px;text-align:center;padding:10px;background:#f5f5f5}'
+  +'.sig-line{border-bottom:1px solid #222;height:28px;margin-bottom:6px}'
+  +'.pledge-text{font-size:13px;line-height:2}'
+  +'.no-print{margin-bottom:14px}'
+  +'@media print{.no-print{display:none !important}}'
+  +'</style></head><body>'
+  +'<div class="no-print" style="text-align:center"><button onclick="window.print()" style="padding:10px 28px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨️ Print Letter</button></div>'
+  +'<table class="letter">'
+  // Row 1: School header + Student info
+  +'<tr><td colspan="2" style="padding:14px">'
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'+logoHTML+'<div><div style="font-size:14px;font-weight:700;color:#1a5f7a">'+esc(settings.schoolName||'School')+'</div>'+(settings.schoolNameAr?'<div style="font-size:11px;color:#555;direction:rtl">'+esc(settings.schoolNameAr)+'</div>':'')+'</div></div>'
+  +'<div><span class="lbl">Student\'s name: </span><span class="stu-name">'+esc(stuName)+'</span> <span class="class-lbl">Class '+esc(classLabel)+'</span></div>'
+  +'<div class="body-text" style="margin-top:8px">'
+  +'We inform you that your son has committed a behavioral violation of degree '+degVal+', ( '+esc(desc)+' ). '
+  +'We would appreciate your immediate attention and support in ensuring that your child does not engage in similar actions again.'
+  +'</div>'
+  +'<div style="margin-top:8px"><span class="lbl">Date: </span> '+fDate+'</div>'
+  +'</td></tr>'
+  // Row 2: Student's Ratification
+  +'<tr><td colspan="2">'
+  +'<div class="section-title">Student\'s Ratification</div>'
+  +'<div style="height:24px"></div>'
+  +'<div class="sig-line"></div>'
+  +'<div class="sig-line"></div>'
+  +'<div class="sig-line"></div>'
+  +'<div style="text-align:right;font-weight:700;font-size:13px;margin-top:4px">signature</div>'
+  +'</td></tr>'
+  // Row 3: Parents' Pledge
+  +'<tr><td colspan="2" style="padding:14px">'
+  +'<div class="section-title" style="margin-bottom:10px">Parents\' Pledge</div>'
+  +'<div class="pledge-text">'
+  +'I, the parent of _________________________________________ , '
+  +'pledge that my child won\'t repeat this behavior or any other behavioral infraction. '
+  +'In case of repetition, the school has right to take a suitable action in accordance with its disciplinary policies.'
+  +'</div>'
+  +'<div style="display:flex;justify-content:space-between;margin-top:24px;font-weight:700;font-size:13px">'
+  +'<div><u>Parent\'s name</u> : _______________________</div>'
+  +'<div>Signature : _______________________</div>'
+  +'</div>'
+  +'</td></tr>'
+  +'</table>'
+  +'</body></html>');
+  w.document.close();
+  logA('Issued infraction letter for '+stuName+' (Degree '+degVal+')');
+  closeM();toast('Infraction letter generated','success');
+}
 function rSettings(){const s=DB.get('settings')||{};const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="cg g2"><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🏫 School Information</h3></div><div class="fr f2"><div class="fg"><label>School Name (EN)</label><input id="ssn" value="'+esc(s.schoolName||'')+'"></div><div class="fg"><label>اسم المدرسة</label><input id="ssar" value="'+esc(s.schoolNameAr||'')+'" dir="rtl"></div></div><div class="fr f2"><div class="fg"><label>City</label><input id="scy" value="'+esc(s.city||'')+'"></div><div class="fg"><label>'+T('academic_year')+'</label><input id="say" value="'+esc(s.academicYear||'')+'"></div></div><div class="fr f2"><div class="fg"><label>'+T('phone')+'</label><input id="sph" value="'+esc(s.phone||'')+'"></div><div class="fg"><label>'+T('email')+'</label><input id="sem" value="'+esc(s.email||'')+'"></div></div><button class="btn bp" onclick="saveSettings()">'+T('save')+' & Apply →</button></div>'+(isSA?'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🖼️ School Logo</h3></div><div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:14px"><div id="logoprev" style="width:64px;height:64px;border-radius:12px;border:2px solid var(--bd);display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--sf2);font-size:26px">'+(s.logo&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'🎓'))+'</div><div style="flex:1"><div class="fg" style="margin-bottom:8px"><label>'+T('upload_logo')+'</label><input type="file" id="logof" accept="image/*" onchange="prevLogo()" style="padding:6px"></div><div class="fg"><label>'+T('logo_emoji')+'</label><input id="logoem" value="'+(!s.logo||s.logo.startsWith('data:')?'🎓':s.logo)+'" style="width:80px;font-size:20px;text-align:center"></div></div></div><button class="btn bp" onclick="saveLogo()">Save Logo →</button></div>':'')+(isSA?'<div class="card"><div class="sh2"><h3>🔐 Production Status</h3></div><div class="al ag" style="margin-bottom:0">✅ <strong>Live Mode Active</strong> — Demo credentials are permanently hidden from the login screen for production deployment. Staff log in with their personal usernames only.</div></div>':'')+'</div><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>📊 System Stats</h3></div><table style="font-size:12px;width:100%">'+[['Students',(DB.get('students')||[]).length],['Teachers',(DB.get('teachers')||[]).length],['Staff Accounts',(DB.get('accounts')||[]).length],['Complaints',(DB.get('complaints')||[]).length],['Tasks',(DB.get('tasks')||[]).length],['Infractions',(DB.get('infractions')||[]).length],['Referrals',(DB.get('referrals')||[]).length],['Class Visits',(DB.get('class_visits')||[]).length],['Notebook Checks',(DB.get('notebook_checks')||[]).length],['Activities',(DB.get('activities')||[]).length],['Activity Reports',(DB.get('activity_reports')||[]).length],['Exam Sessions',(DB.get('exam_sessions')||[]).length],['Exam Absents',(DB.get('exam_absents')||[]).length]].map(([k,v])=>'<tr><td style="color:var(--tx3);padding:6px 0;border-bottom:1px solid var(--bd)">'+k+'</td><td style="font-weight:500;text-align:right;border-bottom:1px solid var(--bd)">'+v+'</td></tr>').join('')+'</table></div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🚀 Deploy & Go Live</h3></div><div style="font-size:12px;color:var(--tx2);line-height:1.9;background:var(--sf2);border-radius:var(--rs);padding:12px"><strong style="color:var(--ac)">Quick Deploy (5 min):</strong><br>1. Save this file as <code>index.html</code><br>2. Go to <a href="https://app.netlify.com/drop" target="_blank" style="color:var(--ac)">app.netlify.com/drop</a><br>3. Drag the file in<br>4. Get live URL<br><br><strong style="color:var(--ac)">Or GitHub Pages:</strong><br>1. Push index.html to a GitHub repo<br>2. Settings → Pages → Deploy from main<br>3. Get live URL ✅</div></div>'+(isSA?'<div class="card"><div class="sh2"><h3>🗄️ Backup & Restore</h3></div><div style="display:flex;flex-direction:column;gap:8px"><button class="btn bg2 bsm" onclick="expAll()">📥 Export Full Backup</button><button class="btn bg2 bsm" onclick="impAllM()">📤 Restore from Backup</button><button class="btn bd3 bsm" onclick="if(confirm(\'RESET ALL DATA?\'))resetAll()">⚠️ Factory Reset</button></div></div>':'')+'</div></div>';}
 function saveSettings(){const s=DB.get('settings')||{};Object.assign(s,{schoolName:document.getElementById('ssn').value,schoolNameAr:document.getElementById('ssar').value,city:document.getElementById('scy').value,academicYear:document.getElementById('say').value,phone:document.getElementById('sph').value,email:document.getElementById('sem').value});DB.set('settings',s);applyBrand(s);logA('Updated school settings');toast('Settings saved & applied','success');}
 function prevLogo(){const file=document.getElementById('logof').files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{document.getElementById('logoprev').innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:contain">';};reader.readAsDataURL(file);}
