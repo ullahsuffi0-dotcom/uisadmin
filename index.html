@@ -1195,9 +1195,15 @@ function getNavBadges(){
   // Infractions: new
   if(['superadmin','principal','vice_principal'].includes(role)){nb.infractions=countNew(DB.get('infractions')||[],'infractions');}
   // My duties
-  nb.my_duties=countNew((DB.get('duty_assignments')||[]).filter(d=>d.staffId===uid),'my_duties');
-  // Substitutions for teacher
-  if(role==='teacher'){nb.my_duties=countNew((DB.get('substitutions')||[]).filter(s=>s.substituteId===uid),'my_duties');}
+  // My duties badge (teachers): new substitutions assigned to me + new duty rosters that include me
+  if(role==='teacher'){
+    const myName=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+    const myNameLower=myName.toLowerCase();
+    const lsD=getLastSeen('my_duties');
+    const mySubs=(DB.get('substitutions')||[]).filter(s=>(s.substituteName||'').trim().toLowerCase()===myNameLower);
+    const myRosters=(DB.get('duty_rosters')||[]).filter(r=>typeof getMyDutiesForDate==='function'&&getMyDutiesForDate(r,myName).length>0);
+    nb.my_duties=lsD?(mySubs.filter(s=>(s.created||'')>lsD).length+myRosters.filter(r=>(r.createdAt||'')>lsD).length):(mySubs.length+myRosters.length);
+  }
   return nb;
 }
 function buildNav(){
