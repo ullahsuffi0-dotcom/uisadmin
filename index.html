@@ -7797,11 +7797,102 @@ function saveDiscReferral(discId){
   }
 
   logA('Referred discipline report for '+r.studentName+' to '+advisor.firstName+' '+advisor.lastName);
-  closeM();toast('Referral created','success');
+  toast('Referral created','success');
 
   // Immediately open the referral letter PDF
   expDiscReferralPDF(refId);
-  rClassroomDiscipline();
+
+  // Prompt VP to record infraction
+  setTimeout(function(){
+    promptDiscInfraction(r,deg,viol,date);
+  },400);
+}
+function promptDiscInfraction(r,deg,viol,date){
+  openM('<div class="mh"><h3>⚠️ Record Infraction?</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al aw">Referral created for <strong>'+esc(r.studentName)+'</strong> ('+esc(r.className||'')+').<br>Would you like to record a formal infraction for this student?</div>'
+  +'<div class="fr f2"><div class="fg"><label>Degree of Violation *</label><select id="pi-deg"><option value="">— Select —</option>'+INF_DEGREES.map(d=>'<option'+(d.includes(deg)?'selected':'')+'>'+d+'</option>').join('')+'</select></div>'
+  +'<div class="fg"><label>Occurrence *</label><select id="pi-occ"><option value="">— Select —</option>'+INF_OCCURRENCE.map(o=>'<option>'+o+'</option>').join('')+'</select></div></div>'
+  +'<div class="fg"><label>Violation Description *</label><textarea id="pi-desc" style="min-height:60px">'+esc(viol||'')+'</textarea></div>'
+  +'<div class="fg"><label>Date</label><input type="date" id="pi-date" value="'+(date||new Date().toISOString().split('T')[0])+'"></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM();rClassroomDiscipline()">Skip</button><button class="btn bp" onclick="saveDiscInfraction(\''+esc(r.studentId||'')+'\',\''+esc(r.studentName||'').replace(/'/g,"\\'")+'\',\''+esc(r.grade||'')+'\',\''+esc(r.section||'')+'\')">⚠️ Record Infraction →</button></div>',true);
+}
+function saveDiscInfraction(sid,stuName,grade,section){
+  const deg=document.getElementById('pi-deg').value;
+  const occ=document.getElementById('pi-occ').value;
+  const desc=document.getElementById('pi-desc').value.trim();
+  const date=document.getElementById('pi-date').value;
+  if(!deg||!occ||!desc){toast('Fill degree, occurrence, and description','danger');return;}
+  const inf=DB.get('infractions')||[];
+  const newInf={id:nid('inf'),studentId:sid,studentName:stuName,grade:grade,section:section,degree:deg,occurrence:occ,type:desc,description:desc,procedure:'',pointsDeducted:0,guardianContact:'',followUpStatus:'',actionTaken:'Recorded from classroom discipline referral',date:date||new Date().toISOString().split('T')[0],createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,principalAck:'',created:new Date().toISOString()};
+  inf.push(newInf);DB.set('infractions',inf);
+  logA(deg.split(' — ')[0]+' infraction for '+stuName+': '+desc);
+  toast('Infraction recorded','success');
+  // Now offer to generate infraction letter
+  setTimeout(function(){
+    promptDiscInfLetter(newInf);
+  },400);
+}
+function promptDiscInfLetter(inf){
+  openM('<div class="mh"><h3>📄 Generate Infraction Letter?</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai">Infraction recorded for <strong>'+esc(inf.studentName)+'</strong> (Gr '+grSec(inf.grade,inf.section)+').<br><strong>'+esc(inf.degree)+'</strong> — '+esc(inf.type)+'<br><br>Would you like to generate a printable infraction letter?</div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM();rClassroomDiscipline()">Skip</button><button class="btn bp" onclick="genQuickInfLetter(\''+esc(inf.studentId)+'\',\''+esc(inf.studentName).replace(/'/g,"\\'")+'\',\''+esc(inf.grade)+'\',\''+esc(inf.section||'')+'\',\''+esc(inf.degree).replace(/'/g,"\\'")+'\',\''+esc(inf.type).replace(/'/g,"\\'")+'\',\''+esc(inf.date||'')+'\')">📄 Generate Letter →</button></div>',true);
+}
+function genQuickInfLetter(sid,stuName,grade,section,degree,desc,date){
+  const degVal=degree.match(/\d/)?degree.match(/\d/)[0]:'';
+  const classLabel=grSec(grade,section);
+  const settings=DB.get('settings')||{};
+  const fDate=date?new Date(date+'T00:00:00').toLocaleDateString('en-GB'):'';
+  const logo=settings.logo||'';
+  const isImg=logo.startsWith&&logo.startsWith('data:');
+  const logoHTML=isImg?'<img src="'+logo+'" style="width:50px;height:50px;object-fit:contain">':'<div style="font-size:30px">'+(logo||'🎓')+'</div>';
+  const w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Infraction Letter — '+stuName+'</title>'
+  +'<style>'
+  +'body{font-family:Arial,sans-serif;margin:20px;color:#222}'
+  +'table.letter{width:100%;border-collapse:collapse;border:2px solid #222}'
+  +'table.letter td{border:1px solid #222;padding:10px 14px;vertical-align:top}'
+  +'.lbl{font-weight:700;font-size:13px}'
+  +'.stu-name{font-size:20px;font-weight:700}'
+  +'.class-lbl{font-size:16px;font-weight:700}'
+  +'.body-text{font-size:13px;line-height:1.8}'
+  +'.section-title{font-weight:700;font-size:16px;text-align:center;padding:10px;background:#f5f5f5}'
+  +'.sig-line{border-bottom:1px solid #222;height:28px;margin-bottom:6px}'
+  +'.pledge-text{font-size:13px;line-height:2}'
+  +'@media print{.no-print{display:none !important}}'
+  +'</style></head><body>'
+  +'<div class="no-print" style="text-align:center;margin-bottom:14px"><button onclick="window.print()" style="padding:10px 28px;background:#1a5f7a;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨️ Print Letter</button></div>'
+  +'<table class="letter">'
+  +'<tr><td colspan="2" style="padding:14px">'
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'+logoHTML+'<div><div style="font-size:14px;font-weight:700;color:#1a5f7a">'+settings.schoolName+'</div>'+(settings.schoolNameAr?'<div style="font-size:11px;color:#555;direction:rtl">'+settings.schoolNameAr+'</div>':'')+'</div></div>'
+  +'<div><span class="lbl">Student\'s name: </span><span class="stu-name">'+stuName+'</span> <span class="class-lbl">Class '+classLabel+'</span></div>'
+  +'<div class="body-text" style="margin-top:8px">'
+  +'We inform you that your son has committed a behavioral violation of degree '+degVal+', ( '+desc+' ). '
+  +'We would appreciate your immediate attention and support in ensuring that your child does not engage in similar actions again.'
+  +'</div>'
+  +'<div style="margin-top:8px"><span class="lbl">Date: </span> '+fDate+'</div>'
+  +'</td></tr>'
+  +'<tr><td colspan="2">'
+  +'<div class="section-title">Student\'s Ratification</div>'
+  +'<div style="height:24px"></div>'
+  +'<div class="sig-line"></div><div class="sig-line"></div><div class="sig-line"></div>'
+  +'<div style="text-align:right;font-weight:700;font-size:13px;margin-top:4px">signature</div>'
+  +'</td></tr>'
+  +'<tr><td colspan="2" style="padding:14px">'
+  +'<div class="section-title" style="margin-bottom:10px">Parents\' Pledge</div>'
+  +'<div class="pledge-text">'
+  +'I, the parent of _________________________________________ , '
+  +'pledge that my child won\'t repeat this behavior or any other behavioral infraction. '
+  +'In case of repetition, the school has right to take a suitable action in accordance with its disciplinary policies.'
+  +'</div>'
+  +'<div style="display:flex;justify-content:space-between;margin-top:24px;font-weight:700;font-size:13px">'
+  +'<div><u>Parent\'s name</u> : _______________________</div>'
+  +'<div>Signature : _______________________</div>'
+  +'</div>'
+  +'</td></tr>'
+  +'</table></body></html>');
+  w.document.close();
+  logA('Generated infraction letter for '+stuName+' (Degree '+degVal+')');
+  closeM();toast('Infraction letter generated','success');rClassroomDiscipline();
 }
 
 function expDiscReferralPDF(refId){
@@ -7901,6 +7992,7 @@ function expDiscPDF(id){
 }
 
 // Teacher page — my discipline reports
+function canEditDisc(r){return (r.status||'Pending')==='Pending'&&!r.vpRemarks&&!r.referralId;}
 function rMyDisciplineReports(){
   if(CU.role!=='teacher'){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>This page is only available to teachers</p></div>';return;}
   const myName=((CU.firstName||'')+' '+(CU.lastName||'')).trim().toLowerCase();
@@ -7914,7 +8006,7 @@ function rMyDisciplineReports(){
   +'<td style="font-size:11px">'+(r.issues||[]).map(i=>'<span class="badge brd" style="font-size:10px;margin:1px">'+esc(i)+'</span>').join('')+'</td>'
   +'<td style="font-size:11px">'+(r.actionsTaken||[]).map(a=>'<span class="badge bbl" style="font-size:10px;margin:1px">'+esc(a)+'</span>').join('')+'</td>'
   +'<td><span class="badge '+(r.status==='Resolved'?'bgn':r.status==='Reviewed'?'bbl':r.status==='Closed'?'bgr':'bgo')+'">'+(r.status||'Pending')+'</span></td>'
-  +'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="vMyDiscReport(\''+r.id+'\')">View</button>'+((r.status||'Pending')==='Pending'&&!r.vpRemarks&&!r.referralId?'<button class="btn bg2 bxs" onclick="editDiscReportM(\''+r.id+'\')">Edit</button><button class="btn bd3 bxs" onclick="delMyDiscReport(\''+r.id+'\')">🗑️</button>':'')+'</td></tr>').join('')
+  +'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="vMyDiscReport(\''+r.id+'\')">View</button>'+(canEditDisc(r)?'<button class="btn bg2 bxs" onclick="editDiscReportM(\''+r.id+'\')">✏️</button><button class="btn bd3 bxs" onclick="delMyDiscReport(\''+r.id+'\')">🗑️</button>':'')+'</td></tr>').join('')
   +'</tbody></table></div>':'<div class="emp"><div class="ei">📋</div><p>No discipline reports submitted yet. Click "+ New Report" to report an issue.</p></div>')+'</div>';
 }
 
@@ -7990,7 +8082,7 @@ function vMyDiscReport(id){
   +'</div>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expDiscPDF(\''+r.id+'\')">📄 PDF</button>'
   +(!r.teacherAck?'<button class="btn bs bsm" onclick="ackDiscReport(\''+r.id+'\',\'teacher\')">✓ Acknowledge</button>':'')
-  +((r.status||'Pending')==='Pending'&&!r.vpRemarks&&!r.referralId?'<button class="btn bg2 bsm" onclick="closeM();editDiscReportM(\''+r.id+'\')">✏️ Edit</button><button class="btn bd3 bsm" onclick="delMyDiscReport(\''+r.id+'\')">🗑️ Delete</button>':'')
+  +(canEditDisc(r)?'<button class="btn bg2 bsm" onclick="closeM();editDiscReportM(\''+r.id+'\')">✏️ Edit</button><button class="btn bd3 bsm" onclick="delMyDiscReport(\''+r.id+'\')">🗑️ Delete</button>':'')
   +'</div>',true);
 }
 
