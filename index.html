@@ -1165,9 +1165,44 @@ const NAV={
   admin_assistant:[{s:'overview'},{id:'dashboard',i:'📊',k:'dashboard'},{id:'daily_attendance',i:'📅',k:'daily_attendance'},{id:'student_health',i:'🩺',k:'student_health'},{id:'early_pickup',i:'🚗',k:'early_pickup',b:'pup'},{id:'pickup_qr',i:'📱',k:'pickup_qr'},{id:'exam_absent',i:'📵',k:'exam_absent'},{id:'reexam_schedule',i:'📝',k:'reexam_schedule'},{id:'duty_roster',i:'📋',k:'duty_roster'},{id:'tasks',i:'✅',k:'tasks'},{id:'my_warnings',i:'📝',k:'my_warnings'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
   teacher:[{s:'overview'},{id:'dashboard',i:'🏠',k:'dashboard'},{s:'my_work'},{id:'my_class_visits',i:'📝',k:'my_class_visits'},{id:'my_duties',i:'📋',k:'my_duties'},{id:'my_discipline_reports',i:'📋',k:'student_discipline_report'},{id:'my_warnings',i:'📝',k:'my_warnings'},{id:'my_remedials',i:'📚',k:'my_remedials'},{id:'my_achievements',i:'🏆',k:'my_achievements'},{id:'announcements',i:'📢',k:'announcements'},{id:'my_profile',i:'👤',k:'my_profile'}],
 };
+// ── Notification helpers: track unread items per tab per user ──
+function getLastSeen(tabId){try{const ls=JSON.parse(localStorage.getItem('_navSeen_'+(CU?CU.id:''))||'{}');return ls[tabId]||'';}catch(e){return '';}}
+function markSeen(tabId){try{const key='_navSeen_'+(CU?CU.id:'');const ls=JSON.parse(localStorage.getItem(key)||'{}');ls[tabId]=new Date().toISOString();localStorage.setItem(key,JSON.stringify(ls));}catch(e){}}
+function countNew(items,tabId){const ls=getLastSeen(tabId);if(!ls)return items.length>0?items.length:0;return items.filter(i=>(i.created||'')>ls).length;}
+function getNavBadges(){
+  const nb={};if(!CU)return nb;
+  const uid=CU.id;const role=CU.role;
+  // Referrals: for student_advisor count active referrals TO them
+  if(role==='student_advisor'){nb.referrals=(DB.get('referrals')||[]).filter(r=>r.referredTo===uid&&r.status==='Active').length;}
+  // Complaints: open count
+  nb.complaints=countNew((DB.get('complaints')||[]).filter(c=>c.status==='Open'),'complaints');
+  // Task requests: pending requests TO this user
+  nb.task_requests=(DB.get('task_requests')||[]).filter(r=>r.requestedTo===uid&&r.status==='Pending').length;
+  // Early pickup: pending
+  nb.early_pickup=(DB.get('early_pickups')||[]).filter(p=>p.status==='Pending').length;
+  // Explanation letters (my_warnings): unread for this user
+  var wl=(DB.get('warning_letters')||[]).filter(w=>w.recipientId===uid);nb.my_warnings=countNew(wl,'my_warnings');
+  // Classroom discipline: new reports for VP
+  if(['superadmin','principal','vice_principal'].includes(role)){nb.classroom_discipline=countNew((DB.get('classroom_discipline')||[]).filter(r=>(r.status||'Pending')==='Pending'),'classroom_discipline');}
+  // My discipline reports: teacher sees new VP actions
+  if(role==='teacher'){var myN=((CU.firstName||'')+' '+(CU.lastName||'')).trim().toLowerCase();var md=(DB.get('classroom_discipline')||[]).filter(r=>r.teacherId===uid||(r.teacherName||'').trim().toLowerCase()===myN).filter(r=>r.vpRemarks||r.status==='Reviewed');nb.my_discipline_reports=countNew(md,'my_discipline_reports');}
+  // Announcements
+  nb.announcements=countNew(DB.get('announcements')||[],'announcements');
+  // My class visits: teacher sees new visits
+  if(role==='teacher'){var cv=(DB.get('class_visits')||[]).filter(v=>{var tn=((CU.firstName||'')+' '+(CU.lastName||'')).trim().toLowerCase();return(v.teacherName||'').trim().toLowerCase()===tn;});nb.my_class_visits=countNew(cv,'my_class_visits');}
+  // VP reports: new for principal
+  if(['superadmin','principal'].includes(role)){nb.vp_reports=countNew(DB.get('vp_reports')||[],'vp_reports');}
+  // Infractions: new
+  if(['superadmin','principal','vice_principal'].includes(role)){nb.infractions=countNew(DB.get('infractions')||[],'infractions');}
+  // My duties
+  nb.my_duties=countNew((DB.get('duty_assignments')||[]).filter(d=>d.staffId===uid),'my_duties');
+  // Substitutions for teacher
+  if(role==='teacher'){nb.my_duties=countNew((DB.get('substitutions')||[]).filter(s=>s.substituteId===uid),'my_duties');}
+  return nb;
+}
 function buildNav(){
   const items=NAV[CU.role]||NAV.admin_assistant;
-  const bc={cop:(DB.get('complaints')||[]).filter(c=>c.status==='Open').length,mref:(DB.get('referrals')||[]).filter(r=>r.referredTo===CU.id&&r.status==='Active').length,pup:(DB.get('early_pickups')||[]).filter(p=>p.status==='Pending').length,itr:(DB.get('task_requests')||[]).filter(r=>r.requestedTo===CU.id&&r.status==='Pending').length};
+  const bc=getNavBadges();
   const roleIds=new Set(items.filter(i=>i.id).map(i=>i.id));
   // Build extra items granted via permissions but not in role's default nav
   const up=CU.role!=='superadmin'?(DB.get('user_permissions')||{})[CU.id]:null;
@@ -1184,15 +1219,16 @@ function buildNav(){
   let html=items.map(item=>{
     if(item.s)return'<div class="ns">'+T(item.s)+'</div>';
     if(canDo(item.id)==='disabled')return '';
-    const cnt=item.b?(bc[item.b]||0):0;
+    const cnt=bc[item.id]||0;
     const vo=canDo(item.id)==='view';
     return'<div class="ni'+(vo?' vo':'')+'" id="nav-'+item.id+'" onclick="navigate(\''+item.id+'\')">'+(vo?'<span class="nx" style="opacity:.5">👁️</span>':'<span class="nx">'+item.i+'</span>')+T(item.k)+(cnt>0?'<span class="nb2">'+cnt+'</span>':'')+'</div>';
   }).join('');
   if(extras.length){
     html+='<div class="ns">Extra Access</div>';
     extras.forEach(item=>{
+      const cnt=bc[item.id]||0;
       const vo=canDo(item.id)==='view';
-      html+='<div class="ni'+(vo?' vo':'')+'" id="nav-'+item.id+'" onclick="navigate(\''+item.id+'\')">'+(vo?'<span class="nx" style="opacity:.5">👁️</span>':'<span class="nx">'+item.i+'</span>')+T(item.k)+'</div>';
+      html+='<div class="ni'+(vo?' vo':'')+'" id="nav-'+item.id+'" onclick="navigate(\''+item.id+'\')">'+(vo?'<span class="nx" style="opacity:.5">👁️</span>':'<span class="nx">'+item.i+'</span>')+T(item.k)+(cnt>0?'<span class="nb2">'+cnt+'</span>':'')+'</div>';
     });
   }
   document.getElementById('snav').innerHTML=html;
@@ -1201,7 +1237,7 @@ function navigate(page){
   // Permission check — disabled features redirect to dashboard
   const perm=canDo(page);
   if(perm==='disabled'&&page!=='dashboard'&&page!=='my_profile'){toast('Access to this feature is disabled','danger');page='dashboard';}
-  _page=page;document.querySelectorAll('.ni').forEach(el=>el.classList.remove('act'));const el=document.getElementById('nav-'+page);if(el)el.classList.add('act');
+  _page=page;markSeen(page);document.querySelectorAll('.ni').forEach(el=>el.classList.remove('act'));const el=document.getElementById('nav-'+page);if(el)el.classList.add('act');
   document.getElementById('tbt').textContent=T(page)||page.replace(/_/g,' ');document.getElementById('tbs').textContent='';
   const map={dashboard:(CU&&CU.role==='teacher'&&typeof rTeacherDashboard==='function'?rTeacherDashboard:rDash),activity_log:rActLog,students:rStudents,accounts:rAccounts,complaints:rComplaints,tasks:rTasks,infractions:rInfractions,referrals:rReferrals,class_visits:rClassVisits,notebook_checks:rNbChecks,activities:rActivities,early_pickup:rPickup,exam_absent:rExamAbsent,announcements:rAnnouncements,settings:rSettings,infraction_forms:rInfForms,visit_forms:rVisitForms,behaviour:rBehaviour,discipline_reports:rDiscipline,task_requests:rTaskReqs,my_profile:rProfile,export_data:rExport,academic_calendar:rCalendar,parent_qr:rQRCode,activity_reports:rActivityReports,teachers:rTeachers,teacher_reports:rTeacherReports,daily_attendance:rAttendance,student_health:rStudentHealth,remedial_plans:rRemedial,vp_reports:rVPReports,warning_letters:rWarnings,teacher_achievements:rTeacherAchievements,reexam_schedule:rReexam,pickup_qr:rPickupQR,sessions:rSessions,my_class_visits:rMyClassVisits,my_warnings:rMyWarnings,my_remedials:rMyRemedials,my_achievements:rMyAchievements,duty_roster:rDutyRoster,substitutions:rSubstitutions,my_duties:rMyDuties,classroom_discipline:rClassroomDiscipline,my_discipline_reports:rMyDisciplineReports,permissions:rPermissions};
   if(map[page])map[page]();
@@ -7759,7 +7795,7 @@ function referDiscToAdvisorM(id){
   openM('<div class="mh"><h3>🔀 Refer to Student Advisor</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
   +'<div class="al ai">📋 Create a referral letter for <strong>'+esc(r.studentName)+'</strong> ('+esc(r.className)+') based on this discipline report.</div>'
   +'<div class="fg"><label>Student Advisor *</label><select id="dref-to">'+(advisors.length?'<option value="">— Select Advisor —</option>'+advisors.map(a=>'<option value="'+a.id+'">'+a.firstName+' '+a.lastName+'</option>').join(''):'<option value="">No student advisors available</option>')+'</select></div>'
-  +'<div class="fg"><label>Degree of Violation</label><input id="dref-deg" value="'+esc((r.issues||[]).some(i=>i.includes('Fighting')||i.includes('Damaging'))?'Degree 2':'Degree 1')+'"></div>'
+  +'<div class="fg"><label>Degree of Violation *</label><select id="dref-deg">'+INF_DEGREES.map(d=>'<option value="'+d+'"'+((r.issues||[]).some(i=>i.includes('Fighting')||i.includes('Damaging'))?(d.includes('Degree 2')?' selected':''):(d.includes('Degree 1')?' selected':''))+'>'+d+'</option>').join('')+'</select></div>'
   +'<div class="fg"><label>Violation Description</label><textarea id="dref-viol" style="min-height:60px">'+esc(issueText)+'</textarea></div>'
   +'<div class="fr f2"><div class="fg"><label>Day</label><input id="dref-day" value="'+dayName+'" readonly></div><div class="fg"><label>Date</label><input type="date" id="dref-date" value="'+dateStr+'"></div></div>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveDiscReferral(\''+id+'\')">🔀 Create Referral Letter →</button></div>',true);
@@ -7798,11 +7834,12 @@ function saveDiscReferral(discId){
 
   logA('Referred discipline report for '+r.studentName+' to '+advisor.firstName+' '+advisor.lastName);
   toast('Referral created','success');
+  buildNav();
 
   // Immediately open the referral letter PDF
   expDiscReferralPDF(refId);
 
-  // Prompt VP to record infraction
+  // Prompt VP to record infraction with same degree
   setTimeout(function(){
     promptDiscInfraction(r,deg,viol,date);
   },400);
@@ -7810,7 +7847,7 @@ function saveDiscReferral(discId){
 function promptDiscInfraction(r,deg,viol,date){
   openM('<div class="mh"><h3>⚠️ Record Infraction?</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
   +'<div class="al aw">Referral created for <strong>'+esc(r.studentName)+'</strong> ('+esc(r.className||'')+').<br>Would you like to record a formal infraction for this student?</div>'
-  +'<div class="fr f2"><div class="fg"><label>Degree of Violation *</label><select id="pi-deg"><option value="">— Select —</option>'+INF_DEGREES.map(d=>'<option'+(d.includes(deg)?'selected':'')+'>'+d+'</option>').join('')+'</select></div>'
+  +'<div class="fr f2"><div class="fg"><label>Degree of Violation *</label><select id="pi-deg"><option value="">— Select —</option>'+INF_DEGREES.map(d=>'<option'+(d===deg?' selected':'')+'>'+d+'</option>').join('')+'</select></div>'
   +'<div class="fg"><label>Occurrence *</label><select id="pi-occ"><option value="">— Select —</option>'+INF_OCCURRENCE.map(o=>'<option>'+o+'</option>').join('')+'</select></div></div>'
   +'<div class="fg"><label>Violation Description *</label><textarea id="pi-desc" style="min-height:60px">'+esc(viol||'')+'</textarea></div>'
   +'<div class="fg"><label>Date</label><input type="date" id="pi-date" value="'+(date||new Date().toISOString().split('T')[0])+'"></div>'
