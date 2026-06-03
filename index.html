@@ -4329,7 +4329,7 @@ function rReexam(){
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📝 '+T('reexam_schedule')+' ('+list.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bs bsm" onclick="autoExamScheduleM()">🤖 Auto Generate Schedule</button>':'')+(canEdit&&list.length?'<button class="btn bd3 bsm" onclick="clearAllReexamSchedules()">🗑️ Delete All Schedules</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Click any absent student to create or edit their re-exam schedule. Use Auto Generate to create schedules for all absent students at once.</div></div>'
 
   // View tabs: Absent Students | Schedules | By Date | By Session
-  +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button id="rxv-absent" class="btn bp bsm" onclick="reexView(\'absent\')">👨‍🎓 Absent Students</button>':'')+'<button id="rxv-list" class="btn bg2 bsm" onclick="reexView(\'list\')">📋 Schedules</button><button id="rxv-date" class="btn bg2 bsm" onclick="reexView(\'date\')">📅 By Exam Date</button><button id="rxv-session" class="btn bg2 bsm" onclick="reexView(\'session\')">📑 By Session</button></div></div>'
+  +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button id="rxv-absent" class="btn bp bsm" onclick="reexView(\'absent\')">👨‍🎓 Absent Students</button>':'')+'<button id="rxv-list" class="btn bg2 bsm" onclick="reexView(\'list\')">📋 Schedules</button><button id="rxv-date" class="btn bg2 bsm" onclick="reexView(\'date\')">📅 By Exam Date</button><button id="rxv-session" class="btn bg2 bsm" onclick="reexView(\'session\')">📑 By Session</button><button id="rxv-checking" class="btn bg2 bsm" onclick="reexView(\'checking\')">✓ Checking &amp; Marks</button></div></div>'
   +'<div id="rexview"></div>';
 
   if(!window._rexMode)window._rexMode=canEdit?'absent':'list';
@@ -4338,12 +4338,54 @@ function rReexam(){
 
 function reexView(mode){
   window._rexMode=mode;
-  ['absent','list','date','session'].forEach(k=>{const b=document.getElementById('rxv-'+k);if(b)b.className=b.className.replace('bp','bg2');});
+  ['absent','list','date','session','checking'].forEach(k=>{const b=document.getElementById('rxv-'+k);if(b)b.className=b.className.replace('bp','bg2');});
   const a=document.getElementById('rxv-'+mode);if(a)a.className=a.className.replace('bg2','bp');
   if(mode==='absent')renderRexAbsentStudents();
   else if(mode==='list')renderRexList();
   else if(mode==='date')renderRexByDate();
+  else if(mode==='checking')renderRexChecking();
   else renderRexBySession();
+}
+
+// ─── Checking & Marks tracking view — managers track conducting/checking/marks ───
+function renderRexChecking(){
+  const list=DB.get('reexam_schedules')||[];
+  // Flatten to subject-level rows for tracking
+  const rows=[];
+  list.forEach(r=>{(r.subjects||[]).forEach(s=>{
+    rows.push({id:r.id,studentName:r.studentName,grade:r.grade,section:r.section,examSession:r.examSession,handedOverToName:r.handedOverToName,subject:s.subject,examDate:s.examDate,examStatus:s.examStatus||'Pending',checked:s.checked||'Not Checked',marks:s.marks||'',remarks:s.remarks||'',marksUpdatedBy:r.marksUpdatedBy});
+  });});
+  const totalSub=rows.length;
+  const conducted=rows.filter(r=>r.examStatus==='Conducted').length;
+  const checked=rows.filter(r=>r.checked==='Checked').length;
+  const withMarks=rows.filter(r=>r.marks).length;
+  const handed=list.filter(r=>r.handedOverToName).length;
+  document.getElementById('rexview').innerHTML='<div class="card">'
+  +'<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;font-size:11px"><span style="color:var(--tx3)">Subjects: <strong>'+totalSub+'</strong></span><span style="color:#16a34a">Conducted: <strong>'+conducted+'/'+totalSub+'</strong></span><span style="color:#2563eb">Checked: <strong>'+checked+'/'+totalSub+'</strong></span><span style="color:#d97706">With Marks: <strong>'+withMarks+'/'+totalSub+'</strong></span><span style="color:#7c3aed">Handed Over: <strong>'+handed+'</strong></span></div>'
+  +'<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"><input id="rexchkq" placeholder="Search student/subject…" oninput="fltRexChk()" style="flex:1;min-width:150px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="rexchkf" onchange="fltRexChk()" style="padding:9px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px"><option value="">All</option><option value="conducted">Conducted</option><option value="notconducted">Not Conducted</option><option value="checked">Checked</option><option value="notchecked">Not Checked</option><option value="nomarks">Marks Missing</option><option value="handed">Handed Over</option></select></div>'
+  +'<div id="rexchkw">'+buildRexChkTbl(rows)+'</div></div>';
+  window._rexChkRows=rows;
+  window.fltRexChk=function(){
+    const q=(document.getElementById('rexchkq').value||'').toLowerCase();
+    const f=document.getElementById('rexchkf').value;
+    let filtered=window._rexChkRows;
+    if(q)filtered=filtered.filter(r=>(r.studentName||'').toLowerCase().includes(q)||(r.subject||'').toLowerCase().includes(q));
+    if(f==='conducted')filtered=filtered.filter(r=>r.examStatus==='Conducted');
+    else if(f==='notconducted')filtered=filtered.filter(r=>r.examStatus!=='Conducted');
+    else if(f==='checked')filtered=filtered.filter(r=>r.checked==='Checked');
+    else if(f==='notchecked')filtered=filtered.filter(r=>r.checked!=='Checked');
+    else if(f==='nomarks')filtered=filtered.filter(r=>!r.marks);
+    else if(f==='handed')filtered=filtered.filter(r=>r.handedOverToName);
+    document.getElementById('rexchkw').innerHTML=buildRexChkTbl(filtered);
+  };
+}
+
+function buildRexChkTbl(rows){
+  if(!rows.length)return'<div class="emp"><div class="ei">✓</div><p>No re-exam subjects to track</p></div>';
+  return'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Subject</th><th>Date</th><th>Exam Status</th><th>Checked</th><th>Marks</th><th>Handed Over To</th><th>Remarks</th><th></th></tr></thead><tbody>'+rows.map(r=>{
+    const st=r.examStatus;const chk=r.checked;
+    return'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+esc((r.grade||'')+(r.section||''))+'</td><td><span class="badge brd">'+esc(r.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(r.examDate||'—')+'</td><td><span class="badge '+(st==='Conducted'?'bgn':st==='Not Conducted'?'bgr':'bgo')+'">'+esc(st)+'</span></td><td><span class="badge '+(chk==='Checked'?'bgn':'bgo')+'">'+(chk==='Checked'?'✓ Checked':'—')+'</span></td><td style="font-weight:600;font-size:12px">'+esc(r.marks||'—')+'</td><td style="font-size:11px">'+(r.handedOverToName?'<span class="badge bbl" style="font-size:10px">📤 '+esc(r.handedOverToName)+'</span>':'<span style="color:var(--tx3)">—</span>')+'</td><td style="font-size:11px;max-width:140px;color:var(--tx2)">'+esc(r.remarks||'—')+'</td><td><button class="btn bg2 bxs" onclick="vReexam(\''+r.id+'\')">View</button></td></tr>';
+  }).join('')+'</tbody></table></div>';
 }
 
 // ─── Absent Students tab — main entry point for creating schedules ───
@@ -4440,13 +4482,14 @@ function renderRexList(){
 
 function buildRexList(list,canEdit,canShare){
   if(!list.length)return'<div class="emp"><div class="ei">📝</div><p>No re-exam schedules created yet</p></div>';
+  const canAssign=['principal','vice_principal','academic_supervisor','admin_assistant','superadmin'].includes(CU.role);
   return'<div class="tw"><table><thead><tr><th>Student</th><th>Class</th><th>Exam Session</th><th>Subjects</th><th>Earliest Date</th><th>Status</th><th>Handed Over To</th><th>Actions</th></tr></thead><tbody>'+list.slice().reverse().map(r=>{
     const subjs=(r.subjects||[]);
     const dates=subjs.map(s=>s.examDate||'').filter(d=>d).sort();
     const earliest=dates[0]||'—';
     const conducted=subjs.filter(s=>s.examStatus==='Conducted').length;
     const total=subjs.length;
-    return'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><span class="badge bpu" style="font-size:10px">'+esc(r.examSession||'—')+'</span></td><td><div style="display:flex;gap:3px;flex-wrap:wrap">'+subjs.map(s=>{const st=s.examStatus||'Pending';return'<span class="badge '+(st==='Conducted'?'bgn':st==='Not Conducted'?'bgr':'brd')+'" title="'+esc(s.examDate||'no date')+' — '+st+'">'+esc(s.subject)+'</span>';}).join('')+' <span style="color:var(--tx3);font-size:10px">('+conducted+'/'+total+' done)</span></div></td><td class="mono" style="font-size:11px">'+esc(earliest)+'</td><td><span class="badge '+(r.status==='Completed'?'bgn':r.status==='In Progress'?'bbl':'bgo')+'">'+(r.status||'Scheduled')+'</span></td><td style="font-size:11px">'+(r.handedOverToName?'<span class="badge bbl" style="font-size:10px">📤 '+esc(r.handedOverToName)+'</span>':'<span style="color:var(--tx3)">—</span>')+'</td><td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn bg2 bxs" onclick="vReexam(\''+r.id+'\')">View</button>'+(canEdit?'<button class="btn bp bxs" onclick="updateRexStatusM(\''+r.id+'\')">Status</button>':'')+'<button class="btn bg2 bxs" onclick="expReexamParentPDF(\''+r.id+'\')">📄 Parent</button><button class="btn bg2 bxs" onclick="expReexamStatusPDF(\''+r.id+'\')">📋 Report</button>'+(canShare?'<button class="btn bp bxs" onclick="shareReexamWA(\''+r.id+'\')">📱 WA</button>':'')+(canEdit?'<button class="btn bp bxs" onclick="editReexamM(\''+r.id+'\')">Edit</button><button class="btn bd3 bxs" onclick="delReexam(\''+r.id+'\')">Del</button>':'')+'</td></tr>';
+    return'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><span class="badge bpu" style="font-size:10px">'+esc(r.examSession||'—')+'</span></td><td><div style="display:flex;gap:3px;flex-wrap:wrap">'+subjs.map(s=>{const st=s.examStatus||'Pending';return'<span class="badge '+(st==='Conducted'?'bgn':st==='Not Conducted'?'bgr':'brd')+'" title="'+esc(s.examDate||'no date')+' — '+st+'">'+esc(s.subject)+'</span>';}).join('')+' <span style="color:var(--tx3);font-size:10px">('+conducted+'/'+total+' done)</span></div></td><td class="mono" style="font-size:11px">'+esc(earliest)+'</td><td><span class="badge '+(r.status==='Completed'?'bgn':r.status==='In Progress'?'bbl':'bgo')+'">'+(r.status||'Scheduled')+'</span></td><td style="font-size:11px">'+(r.handedOverToName?'<span class="badge bbl" style="font-size:10px">📤 '+esc(r.handedOverToName)+'</span>':'<span style="color:var(--tx3)">—</span>')+'</td><td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn bg2 bxs" onclick="vReexam(\''+r.id+'\')">View</button>'+(canEdit?'<button class="btn bp bxs" onclick="updateRexStatusM(\''+r.id+'\')">Status</button>':'')+(canAssign?'<button class="btn bs bxs" onclick="assignCheckingM(\''+r.id+'\')">📤 Assign</button>':'')+'<button class="btn bg2 bxs" onclick="expReexamParentPDF(\''+r.id+'\')">📄 Parent</button><button class="btn bg2 bxs" onclick="expReexamStatusPDF(\''+r.id+'\')">📋 Report</button>'+(canShare?'<button class="btn bp bxs" onclick="shareReexamWA(\''+r.id+'\')">📱 WA</button>':'')+(canEdit?'<button class="btn bp bxs" onclick="editReexamM(\''+r.id+'\')">Edit</button><button class="btn bd3 bxs" onclick="delReexam(\''+r.id+'\')">Del</button>':'')+'</td></tr>';
   }).join('')+'</tbody></table></div>';
 }
 
@@ -4825,6 +4868,7 @@ function vReexam(id){
   const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
   const canEdit=['academic_supervisor','admin_assistant','vice_principal','superadmin'].includes(CU.role);
   const canShare=['admin_assistant','superadmin','principal','academic_supervisor','vice_principal'].includes(CU.role);
+  const canAssign=['principal','vice_principal','academic_supervisor','admin_assistant','superadmin'].includes(CU.role);
   const conducted=(r.subjects||[]).filter(s=>s.examStatus==='Conducted').length;
   const total=(r.subjects||[]).length;
   const myName=((CU.firstName||'')+' '+(CU.lastName||'')).trim().toLowerCase();
@@ -4837,7 +4881,7 @@ function vReexam(id){
   +'<div class="fg"><label>📅 Re-exam Schedule by Subject</label><div class="tw"><table style="font-size:12px"><thead><tr><th>Subject</th><th>Date</th><th>Time</th><th>Venue</th><th>Invigilator</th><th>Exam Status</th><th>Checked</th><th>Marks</th><th>Remarks</th></tr></thead><tbody>'+(r.subjects||[]).map(s=>{const st=s.examStatus||'Pending';const chk=s.checked||'Not Checked';return'<tr><td><span class="badge brd">'+esc(s.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(s.examDate||'—')+'</td><td class="mono" style="font-size:11px">'+esc(s.startTime||'—')+(s.endTime?' - '+esc(s.endTime):'')+'</td><td style="font-size:11px">'+esc(s.venue||'—')+'</td><td style="font-size:11px">'+esc(s.invigilator||'—')+'</td><td><span class="badge '+(st==='Conducted'?'bgn':st==='Not Conducted'?'bgr':'bgo')+'">'+st+'</span></td><td><span class="badge '+(chk==='Checked'?'bgn':'bgo')+'">'+(chk==='Checked'?'✓ Checked':'—')+'</span></td><td style="font-size:11px;font-weight:600">'+esc(s.marks||'—')+'</td><td style="font-size:11px;max-width:150px">'+esc(s.remarks||'—')+'</td></tr>';}).join('')+'</tbody></table></div></div>'
   +(r.notes?'<div class="al aw" style="margin-bottom:0"><strong>📝 Notes:</strong> '+esc(r.notes)+'</div>':'')
   +'<div style="font-size:10px;color:var(--tx3);margin-top:11px;padding-top:9px;border-top:1px solid var(--bd)">Created by <strong>'+esc(r.createdByName||'—')+'</strong> on '+(r.created||'').split('T')[0]+(r.statusUpdatedBy?' · Status updated by <strong>'+esc(r.statusUpdatedBy)+'</strong>':'')+(r.marksUpdatedBy?' · Marks by <strong>'+esc(r.marksUpdatedBy)+'</strong>':'')+'</div>'
-  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expReexamParentPDF(\''+r.id+'\')">📄 Parent Notice</button><button class="btn bg2 bsm" onclick="expReexamStatusPDF(\''+r.id+'\')">📋 Status Report</button>'+(canShare?'<button class="btn bp bsm" onclick="shareReexamWA(\''+r.id+'\')">📱 Share WhatsApp</button>':'')+(canEdit||isRecipient?'<button class="btn bp bsm" onclick="closeM();updateRexStatusM(\''+r.id+'\')">'+(isRecipient&&!canEdit?'✓ Update Status &amp; Marks':'Update Status')+'</button>':'')+(canEdit?'<button class="btn bp bsm" onclick="editReexamM(\''+r.id+'\')">'+T('edit')+'</button>':'')+'</div>',true);
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expReexamParentPDF(\''+r.id+'\')">📄 Parent Notice</button><button class="btn bg2 bsm" onclick="expReexamStatusPDF(\''+r.id+'\')">📋 Status Report</button>'+(canShare?'<button class="btn bg2 bsm" onclick="shareReexamWA(\''+r.id+'\')">📱 Share WhatsApp</button>':'')+(canAssign?'<button class="btn bp bsm" onclick="closeM();assignCheckingM(\''+r.id+'\')">📤 '+(r.handedOverToName?'Reassign Checking':'Assign for Checking')+'</button>':'')+(canEdit||isRecipient?'<button class="btn bp bsm" onclick="closeM();updateRexStatusM(\''+r.id+'\')">'+(isRecipient&&!canEdit?'✓ Update Status &amp; Marks':'Update Status')+'</button>':'')+(canEdit?'<button class="btn bp bsm" onclick="editReexamM(\''+r.id+'\')">'+T('edit')+'</button>':'')+'</div>',true);
 }
 
 function delReexam(id){
@@ -4865,6 +4909,47 @@ function reexHandoverOptions(sel){
   if(accts.length)html+='<optgroup label="Staff &amp; Teachers">'+accts.map(a=>'<option value="acc:'+a.id+'"'+(sel==='acc:'+a.id?' selected':'')+'>'+esc(((a.firstName||'')+' '+(a.lastName||'')).trim())+' ('+esc(rL(a.role))+')</option>').join('')+'</optgroup>';
   if(orphan.length)html+='<optgroup label="Teachers (no login account)">'+orphan.map(t=>'<option value="tch:'+esc(t.id)+'"'+(sel==='tch:'+t.id?' selected':'')+'>'+esc(t.name)+' (Teacher)</option>').join('')+'</optgroup>';
   return html;
+}
+
+// ─── Assign for Checking — managers hand a re-exam to a teacher/staff ────────────
+function canAssignChecking(){return['principal','vice_principal','academic_supervisor','admin_assistant','superadmin'].includes(CU.role);}
+function assignCheckingM(id){
+  if(!canAssignChecking()){toast('You do not have permission to assign checking','danger');return;}
+  const r=(DB.get('reexam_schedules')||[]).find(x=>x.id===id);if(!r)return;
+  openM('<div class="mh"><h3>📤 Assign for Checking</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="al ai" style="margin-bottom:12px">Select a teacher or staff member to hand this re-exam over for conducting &amp; checking. They will receive a notification and see it under <strong>'+T('reexam_received')+'</strong>.</div>'
+  +'<div style="background:var(--sf2);padding:10px 12px;border-radius:var(--rs);margin-bottom:12px"><strong>'+esc(r.studentName)+'</strong> — Grade '+esc(r.grade||'')+esc(r.section||'')+' <span style="font-size:11px;color:var(--tx3)">('+(r.subjects||[]).length+' subject(s))</span></div>'
+  +(r.handedOverToName?'<div class="al ag" style="margin-bottom:12px">Currently handed over to <strong>'+esc(r.handedOverToName)+'</strong>'+(r.handedOverByName?' by '+esc(r.handedOverByName):'')+(r.handedOverAt?' on '+r.handedOverAt.split('T')[0]:'')+'</div>':'')
+  +'<div class="fg"><label>Hand over to</label><select id="rex-assign" style="padding:9px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%">'+reexHandoverOptions(r.handedOverRef||'')+'</select></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveAssignChecking(\''+id+'\')">Assign</button></div>',true);
+}
+function saveAssignChecking(id){
+  if(!canAssignChecking()){toast('You do not have permission to assign checking','danger');return;}
+  const list=DB.get('reexam_schedules')||[];
+  const i=list.findIndex(r=>r.id===id);if(i<0)return;
+  const val=(document.getElementById('rex-assign')||{}).value||'';
+  if(!val){
+    list[i].handedOverRef='';list[i].handedOverTo='';list[i].handedOverToName='';list[i].handedOverAt='';list[i].handedOverBy='';list[i].handedOverByName='';
+    DB.set('reexam_schedules',list);
+    logA('Removed re-exam hand-over for '+list[i].studentName);
+    toast('Hand-over removed','info');closeM();
+    if(typeof _page!=='undefined'&&_page==='reexam_received')rReexamReceived();else rReexam();
+    return;
+  }
+  let toId='',toName='';
+  if(val.indexOf('acc:')===0){const a=gA(val.slice(4));if(a){toId=a.id;toName=((a.firstName||'')+' '+(a.lastName||'')).trim();}}
+  else if(val.indexOf('tch:')===0){const t=(DB.get('teachers')||[]).find(x=>x.id===val.slice(4));if(t){toName=t.name;const am=(DB.get('accounts')||[]).find(a=>((a.firstName||'')+' '+(a.lastName||'')).trim().toLowerCase()===(t.name||'').trim().toLowerCase());if(am)toId=am.id;}}
+  list[i].handedOverRef=val;
+  list[i].handedOverTo=toId;
+  list[i].handedOverToName=toName;
+  list[i].handedOverBy=CU.id;
+  list[i].handedOverByName=CU.firstName+' '+CU.lastName;
+  list[i].handedOverAt=new Date().toISOString();
+  DB.set('reexam_schedules',list);
+  // Recipient is notified via the "Re-exam Received" nav badge (getNavBadges → nb.reexam_received)
+  logA('Handed over re-exam for '+list[i].studentName+' to '+toName);
+  toast('Handed over to '+toName,'success');closeM();
+  if(typeof _page!=='undefined'&&_page==='reexam_received')rReexamReceived();else rReexam();
 }
 
 // ─── Re-exam Received tab — schedules handed over to the current user ────────────
@@ -4905,9 +4990,8 @@ function updateRexStatusM(id){
     +'<div class="fr f2" style="margin-bottom:0"><div class="fg" style="margin-bottom:0"><label>Marks Obtained</label><input id="rex-mk-'+idx+'" value="'+esc(s.marks||'')+'" placeholder="e.g. 45 / 50" style="padding:8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;width:100%"></div>'
     +'<div class="fg" style="margin-bottom:0"><label>Remarks</label><input id="rex-rm-'+idx+'" value="'+esc(s.remarks||'')+'" placeholder="e.g. Student passed, absent again…" style="padding:8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;width:100%"></div></div></div>';
   }).join('')
-  +(canEdit?'<div class="fg" style="margin-top:10px"><label>Overall Schedule Status</label><select id="rex-overall-st" style="padding:8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;width:100%"><option value="Scheduled"'+(r.status==='Scheduled'||!r.status?' selected':'')+'>Scheduled</option><option value="In Progress"'+(r.status==='In Progress'?' selected':'')+'>In Progress</option><option value="Completed"'+(r.status==='Completed'?' selected':'')+'>Completed</option><option value="Postponed"'+(r.status==='Postponed'?' selected':'')+'>Postponed</option></select></div>'
-  +'<div class="fg" style="margin-top:4px"><label>📤 Hand Over Re-exam To <span style="font-weight:400;color:var(--tx3)">— notify a staff member or teacher</span></label><select id="rex-handover" style="padding:8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;width:100%">'+reexHandoverOptions(r.handedOverRef||'')+'</select></div>'
-  +(r.handedOverToName?'<div class="al ag" style="margin-top:6px;margin-bottom:0">📤 Currently handed over to <strong>'+esc(r.handedOverToName)+'</strong>'+(r.handedOverByName?' by '+esc(r.handedOverByName):'')+(r.handedOverAt?' on '+r.handedOverAt.split('T')[0]:'')+'. They will see it under their <strong>Re-exam Received</strong> tab.</div>':''):'')
+  +(canEdit?'<div class="fg" style="margin-top:10px"><label>Overall Schedule Status</label><select id="rex-overall-st" style="padding:8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;width:100%"><option value="Scheduled"'+(r.status==='Scheduled'||!r.status?' selected':'')+'>Scheduled</option><option value="In Progress"'+(r.status==='In Progress'?' selected':'')+'>In Progress</option><option value="Completed"'+(r.status==='Completed'?' selected':'')+'>Completed</option><option value="Postponed"'+(r.status==='Postponed'?' selected':'')+'>Postponed</option></select></div>':'')
+  +(r.handedOverToName?'<div class="al ag" style="margin-top:6px;margin-bottom:0">📤 Handed over for checking to <strong>'+esc(r.handedOverToName)+'</strong>'+(r.handedOverByName?' by '+esc(r.handedOverByName):'')+(r.handedOverAt?' on '+r.handedOverAt.split('T')[0]:'')+'</div>':'')
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveRexStatus(\''+id+'\','+subjs.length+')">Save</button></div>',true);
 }
 
@@ -4930,33 +5014,12 @@ function saveRexStatus(id,count){
   if(overallEl)list[i].status=overallEl.value;
   list[i].statusUpdatedBy=CU.firstName+' '+CU.lastName;
   list[i].statusUpdatedAt=new Date().toISOString();
-  // Handle "hand over to" selection
-  let handoverMsg='';
-  const hoEl=document.getElementById('rex-handover');
-  if(hoEl){
-    const val=hoEl.value;
-    const prevRef=list[i].handedOverRef||'';
-    if(val!==prevRef){
-      if(!val){
-        list[i].handedOverRef='';list[i].handedOverTo='';list[i].handedOverToName='';list[i].handedOverAt='';
-      }else{
-        let toId='',toName='';
-        if(val.indexOf('acc:')===0){const a=gA(val.slice(4));if(a){toId=a.id;toName=((a.firstName||'')+' '+(a.lastName||'')).trim();}}
-        else if(val.indexOf('tch:')===0){const t=(DB.get('teachers')||[]).find(x=>x.id===val.slice(4));if(t){toName=t.name;const am=(DB.get('accounts')||[]).find(a=>((a.firstName||'')+' '+(a.lastName||'')).trim().toLowerCase()===(t.name||'').trim().toLowerCase());if(am)toId=am.id;}}
-        list[i].handedOverRef=val;
-        list[i].handedOverTo=toId;
-        list[i].handedOverToName=toName;
-        list[i].handedOverBy=CU.id;
-        list[i].handedOverByName=CU.firstName+' '+CU.lastName;
-        list[i].handedOverAt=new Date().toISOString();
-        handoverMsg=' · handed over to '+toName;
-        logA('Handed over re-exam for '+list[i].studentName+' to '+toName);
-      }
-    }
-  }
   DB.set('reexam_schedules',list);
   logA('Updated re-exam status for '+list[i].studentName);
-  toast('Status updated'+handoverMsg,'success');closeM();rReexam();
+  toast('Status updated','success');closeM();
+  // Role-aware re-render so recipients (teachers) aren't bounced to "Access restricted"
+  if(typeof _page!=='undefined'&&_page==='reexam_received')rReexamReceived();
+  else if(typeof _page!=='undefined'&&_page==='reexam_schedule')rReexam();
 }
 
 // Parent Notification PDF — simple: just student, subjects, dates. No venue/time/invigilator.
