@@ -1510,7 +1510,58 @@ function rAccounts(){
   const acc=DB.get('accounts')||[];
   const isSA=CU.role==='superadmin';
   const noEmail=acc.filter(a=>!a.email||!a.email.trim()).length;
-  document.getElementById('pc').innerHTML=(noEmail>0?'<div class="al ad" style="margin-bottom:12px">⚠️ <strong>'+noEmail+' account'+(noEmail>1?'s':'')+' without Gmail linked.</strong> Staff should link their Gmail in their profile, or superadmin can link it below. Linked Gmail enables password reset from the login page.</div>':'')+'<div class="card"><div class="sh2"><h3>'+T('accounts')+' ('+acc.length+')</h3><div style="display:flex;gap:6px">'+(isSA?'<button class="btn bg2 bsm" onclick="navigate(\'permissions\')">🔐 Permissions</button><button class="btn bg2 bsm" onclick="expAllAccountCards()">🪪 All Cards PDF</button><button class="btn bg2 bsm" onclick="impAccM()">📥 CSV</button>':'')+'<button class="btn bp bsm" onclick="addAccM()">+</button></div></div><div class="tw"><table><thead><tr><th>'+T('name')+'</th><th>Username</th><th>'+T('role')+'</th><th>Gmail / Email</th><th>'+T('status')+'</th>'+(isSA?'<th>Created</th>':'')+'<th>Actions</th></tr></thead><tbody>'+acc.map(a=>'<tr><td><strong>'+a.firstName+' '+a.lastName+'</strong></td><td><code>'+a.username+'</code></td><td><span class="badge bbl">'+rL(a.role)+'</span>'+(a.role==='vice_principal'&&a.assignedClasses&&a.assignedClasses.length?'<div style="font-size:9px;color:var(--tx3);margin-top:2px">📚 '+a.assignedClasses.length+' class(es)</div>':a.role==='vice_principal'?'<div style="font-size:9px;color:var(--dn);margin-top:2px">⚠ No classes</div>':'')+'</td><td style="font-size:11px">'+(a.email?'<span style="color:var(--gd)">✅ '+a.email+'</span>':'<button class="btn bd3 bxs" onclick="linkGmailM(\''+a.id+'\')">📧 Link Gmail</button>')+'</td><td><span class="badge '+(a.active?'bgn':'bgr')+'">'+T(a.active?'active':'inactive')+'</span></td>'+(isSA?'<td class="mono" style="font-size:11px;color:var(--tx3)">'+(a.created||'—')+'</td>':'')+'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="editAccM(\''+a.id+'\')">'+T('edit')+'</button>'+(isSA?'<button class="btn bg2 bxs" onclick="expAccountCard(\''+a.id+'\')" title="Account Card">🪪</button>':'')+'<button class="btn bg2 bxs" onclick="shareAccWAById(\''+a.id+'\')" title="Share via WhatsApp" style="color:#25D366">📱</button>'+(a.email?'<button class="btn bg2 bxs" onclick="linkGmailM(\''+a.id+'\')">📧</button>':'')+(a.id!==CU.id?'<button class="btn bg2 bxs" onclick="togAcc(\''+a.id+'\')">'+(a.active?'Disable':'Enable')+'</button>':'')+(CU.role==='superadmin'&&a.role!=='superadmin'?'<button class="btn bg2 bxs" onclick="editPermsM(\''+a.id+'\')" title="Manage Permissions">🔐</button><button class="btn bg2 bxs" onclick="impUser(\''+a.id+'\')">👁️</button>':'')+'</td></tr>').join('')+'</tbody></table></div></div>';
+  const deletableCount=isSA?acc.filter(a=>a.role!=='superadmin'&&a.id!==CU.id).length:0;
+  document.getElementById('pc').innerHTML=(noEmail>0?'<div class="al ad" style="margin-bottom:12px">⚠️ <strong>'+noEmail+' account'+(noEmail>1?'s':'')+' without Gmail linked.</strong> Staff should link their Gmail in their profile, or superadmin can link it below. Linked Gmail enables password reset from the login page.</div>':'')+'<div class="card"><div class="sh2"><h3>'+T('accounts')+' ('+acc.length+')</h3><div style="display:flex;gap:6px">'+(isSA?'<button class="btn bg2 bsm" onclick="navigate(\'permissions\')">🔐 Permissions</button><button class="btn bg2 bsm" onclick="expAllAccountCards()">🪪 All Cards PDF</button><button class="btn bg2 bsm" onclick="impAccM()">📥 CSV</button>':'')+'<button class="btn bp bsm" onclick="addAccM()">+</button></div></div>'
+  +(isSA?'<div id="acc-bulk-bar" style="display:none;padding:10px 14px;background:var(--ac2);border:1px solid var(--ac);border-radius:var(--rs);margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:12px;font-weight:600;color:var(--ac)"><span id="acc-sel-count">0</span> selected</span><button class="btn bd3 bsm" onclick="deleteSelectedAccounts()">🗑️ Delete Selected</button><button class="btn bg2 bsm" onclick="clearAccSelection()">✕ Clear</button></div>':'')
+  +'<div class="tw"><table><thead><tr>'+(isSA?'<th style="width:32px"><input type="checkbox" id="acc-chk-all" onchange="toggleAllAccChk(this.checked)" title="Select all deletable accounts"></th>':'')+'<th>'+T('name')+'</th><th>Username</th><th>'+T('role')+'</th><th>Gmail / Email</th><th>'+T('status')+'</th>'+(isSA?'<th>Created</th>':'')+'<th>Actions</th></tr></thead><tbody>'+acc.map(a=>{
+    const canDel=isSA&&a.role!=='superadmin'&&a.id!==CU.id;
+    return'<tr>'+(isSA?'<td>'+(canDel?'<input type="checkbox" class="acc-chk" data-id="'+a.id+'" onchange="updateAccBulkBar()">':'')+'</td>':'')+'<td><strong>'+a.firstName+' '+a.lastName+'</strong></td><td><code>'+a.username+'</code></td><td><span class="badge bbl">'+rL(a.role)+'</span>'+(a.role==='vice_principal'&&a.assignedClasses&&a.assignedClasses.length?'<div style="font-size:9px;color:var(--tx3);margin-top:2px">📚 '+a.assignedClasses.length+' class(es)</div>':a.role==='vice_principal'?'<div style="font-size:9px;color:var(--dn);margin-top:2px">⚠ No classes</div>':'')+'</td><td style="font-size:11px">'+(a.email?'<span style="color:var(--gd)">✅ '+a.email+'</span>':'<button class="btn bd3 bxs" onclick="linkGmailM(\''+a.id+'\')">📧 Link Gmail</button>')+'</td><td><span class="badge '+(a.active?'bgn':'bgr')+'">'+T(a.active?'active':'inactive')+'</span></td>'+(isSA?'<td class="mono" style="font-size:11px;color:var(--tx3)">'+(a.created||'—')+'</td>':'')+'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="editAccM(\''+a.id+'\')">'+T('edit')+'</button>'+(isSA?'<button class="btn bg2 bxs" onclick="expAccountCard(\''+a.id+'\')" title="Account Card">🪪</button>':'')+'<button class="btn bg2 bxs" onclick="shareAccWAById(\''+a.id+'\')" title="Share via WhatsApp" style="color:#25D366">📱</button>'+(a.email?'<button class="btn bg2 bxs" onclick="linkGmailM(\''+a.id+'\')">📧</button>':'')+(a.id!==CU.id?'<button class="btn bg2 bxs" onclick="togAcc(\''+a.id+'\')">'+(a.active?'Disable':'Enable')+'</button>':'')+(CU.role==='superadmin'&&a.role!=='superadmin'?'<button class="btn bg2 bxs" onclick="editPermsM(\''+a.id+'\')" title="Manage Permissions">🔐</button><button class="btn bg2 bxs" onclick="impUser(\''+a.id+'\')">👁️</button><button class="btn bd3 bxs" onclick="deleteAccount(\''+a.id+'\')" title="Delete account">🗑️</button>':'')+'</td></tr>';}).join('')+'</tbody></table></div></div>';
+  if(isSA)updateAccBulkBar();
+}
+function toggleAllAccChk(checked){document.querySelectorAll('.acc-chk').forEach(c=>{c.checked=checked;});updateAccBulkBar();}
+function clearAccSelection(){document.querySelectorAll('.acc-chk').forEach(c=>{c.checked=false;});const a=document.getElementById('acc-chk-all');if(a)a.checked=false;updateAccBulkBar();}
+function updateAccBulkBar(){
+  const checked=[...document.querySelectorAll('.acc-chk:checked')];
+  const bar=document.getElementById('acc-bulk-bar');
+  const cnt=document.getElementById('acc-sel-count');
+  if(bar){bar.style.display=checked.length>0?'flex':'none';}
+  if(cnt)cnt.textContent=checked.length;
+}
+function deleteAccount(id){
+  const acc=DB.get('accounts')||[];
+  const a=acc.find(x=>x.id===id);
+  if(!a){toast('Account not found','danger');return;}
+  if(a.role==='superadmin'){toast('Cannot delete Super Admin','danger');return;}
+  if(a.id===CU.id){toast('Cannot delete your own account','danger');return;}
+  openM('<div class="mh"><h3>🗑️ Delete Account</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ad" style="margin-bottom:12px">Are you sure you want to <strong>permanently delete</strong> this account?</div><div style="background:var(--sf2);padding:12px;border-radius:var(--rs);margin-bottom:12px"><div style="font-weight:600">'+esc(a.firstName)+' '+esc(a.lastName)+'</div><div style="font-size:12px;color:var(--tx2)">'+esc(a.username)+' · '+rL(a.role)+'</div></div><div style="font-size:11px;color:var(--tx3)">This action cannot be undone.</div></div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button><button class="btn bd3" onclick="confirmDeleteAccount(\''+id+'\')">🗑️ Delete</button></div>');
+}
+function confirmDeleteAccount(id){
+  let acc=DB.get('accounts')||[];
+  const a=acc.find(x=>x.id===id);
+  if(!a||a.role==='superadmin'||a.id===CU.id)return;
+  acc=acc.filter(x=>x.id!==id);
+  DB.set('accounts',acc);
+  logA('Deleted account: '+a.firstName+' '+a.lastName+' ('+a.username+', '+a.role+')');
+  closeM();toast('Account deleted','success');rAccounts();
+}
+function deleteSelectedAccounts(){
+  const ids=[...document.querySelectorAll('.acc-chk:checked')].map(c=>c.dataset.id);
+  if(!ids.length){toast('No accounts selected','danger');return;}
+  const acc=DB.get('accounts')||[];
+  const toDelete=acc.filter(a=>ids.includes(a.id)&&a.role!=='superadmin'&&a.id!==CU.id);
+  if(!toDelete.length){toast('No deletable accounts selected','danger');return;}
+  const names=toDelete.map(a=>a.firstName+' '+a.lastName+' ('+a.username+')').join('<br>');
+  openM('<div class="mh"><h3>🗑️ Delete '+toDelete.length+' Account'+(toDelete.length>1?'s':'')+'</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ad" style="margin-bottom:12px">Are you sure you want to <strong>permanently delete</strong> these accounts?</div><div style="background:var(--sf2);padding:12px;border-radius:var(--rs);margin-bottom:12px;max-height:200px;overflow-y:auto;font-size:12px;line-height:1.8">'+names+'</div><div style="font-size:11px;color:var(--tx3)">This action cannot be undone.</div></div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button><button class="btn bd3" onclick="confirmDeleteSelectedAccounts()">🗑️ Delete '+toDelete.length+' Account'+(toDelete.length>1?'s':'')+'</button></div>');
+}
+function confirmDeleteSelectedAccounts(){
+  const ids=[...document.querySelectorAll('.acc-chk:checked')].map(c=>c.dataset.id);
+  let acc=DB.get('accounts')||[];
+  const deleted=[];
+  ids.forEach(id=>{const a=acc.find(x=>x.id===id);if(a&&a.role!=='superadmin'&&a.id!==CU.id)deleted.push(a);});
+  acc=acc.filter(a=>!deleted.some(d=>d.id===a.id));
+  DB.set('accounts',acc);
+  deleted.forEach(a=>logA('Deleted account: '+a.firstName+' '+a.lastName+' ('+a.username+', '+a.role+')'));
+  closeM();toast(deleted.length+' account'+(deleted.length>1?'s':'')+' deleted','success');rAccounts();
 }
 function linkGmailM(id){
   const a=gA(id);if(!a)return;
