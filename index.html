@@ -846,7 +846,7 @@ function seed(){
   DB.set('sv7',true);
 }
 // Lightweight migration: ensure new collections exist for existing users
-function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);if(!DB.get('attendance'))DB.set('attendance',[]);if(!DB.get('student_health'))DB.set('student_health',[]);if(!DB.get('remedial_plans'))DB.set('remedial_plans',[]);if(!DB.get('vp_reports'))DB.set('vp_reports',[]);if(!DB.get('warning_letters'))DB.set('warning_letters',[]);if(!DB.get('teacher_achievements'))DB.set('teacher_achievements',[]);if(!DB.get('reexam_schedules'))DB.set('reexam_schedules',[]);
+async function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);if(!DB.get('attendance'))DB.set('attendance',[]);if(!DB.get('student_health'))DB.set('student_health',[]);if(!DB.get('remedial_plans'))DB.set('remedial_plans',[]);if(!DB.get('vp_reports'))DB.set('vp_reports',[]);if(!DB.get('warning_letters'))DB.set('warning_letters',[]);if(!DB.get('teacher_achievements'))DB.set('teacher_achievements',[]);if(!DB.get('reexam_schedules'))DB.set('reexam_schedules',[]);
   if(!DB.get('duty_places'))DB.set('duty_places',[]);
   if(!DB.get('duty_remarks'))DB.set('duty_remarks',[]);
   if(!DB.get('classroom_discipline'))DB.set('classroom_discipline',[]);
@@ -871,7 +871,7 @@ function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);
   // Hash any remaining plaintext passwords
   let needsHash=false;
   acc.forEach(a=>{if(a.password&&!a.passwordHash)needsHash=true;});
-  if(needsHash){Promise.all(acc.map(async a=>{if(a.password&&!a.passwordHash){a.passwordHash=await hashPassword(a.password);delete a.password;}})).then(()=>DB.set('accounts',acc));}
+  if(needsHash){await Promise.all(acc.map(async a=>{if(a.password&&!a.passwordHash){a.passwordHash=await hashPassword(a.password);delete a.password;}}));modified=true;}
   if(modified)DB.set('accounts',acc);
 }
 let CU=null,SAR=null,SAIMP=false,_page='';
@@ -5243,6 +5243,8 @@ async function syncDownAll(){
   // Flush any pending local writes to Firebase BEFORE pulling,
   // so we never overwrite fresh local data with stale cloud data.
   await flushPendingWrites();
+  // After flushing, check which keys STILL have pending writes (flush failed)
+  const stillPending=new Set(getPendingWrites());
   const{db,ref,get}=window.__FB;
   try{
     const fbPath=getFirebaseSchoolPath();
@@ -5251,6 +5253,8 @@ async function syncDownAll(){
       const all=rootSnap.val();
       Object.keys(all).forEach(k=>{
         if(shouldSyncKey(k)&&all[k]!==null&&all[k]!==undefined){
+          // Never overwrite local data that couldn't be flushed to Firebase
+          if(stillPending.has(k)){console.warn('[Sync] Skipping pull for '+k+' — has unflushed local writes');return;}
           let v=all[k];
           if(v&&typeof v==='object'&&!Array.isArray(v)){
             const keys=Object.keys(v);
@@ -5258,7 +5262,6 @@ async function syncDownAll(){
               const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
             }
           }
-          // Accept Firebase data as source of truth (pending writes already flushed above)
           localStorage.setItem(DB._pfx+k,JSON.stringify(v));
         }
       });
@@ -5353,7 +5356,8 @@ function subscribeToCollection(k){
   const _pfx=DB._pfx;
   onValue(ref(db,getFirebaseSchoolPath()+k),(snap)=>{
     if(!SYNC_INITIAL_LOAD)return;
-    if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<1500)return;
+    if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<3000)return;
+    if(getPendingWrites().includes(k))return;
     let v=snap.val();
     // When all items are deleted, Firebase removes the node (val()===null)
     // We must write empty array to localStorage so deletions sync properly
@@ -5502,6 +5506,21 @@ async function bootFirebaseSync(){
 }
 
 setTimeout(()=>{bootFirebaseSync();},300);
+
+// Flush pending writes when user closes or navigates away
+window.addEventListener('beforeunload',()=>{
+  if(!window.__FB||!SYNC_ENABLED)return;
+  const pending=getPendingWrites();
+  if(!pending.length)return;
+  const{db,ref,set}=window.__FB;
+  const fbPath=getFirebaseSchoolPath();
+  for(const k of pending){
+    try{
+      const raw=localStorage.getItem(DB._pfx+k);
+      if(raw!==null){set(ref(db,fbPath+k),JSON.parse(raw));}
+    }catch(e){}
+  }
+});
 
 function rActivities(){const acts=DB.get('activities')||[];const canC=['superadmin','principal','vice_principal','activity_incharge'].includes(CU.role);const sb={Upcoming:'bbl',Ongoing:'btl',Completed:'bgn',Cancelled:'brd'};document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('activities')+' ('+acts.length+')</h3>'+(canC?'<button class="btn bp bsm" onclick="addActM()">+</button>':'')+'</div></div>'+acts.map(a=>'<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div style="display:flex;gap:5px;align-items:center;margin-bottom:3px"><strong>'+a.title+'</strong><span class="badge '+(sb[a.status]||'bgr')+'">'+a.status+'</span></div><div style="font-size:11px;color:var(--tx3)">📅 '+a.date+' · 📍 '+(a.venue||'TBD')+' · 👥 '+(a.participants||'All')+' · 👤 '+a.inchargeName+((a.teachers&&a.teachers.length)?' · 👨‍🏫 '+(a.teachers||[]).join(', '):'')+'</div><div style="font-size:12px;color:var(--tx2);margin-top:3px">'+(a.description||'')+'</div>'+((a.updates||[]).length?'<div style="margin-top:5px;padding:7px;background:var(--sf2);border-radius:var(--rs);font-size:11px;color:var(--tx3)">Latest: '+a.updates[a.updates.length-1].text+'</div>':'')+'</div><button class="btn bg2 bsm" onclick="manAct(\''+a.id+'\')">Manage</button></div></div>').join('')||'<div class="card"><div class="emp"><div class="ei">🏃</div><p>'+T('no_records')+'</p></div></div>';}
 function addActM(){window._actTeachers=[];openM('<div class="mh"><h3>🏃 Add Activity</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Title *</label><input id="at"></div><div class="fg"><label>'+T('description')+'</label><textarea id="ad"></textarea></div><div class="fr f2"><div class="fg"><label>'+T('date')+' *</label><input type="date" id="adt"></div><div class="fg"><label>'+T('status')+'</label><select id="ast"><option>Upcoming</option><option>Ongoing</option><option>Completed</option><option>Cancelled</option></select></div></div><div class="fr f2"><div class="fg"><label>Venue</label><input id="av"></div><div class="fg"><label>Participants</label><input id="ap"></div></div><div class="fg"><label>Teachers Conducting Activity</label>'+tchSearchWidget('act-tch-i','act-tch-d','pickActTch')+'<div id="act-tch-tags" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px"></div></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveAct()">'+T('save')+' →</button></div>');window.pickActTch=function(tid){const t=(DB.get('teachers')||[]).find(x=>x.id===tid);if(!t)return;if(!window._actTeachers.find(x=>x.id===tid)){window._actTeachers.push({id:tid,name:t.name});}document.getElementById('act-tch-i').value='';document.getElementById('act-tch-d').style.display='none';renderActTchTags();};window.renderActTchTags=function(){document.getElementById('act-tch-tags').innerHTML=window._actTeachers.map((t,i)=>'<span class="badge bbl" style="display:inline-flex;align-items:center;gap:4px">'+esc(t.name)+' <span style="cursor:pointer;font-weight:700;color:#c00" onclick="window._actTeachers.splice('+i+',1);renderActTchTags()">×</span></span>').join('');};}
@@ -5673,7 +5692,7 @@ window.__doSeedAndStart=async function(){
   // Initialize sessions FIRST so DB.get/set is wrapped before any seed runs
   if(typeof initSessions==='function')initSessions();
   seed();
-  migrate();
+  await migrate();
   // Render the right UI based on URL
   if(window.__earlyPortal==='parent'&&typeof checkParentMode==='function'){
     checkParentMode();
