@@ -6251,9 +6251,9 @@ function rTeacherDashboard(){
   const nbChecks=getMyTeacherLinkedRecords('notebook_checks',['teacherId','teacherName','teacher']);
   
   // Substitutions where I'm the substitute
-  const myFullNameLower=((CU.firstName||'')+' '+(CU.lastName||'')).trim().toLowerCase();
+  const myFullName=((CU.firstName||'')+' '+(CU.lastName||'')).trim();const myFullNameLower=myFullName.toLowerCase();const myAliases=getDutyNameAliases(myFullName);
   const allSubs=DB.get('substitutions')||[];
-  const mySubs=allSubs.filter(s=>(s.substituteName||'').trim().toLowerCase()===myFullNameLower);
+  const mySubs=allSubs.filter(s=>myAliases.has(normDutyName(s.substituteName)));
   const today=new Date().toISOString().split('T')[0];
   const todaySubs=mySubs.filter(s=>s.date===today);
   const upcomingSubs=mySubs.filter(s=>s.date>=today);
@@ -6967,9 +6967,55 @@ function isWorkDay(dateStr){
 }
 
 // All assignments for one teacher on a given date — flatten the roster
+// Teacher records store the full name in `name`; login accounts store it split
+// across firstName/lastName. Always read a teacher's name through this.
+function tchDisplayName(t){
+  if(!t)return '';
+  const n=(t.name||'').trim();
+  if(n)return n;
+  return ((t.firstName||'')+' '+(t.lastName||'')).trim();
+}
+
+function normDutyName(s){return (s||'').replace(/\s+/g,' ').trim().toLowerCase();}
+
+// Rosters store whatever name the assigner typed or picked. A teacher may be
+// known by a slightly different string on their login account than on their
+// teacher record, so match against every name that identifies the same person.
+// Read-only — never rewrites saved rosters.
+function getDutyNameAliases(teacherName){
+  const set=new Set();
+  const base=normDutyName(teacherName);
+  if(base)set.add(base);
+  const teachers=DB.get('teachers')||[];
+  const accounts=DB.get('accounts')||[];
+  let recs=teachers.filter(t=>normDutyName(tchDisplayName(t))===base);
+  // Current user: also follow the explicit account → teacher record link
+  if(CU&&normDutyName((CU.firstName||'')+' '+(CU.lastName||''))===base){
+    if(CU.teacherId){
+      const linked=teachers.find(x=>x.id===CU.teacherId);
+      if(linked&&!recs.some(r=>r.id===linked.id))recs=recs.concat([linked]);
+    }
+  }
+  recs.forEach(t=>{
+    [t.name,((t.firstName||'')+' '+(t.lastName||'')).trim()].forEach(n=>{
+      const v=normDutyName(n);if(v)set.add(v);
+    });
+    // Accounts linked to this teacher record
+    accounts.forEach(a=>{
+      if(a.role!=='teacher')return;
+      if(a.teacherId&&a.teacherId===t.id){
+        const v=normDutyName((a.firstName||'')+' '+(a.lastName||''));
+        if(v)set.add(v);
+      }
+    });
+  });
+  return set;
+}
+
 function getMyDutiesForDate(roster,teacherName){
   if(!roster)return [];
-  const myName=(teacherName||'').trim().toLowerCase();
+  const aliases=getDutyNameAliases(teacherName);
+  if(!aliases.size)return [];
   const duties=[];
   getDutySlots(roster).forEach(slot=>{
     if(slot.isClassDuty)return;
@@ -6977,7 +7023,7 @@ function getMyDutiesForDate(roster,teacherName){
     slot.spots.forEach(spot=>{
       const assigned=slotData[spot]||[];
       assigned.forEach(tName=>{
-        if((tName||'').trim().toLowerCase()===myName){
+        if(aliases.has(normDutyName(tName))){
           duties.push({slotId:slot.id,slotLabel:slot.label,time:slot.time,spot,type:'duty'});
         }
       });
@@ -6985,7 +7031,7 @@ function getMyDutiesForDate(roster,teacherName){
   });
   // Class duties
   (roster.classDuties||[]).forEach(c=>{
-    if((c.teacher||'').trim().toLowerCase()===myName){
+    if(aliases.has(normDutyName(c.teacher))){
       duties.push({slotId:'special_combined',slotLabel:'Special Class Duty',time:'12:45 onwards',spot:'Class '+c.classes+' (in '+c.room+')',type:'class_duty'});
     }
   });
@@ -7223,7 +7269,7 @@ function dutyTchSearch(el,slotId,spot){
   // Combine and dedupe by full name
   const allNames=new Set();
   const items=[];
-  teachers.forEach(t=>{const n=((t.firstName||'')+' '+(t.lastName||'')).trim();if(n&&!allNames.has(n.toLowerCase())){allNames.add(n.toLowerCase());items.push({name:n,subject:t.subject||''});}});
+  teachers.forEach(t=>{const n=tchDisplayName(t);if(n&&!allNames.has(n.toLowerCase())){allNames.add(n.toLowerCase());items.push({name:n,subject:t.subject||''});}});
   accountTeachers.forEach(a=>{const n=((a.firstName||'')+' '+(a.lastName||'')).trim();if(n&&!allNames.has(n.toLowerCase())){allNames.add(n.toLowerCase());items.push({name:n,subject:''});}});
   const matches=items.filter(it=>it.name.toLowerCase().includes(q)).slice(0,8);
   
@@ -7300,7 +7346,7 @@ function classDutyTchSearch(el,idx){
   const accountTeachers=(DB.get('accounts')||[]).filter(a=>a.role==='teacher');
   const allNames=new Set();
   const items=[];
-  teachers.forEach(t=>{const n=((t.firstName||'')+' '+(t.lastName||'')).trim();if(n&&!allNames.has(n.toLowerCase())){allNames.add(n.toLowerCase());items.push(n);}});
+  teachers.forEach(t=>{const n=tchDisplayName(t);if(n&&!allNames.has(n.toLowerCase())){allNames.add(n.toLowerCase());items.push(n);}});
   accountTeachers.forEach(a=>{const n=((a.firstName||'')+' '+(a.lastName||'')).trim();if(n&&!allNames.has(n.toLowerCase())){allNames.add(n.toLowerCase());items.push(n);}});
   const matches=items.filter(n=>n.toLowerCase().includes(q)).slice(0,6);
   if(!matches.length){dd.style.display='none';return;}
@@ -8045,6 +8091,7 @@ function rMyDuties(){
   
   const myFullName=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
   const myFullNameLower=myFullName.toLowerCase();
+  const myAliases=getDutyNameAliases(myFullName);
   const today=new Date().toISOString().split('T')[0];
   
   // Find duties from rosters (today + next 7 days)
@@ -8063,13 +8110,13 @@ function rMyDuties(){
   
   // Find my substitutions (today + future)
   const allSubs=DB.get('substitutions')||[];
-  const mySubs=allSubs.filter(s=>(s.substituteName||'').trim().toLowerCase()===myFullNameLower).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const mySubs=allSubs.filter(s=>myAliases.has(normDutyName(s.substituteName))).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const myUpcomingSubs=mySubs.filter(s=>s.date>=today);
   const myPastSubs=mySubs.filter(s=>s.date<today);
   
   // VP remarks for this teacher
   const allRemarks=DB.get('duty_remarks')||[];
-  const myRemarks=allRemarks.filter(rm=>(rm.teacher||'').trim().toLowerCase()===myFullNameLower).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const myRemarks=allRemarks.filter(rm=>myAliases.has(normDutyName(rm.teacher))).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
   const dutyLog=getDutyLog(myFullName);
   const pastDuties=dutyLog.filter(d=>d.date<=today);
@@ -8110,7 +8157,8 @@ function parseDutyMinutes(timeStr){
 
 function getDutyLog(teacherName){
   const allRosters=DB.get('duty_rosters')||[];
-  const name=(teacherName||'').trim().toLowerCase();
+  const aliases=getDutyNameAliases(teacherName);
+  if(!aliases.size)return [];
   const log=[];
   allRosters.forEach(r=>{
     if(!r.date)return;
@@ -8118,7 +8166,7 @@ function getDutyLog(teacherName){
     slots.forEach(slot=>{
       if(slot.isClassDuty){
         (r.classDuties||[]).forEach(c=>{
-          if((c.teacher||'').trim().toLowerCase()===name){
+          if(aliases.has(normDutyName(c.teacher))){
             log.push({date:r.date,day:r.day||'',slot:slot.label,spot:'Class '+c.classes+' ('+c.room+')',time:slot.time,minutes:parseDutyMinutes(slot.time)});
           }
         });
@@ -8127,7 +8175,7 @@ function getDutyLog(teacherName){
         slot.spots.forEach(spot=>{
           const assigned=slotData[spot]||[];
           assigned.forEach(t=>{
-            if((t||'').trim().toLowerCase()===name){
+            if(aliases.has(normDutyName(t))){
               log.push({date:r.date,day:r.day||'',slot:slot.label,spot:spot,time:slot.time,minutes:parseDutyMinutes(slot.time)});
             }
           });
@@ -8285,9 +8333,9 @@ function showTodoPopup(){
 
 // Full duty remarks modal — for the logged-in teacher
 function vAllMyDutyRemarks(){
-  const myFullNameLower=((CU.firstName||'')+' '+(CU.lastName||'')).trim().toLowerCase();
+  const myFullName=((CU.firstName||'')+' '+(CU.lastName||'')).trim();const myFullNameLower=myFullName.toLowerCase();const myAliases=getDutyNameAliases(myFullName);
   const allRemarks=DB.get('duty_remarks')||[];
-  const myRemarks=allRemarks.filter(rm=>(rm.teacher||'').trim().toLowerCase()===myFullNameLower).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const myRemarks=allRemarks.filter(rm=>myAliases.has(normDutyName(rm.teacher))).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const good=myRemarks.filter(r=>r.rating==='good').length;
   const avg=myRemarks.filter(r=>r.rating==='average').length;
   const poor=myRemarks.filter(r=>r.rating==='poor').length;
@@ -8299,9 +8347,9 @@ function vAllMyDutyRemarks(){
 
 // Full substitution history modal — for the logged-in teacher
 function vAllMySubsHistory(){
-  const myFullNameLower=((CU.firstName||'')+' '+(CU.lastName||'')).trim().toLowerCase();
+  const myFullName=((CU.firstName||'')+' '+(CU.lastName||'')).trim();const myFullNameLower=myFullName.toLowerCase();const myAliases=getDutyNameAliases(myFullName);
   const allSubs=DB.get('substitutions')||[];
-  const mySubs=allSubs.filter(s=>(s.substituteName||'').trim().toLowerCase()===myFullNameLower).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.periodNumber||0)-(a.periodNumber||0));
+  const mySubs=allSubs.filter(s=>myAliases.has(normDutyName(s.substituteName))).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.periodNumber||0)-(a.periodNumber||0));
   const today=new Date().toISOString().split('T')[0];
   const upcomingCount=mySubs.filter(s=>s.date>=today).length;
   const pastCount=mySubs.filter(s=>s.date<today).length;
