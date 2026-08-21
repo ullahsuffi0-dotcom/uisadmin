@@ -6158,6 +6158,11 @@ function rTeacherDashboard(){
   // Today's duties from rosters
   const todayRoster=(DB.get('duty_rosters')||[]).find(r=>r.date===today);
   const todayDuties=todayRoster?getMyDutiesForDate(todayRoster,(CU.firstName||'')+' '+(CU.lastName||'')):[];
+  const dutyLog=getDutyLog(((CU.firstName||'')+' '+(CU.lastName||'')).trim());
+  const pastDuties=dutyLog.filter(d=>d.date<=today);
+  const totalDutyMin=pastDuties.reduce((s,d)=>s+d.minutes,0);
+  const dutyHrs=Math.floor(totalDutyMin/60);
+  const dutyMins=totalDutyMin%60;
   
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>👋 Welcome, '+esc(CU.firstName||'Teacher')+'!</h3></div><div style="font-size:12px;color:var(--tx2);margin-top:4px">Your personal teacher portal — view evaluations, letters, plans assigned to you, and manage your achievements.</div>'
   +(me?'<div style="margin-top:11px;padding:10px;background:var(--sf2);border-radius:var(--rs);font-size:11px;color:var(--tx3);display:flex;gap:14px;flex-wrap:wrap"><div>📋 <strong style="color:var(--tx)">Subject:</strong> '+esc(me.subject||'—')+'</div>'+(me.email?'<div>✉️ '+esc(me.email)+'</div>':'')+(me.phone?'<div>📞 '+esc(me.phone)+'</div>':'')+(me.nationality?'<div>🌍 '+esc(me.nationality)+'</div>':'')+'</div>':'<div class="al aw" style="margin-top:11px;margin-bottom:0">⚠️ Your account isn\'t linked to a teacher record yet. Some data may not appear. Ask the Super Admin to link your account.</div>')
@@ -6171,6 +6176,7 @@ function rTeacherDashboard(){
   +'<div class="stat go"><div class="sl2">Substitutions</div><div class="sv">'+mySubs.length+'</div><div class="sb3">'+upcomingSubs.length+' upcoming</div><div class="sic">🔄</div></div>'
   +'<div class="stat rd"><div class="sl2">Explanation Letters</div><div class="sv">'+warnings.length+'</div><div class="sb3">issued to me</div><div class="sic">📝</div></div>'
   +'<div class="stat gn"><div class="sl2">My Achievements</div><div class="sv">'+achievements.length+'</div><div class="sb3">recorded</div><div class="sic">🏆</div></div>'
+  +'<div class="stat bl" style="cursor:pointer" onclick="navigate(\'my_duties\')"><div class="sl2">Total Duty Time</div><div class="sv">'+dutyHrs+'h '+dutyMins+'m</div><div class="sb3">'+pastDuties.length+' duties completed</div><div class="sic">⏱️</div></div>'
   +'</div>'
   
   +'<div class="cg g2"><div class="card"><div class="sh2"><h3>📝 Recent Class Visits</h3>'+(visits.length>3?'<button class="btn bg2 bxs" onclick="navigate(\'my_class_visits\')">View All →</button>':'')+'</div>'
