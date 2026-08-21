@@ -5263,7 +5263,6 @@ async function syncDownAll(){
       const all=rootSnap.val();
       Object.keys(all).forEach(k=>{
         if(shouldSyncKey(k)&&all[k]!==null&&all[k]!==undefined){
-          // Never overwrite local data that couldn't be flushed to Firebase
           if(stillPending.has(k)){console.warn('[Sync] Skipping pull for '+k+' — has unflushed local writes');return;}
           let v=all[k];
           if(v&&typeof v==='object'&&!Array.isArray(v)){
@@ -5272,6 +5271,21 @@ async function syncDownAll(){
               const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
             }
           }
+          // A recent local write with FEWER items means a deletion happened here
+          // that hasn't propagated to Firebase yet — keep local and re-push it
+          try{
+            const lwts=getLocalWriteTs(k);
+            const localRaw=localStorage.getItem(DB._pfx+k);
+            if(localRaw!==null&&lwts&&Date.now()-lwts<LWTS_WINDOW){
+              const local=JSON.parse(localRaw);
+              if(Array.isArray(local)&&Array.isArray(v)&&local.length<v.length){
+                console.warn('[Sync] Pull: local '+k+' has '+local.length+' items vs Firebase '+v.length+' — keeping local (possible pending delete)');
+                const{db:db2,ref:ref2,set:set2}=window.__FB;
+                set2(ref2(db2,fbPath+k),local).catch(e=>console.warn('[Sync] Re-push failed for '+k,e));
+                return;
+              }
+            }
+          }catch(e){}
           localStorage.setItem(DB._pfx+k,JSON.stringify(v));
         }
       });
@@ -5305,12 +5319,27 @@ function logFBError(k,e){
   console.warn('[Sync] Write failed for '+k+':',e.message);
 }
 
-if(!window._localWriteTs)window._localWriteTs={};
+// Local write timestamps, persisted so they survive a page refresh.
+// Used to protect fresh local deletions from being clobbered by stale cloud data.
+const LWTS_KEY='sms7_localWriteTs';
+const LWTS_WINDOW=90000;
+function getLocalWriteTs(k){
+  try{const m=JSON.parse(localStorage.getItem(LWTS_KEY)||'{}');return m[(DB._pfx||'')+k]||0;}catch(e){return 0;}
+}
+function markLocalWrite(k){
+  try{
+    const m=JSON.parse(localStorage.getItem(LWTS_KEY)||'{}');
+    const now=Date.now();
+    Object.keys(m).forEach(kk=>{if(now-m[kk]>LWTS_WINDOW)delete m[kk];});
+    m[(DB._pfx||'')+k]=now;
+    localStorage.setItem(LWTS_KEY,JSON.stringify(m));
+  }catch(e){}
+}
 if(!DB._raw_set){
   const _origDBset=DB.set.bind(DB);
   DB.set=function(k,v){
     _origDBset(k,v);
-    window._localWriteTs[k]=Date.now();
+    markLocalWrite(k);
     if(!SYNC_ENABLED){
       // Retry: if Firebase is available but SYNC_ENABLED was never set, auto-enable
       if(window.__FB&&window.__FB.db&&CURRENT_SCHOOL_ID){
@@ -5340,7 +5369,7 @@ if(!DB._raw_set){
   const _origRawSet=DB._raw_set;
   DB._raw_set=function(k,v){
     _origRawSet(k,v);
-    window._localWriteTs[k]=Date.now();
+    markLocalWrite(k);
     if(!SYNC_ENABLED&&window.__FB&&window.__FB.db&&CURRENT_SCHOOL_ID){
       console.warn('[Sync] Auto-enabling SYNC via _raw_set');
       SYNC_ENABLED=true;SYNC_INITIAL_LOAD=true;
@@ -5382,8 +5411,8 @@ function subscribeToCollection(k){
     }
     // Reject stale incoming data: if local was written recently and incoming
     // has MORE items, it's likely a pre-delete echo from Firebase
-    const localWriteTime=window._localWriteTs&&window._localWriteTs[k];
-    if(localWriteTime&&Date.now()-localWriteTime<10000){
+    const localWriteTime=getLocalWriteTs(k);
+    if(localWriteTime&&Date.now()-localWriteTime<LWTS_WINDOW){
       try{
         const local=JSON.parse(localStorage.getItem(_pfx+k)||'null');
         if(Array.isArray(local)&&Array.isArray(v)&&v.length>local.length){
