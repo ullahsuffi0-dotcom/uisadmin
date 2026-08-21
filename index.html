@@ -6825,7 +6825,11 @@ const DEFAULT_DUTY_SLOTS=[
   {id:'special_combined',label:'Special Class Duty — Combined Classes (12:45 onwards)',time:'12:45 onwards',isClassDuty:true,spots:[]}
 ];
 
-function getDutySlots(){
+function getDutySlots(dateOrRoster){
+  if(dateOrRoster){
+    let roster=typeof dateOrRoster==='string'?getRosterForDate(dateOrRoster):dateOrRoster;
+    if(roster&&roster.customSlots&&Array.isArray(roster.customSlots)&&roster.customSlots.length)return roster.customSlots;
+  }
   const custom=DB.get('duty_places');
   if(custom&&Array.isArray(custom)&&custom.length)return custom;
   return DEFAULT_DUTY_SLOTS;
@@ -6858,7 +6862,7 @@ function getMyDutiesForDate(roster,teacherName){
   if(!roster)return [];
   const myName=(teacherName||'').trim().toLowerCase();
   const duties=[];
-  getDutySlots().forEach(slot=>{
+  getDutySlots(roster).forEach(slot=>{
     if(slot.isClassDuty)return;
     const slotData=(roster.slots||{})[slot.id]||{};
     slot.spots.forEach(spot=>{
@@ -6986,11 +6990,11 @@ function rdRender(){
     roster=getRosterForDate(date);
     if(!roster){
       roster={date,day,slots:{},classDuties:[]};
-      getDutySlots().forEach(s=>{if(!s.isClassDuty){roster.slots[s.id]={};s.spots.forEach(sp=>roster.slots[s.id][sp]=[]);}});
+      getDutySlots(date).forEach(s=>{if(!s.isClassDuty){roster.slots[s.id]={};s.spots.forEach(sp=>roster.slots[s.id][sp]=[]);}});
     }else{
       // Make sure all expected slots/spots exist (defensive — older rosters may be missing newer spots)
       if(!roster.slots)roster.slots={};
-      getDutySlots().forEach(s=>{if(!s.isClassDuty){if(!roster.slots[s.id])roster.slots[s.id]={};s.spots.forEach(sp=>{if(!roster.slots[s.id][sp])roster.slots[s.id][sp]=[];});}});
+      getDutySlots(roster).forEach(s=>{if(!s.isClassDuty){if(!roster.slots[s.id])roster.slots[s.id]={};s.spots.forEach(sp=>{if(!roster.slots[s.id][sp])roster.slots[s.id][sp]=[];});}});
       if(!roster.classDuties)roster.classDuties=[];
     }
     // Set this as the working copy
@@ -7000,8 +7004,13 @@ function rdRender(){
   
   let html='<div class="card" style="margin-bottom:13px;text-align:center;padding:16px;background:linear-gradient(135deg,var(--ac2),var(--sf2))"><div style="font-size:14px;font-weight:600;color:var(--tx)">'+esc(settings.schoolName||'School')+'</div><div style="font-size:18px;font-weight:bold;color:var(--ac);margin-top:5px">DAILY DUTY ROSTER · '+esc(day||'—')+' · '+esc(date)+'</div>'+(!isWork?'<div class="al aw" style="margin-top:9px;margin-bottom:0">⚠️ '+esc(day)+' is not a typical working day. Roster editing is still allowed.</div>':'')+(canEdit?'<div style="margin-top:9px;font-size:11px;color:var(--tx3)">💡 Type a teacher\'s name in any input → click a suggestion to add. Click 💾 Save when done.</div>':'')+'</div>';
   
+  // Show notice if this date has custom places
+  const _hasCustomSlots=roster.customSlots&&Array.isArray(roster.customSlots)&&roster.customSlots.length;
+  if(_hasCustomSlots&&canEdit){
+    html+='<div class="al ai" style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div>📌 This date uses <strong>custom places</strong> (today-only override).</div><button class="btn bd3 bxs" onclick="clearCustomSlotsForDate()">✕ Remove Override</button></div>';
+  }
   // Render each duty slot
-  getDutySlots().forEach(slot=>{
+  getDutySlots(roster).forEach(slot=>{
     if(slot.isClassDuty){
       // Special section for class duties
       html+=renderClassDutySection(roster,slot,canEdit);
@@ -7206,7 +7215,7 @@ function saveRoster(){
     if(!r){
       // Empty roster — build from template
       r={date,day:getDayOfWeek(date),slots:{},classDuties:[]};
-      getDutySlots().forEach(s=>{if(!s.isClassDuty){r.slots[s.id]={};s.spots.forEach(sp=>{r.slots[s.id][sp]=[];});}});
+      getDutySlots(date).forEach(s=>{if(!s.isClassDuty){r.slots[s.id]={};s.spots.forEach(sp=>{r.slots[s.id][sp]=[];});}});
     }
     console.warn('[Roster] Working copy was missing — using DB snapshot for save');
   }
@@ -7300,7 +7309,7 @@ function addDutyRemarkM(date,slotId,spot){
   const slotData=(roster.slots||{})[slotId]||{};
   const assigned=slotData[spot]||[];
   if(!assigned.length){toast('No teachers assigned to this spot','danger');return;}
-  const slotObj=getDutySlots().find(s=>s.id===slotId);
+  const slotObj=getDutySlots(date).find(s=>s.id===slotId);
   const slotLabel=slotObj?slotObj.label:slotId;
   const tchOpts=assigned.map(t=>'<option value="'+esc(t)+'">'+esc(t)+'</option>').join('');
   openM('<div class="mh"><h3>📝 Add Duty Remark</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
@@ -7333,7 +7342,7 @@ function editDutyRemarkM(id){
   const remarks=DB.get('duty_remarks')||[];
   const rm=remarks.find(r=>r.id===id);
   if(!rm){toast('Remark not found','danger');return;}
-  const slotObj=getDutySlots().find(s=>s.id===rm.slotId);
+  const slotObj=getDutySlots(rm.date).find(s=>s.id===rm.slotId);
   const slotLabel=slotObj?slotObj.label:rm.slotId;
   openM('<div class="mh"><h3>✏️ Edit Duty Remark</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
   +'<div class="al ai" style="margin-bottom:10px">📅 <strong>'+esc(rm.date)+'</strong> · '+esc(slotLabel)+'<br>📍 <strong>'+esc(rm.spot)+'</strong> · 👤 <strong>'+esc(rm.teacher)+'</strong></div>'
@@ -7371,16 +7380,37 @@ function delDutyRemark(id){
 // ─── MANAGE DUTY PLACES — Admin can modify, add, delete duty slots & spots ───
 
 function manageDutyPlacesM(){
-  const slots=JSON.parse(JSON.stringify(getDutySlots()));
+  window._placesScope='future';
+  const slots=JSON.parse(JSON.stringify(getDutySlots(window._rosterDate)));
   window._editSlots=slots;
+  renderPlacesMgr();
+}
+
+function setPlacesScope(scope){
+  window._placesScope=scope;
+  if(scope==='today'){
+    const roster=getRosterForDate(window._rosterDate);
+    const slots=JSON.parse(JSON.stringify(roster&&roster.customSlots&&roster.customSlots.length?roster.customSlots:getDutySlots(window._rosterDate)));
+    window._editSlots=slots;
+  }else{
+    const globalSlots=DB.get('duty_places');
+    const slots=JSON.parse(JSON.stringify(globalSlots&&Array.isArray(globalSlots)&&globalSlots.length?globalSlots:DEFAULT_DUTY_SLOTS));
+    window._editSlots=slots;
+  }
   renderPlacesMgr();
 }
 
 function renderPlacesMgr(){
   const slots=window._editSlots;
   if(!slots)return;
+  const scope=window._placesScope||'future';
+  const isToday=scope==='today';
   let html='<div class="mh"><h3>⚙️ Manage Duty Places & Timings</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2" style="max-height:70vh;overflow-y:auto">'
-  +'<div class="al ai" style="margin-bottom:10px">Edit slot names, timings, and spots (places). Changes apply to all future rosters. Existing saved rosters keep their data.</div>';
+  +'<div style="display:flex;gap:0;margin-bottom:12px;border:2px solid var(--ac);border-radius:var(--rs);overflow:hidden">'
+  +'<button onclick="setPlacesScope(\'today\')" style="flex:1;padding:10px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer;transition:all .2s;'+(isToday?'background:var(--ac);color:#fff':'background:var(--sf2);color:var(--tx3)')+'">📌 Today Only<br><span style="font-size:10px;font-weight:400">('+window._rosterDate+')</span></button>'
+  +'<button onclick="setPlacesScope(\'future\')" style="flex:1;padding:10px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer;transition:all .2s;'+(!isToday?'background:var(--ac);color:#fff':'background:var(--sf2);color:var(--tx3)')+'">🔄 All Future<br><span style="font-size:10px;font-weight:400">(permanent)</span></button>'
+  +'</div>'
+  +'<div class="al '+(isToday?'aw':'ai')+'" style="margin-bottom:10px">'+(isToday?'⚠️ Changes will <strong>only apply to '+window._rosterDate+'</strong>. Other dates will keep using the default places.':'Changes apply to <strong>all future rosters</strong>. Existing saved rosters keep their data.')+'</div>';
   slots.forEach((slot,si)=>{
     if(slot.isClassDuty)return; // skip class duty slot from editor
     html+='<div style="border:1px solid var(--bd);border-radius:var(--rs);padding:12px;margin-bottom:10px;background:var(--sf2)">'
@@ -7425,6 +7455,7 @@ function rmDutySpot(si,pi){
 
 function saveDutyPlaces(){
   const slots=window._editSlots;
+  const scope=window._placesScope||'future';
   // Validate
   for(let i=0;i<slots.length;i++){
     if(slots[i].isClassDuty)continue;
@@ -7436,11 +7467,43 @@ function saveDutyPlaces(){
   if(!slots.find(s=>s.isClassDuty)){
     slots.push({id:'special_combined',label:'Special Class Duty — Combined Classes (12:45 onwards)',time:'12:45 onwards',isClassDuty:true,spots:[]});
   }
-  DB.set('duty_places',slots);
-  logA('Updated duty places configuration');
-  closeM();
-  toast('Duty places saved — will apply to all future rosters','success');
+  if(scope==='today'){
+    const date=window._rosterDate;
+    const list=DB.get('duty_rosters')||[];
+    let roster=list.find(r=>r.date===date);
+    if(!roster){
+      roster={date,day:getDayOfWeek(date),slots:{},classDuties:[],createdAt:new Date().toISOString(),createdBy:(CU.firstName||'')+' '+(CU.lastName||'')};
+      list.push(roster);
+    }
+    roster.customSlots=slots;
+    // Ensure roster.slots has entries for all custom slots/spots
+    if(!roster.slots)roster.slots={};
+    slots.forEach(s=>{if(!s.isClassDuty){if(!roster.slots[s.id])roster.slots[s.id]={};s.spots.forEach(sp=>{if(!roster.slots[s.id][sp])roster.slots[s.id][sp]=[];});}});
+    roster.updatedAt=new Date().toISOString();
+    roster.updatedBy=(CU.firstName||'')+' '+(CU.lastName||'');
+    DB.set('duty_rosters',list);
+    logA('Updated duty places for '+date+' only');
+    closeM();
+    toast('Places saved for '+date+' only','success');
+  }else{
+    DB.set('duty_places',slots);
+    logA('Updated duty places configuration (all future)');
+    closeM();
+    toast('Duty places saved — will apply to all future rosters','success');
+  }
   delete window._workingRoster;
+  rDutyRoster();
+}
+
+function clearCustomSlotsForDate(){
+  const date=window._rosterDate;
+  if(!confirm('Remove the today-only place override for '+date+'?\nThis date will use the default places again.'))return;
+  const list=DB.get('duty_rosters')||[];
+  const roster=list.find(r=>r.date===date);
+  if(roster){delete roster.customSlots;DB.set('duty_rosters',list);}
+  logA('Removed custom duty places for '+date);
+  delete window._workingRoster;
+  toast('Custom places removed for '+date,'success');
   rDutyRoster();
 }
 
@@ -7465,7 +7528,7 @@ function exportRosterPDF(){
   const w=window.open('','_blank');
   let body='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Duty Roster — '+date+'</title><style>@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:10px;line-height:1.4}.title-bar{background:#1a5f7a;color:#fff;text-align:center;padding:9px;border-radius:5px;margin-bottom:11px;font-size:14px;font-weight:bold}table{width:100%;border-collapse:collapse;margin-bottom:9px;font-size:10px}th{background:#1a5f7a;color:#fff;padding:5px 7px;text-align:left;font-size:9px}td{padding:5px 7px;border:1px solid #ddd;vertical-align:top}.slot-hdr{background:#a8e0c4;color:#0f3a2a;font-weight:bold;text-align:center;padding:6px;border-radius:3px;margin:8px 0 4px}.area-hdr{background:#bee2f7;color:#1a3a5c;font-weight:600;text-align:center;padding:5px;font-size:9px;border-radius:2px}.special{background:#fef3c7;border:2px solid #d97706;padding:9px;border-radius:5px;margin-top:10px}.special-title{color:#a52424;font-weight:bold;text-align:center;font-size:13px;margin-bottom:8px}@media print{button{display:none}}</style></head><body>'+pdfHeaderHTML({subtitle:'Daily Duty Roster — '+day+' · '+date})+'<div class="title-bar">DAILY DUTY ROSTER · '+day.toUpperCase()+' · '+date+'</div>';
   
-  getDutySlots().forEach(slot=>{
+  getDutySlots(roster).forEach(slot=>{
     if(slot.isClassDuty){
       const classes=roster.classDuties||[];
       if(!classes.length)return;
