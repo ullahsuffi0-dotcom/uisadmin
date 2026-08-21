@@ -802,6 +802,22 @@ function pdfHeaderHTML(opts){
     +right
     +'</div>';
 }
+// ── Deletion tombstones ──────────────────────────────────────
+// Ids a user deliberately deleted. Migrations and incoming cloud data must
+// never resurrect them, otherwise a delete silently undoes itself on refresh.
+function getTombstones(k){const t=DB.get('deleted_ids')||{};return Array.isArray(t[k])?t[k]:[];}
+function addTombstone(k,id){
+  const t=DB.get('deleted_ids')||{};
+  if(!Array.isArray(t[k]))t[k]=[];
+  if(!t[k].includes(id)){t[k].push(id);DB.set('deleted_ids',t);}
+}
+// Pure filter — returns arr with tombstoned entries removed.
+function applyTombstones(k,arr){
+  const ids=getTombstones(k);
+  if(!ids.length||!Array.isArray(arr))return arr;
+  return arr.filter(x=>!(x&&ids.includes(x.id)));
+}
+
 function seed(){
   if(DB.get('sv7'))return;
   DB.set('settings',{schoolName:'UNAIZAH INTERNATIONAL SCHOOL',schoolNameAr:'مدرسة عنيزة العالمية',city:'Unaizah',academicYear:'2024-2025',logo:'🎓',liveMode:false});
@@ -866,8 +882,19 @@ async function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports
   const newNames={u1:{f:'System',l:'Administrator'},u2:{f:'Hamza',l:'Alhalaly'},u3:{f:'Suffi',l:'Ullah',scope:'Primary'},u4:{f:'Zain',l:'Ul Arfeen'},u5:{f:'Abdulmonim',l:''},u6:{f:'ABC',l:''},u7:{f:'Activity',l:'Incharge'},u8:{f:'Admin',l:'Assistant'},u9:{f:'Ahmed',l:'Alhatlani'}};
   let modified=false;
   Object.entries(oldNames).forEach(([id,oldName])=>{const i=acc.findIndex(a=>a.id===id);if(i>=0&&((acc[i].firstName+' '+acc[i].lastName).trim()===oldName)){acc[i].firstName=newNames[id].f;acc[i].lastName=newNames[id].l;if(newNames[id].scope)acc[i].scope=newNames[id].scope;modified=true;}});
-  // Add second VP if missing (Abdulbasit)
-  if(!acc.find(a=>a.id==='u3b')){acc.push({id:'u3b',username:'vice2',password:'admin123',role:'vice_principal',firstName:'Abdulbasit',lastName:'',email:'v.middle@school.sa',phone:'0500000010',active:true,created:'2024-01-01',theme:'teal',lang:'en',scope:'Middle & Secondary'});modified=true;}
+  // Add second VP if missing (Abdulbasit) — but never re-add it once deleted
+  if(!acc.find(a=>a.id==='u3b')&&!getTombstones('accounts').includes('u3b')&&!DB.get('mig_u3b')){
+    acc.push({id:'u3b',username:'vice2',password:'admin123',role:'vice_principal',firstName:'Abdulbasit',lastName:'',email:'v.middle@school.sa',phone:'0500000010',active:true,created:'2024-01-01',theme:'teal',lang:'en',scope:'Middle & Secondary'});
+    modified=true;
+  }
+  if(!DB.get('mig_u3b'))DB.set('mig_u3b',true);
+  // Drop anything the user deleted that crept back in via cloud or migration
+  const accPruned=applyTombstones('accounts',acc);
+  if(accPruned.length!==acc.length){acc.length=0;accPruned.forEach(a=>acc.push(a));modified=true;}
+  // Same for teachers
+  const tch=DB.get('teachers')||[];
+  const tchPruned=applyTombstones('teachers',tch);
+  if(tchPruned.length!==tch.length)DB.set('teachers',tchPruned);
   // Hash any remaining plaintext passwords
   let needsHash=false;
   acc.forEach(a=>{if(a.password&&!a.passwordHash)needsHash=true;});
@@ -1549,6 +1576,7 @@ function confirmDeleteAccount(id){
   const a=acc.find(x=>x.id===id);
   if(!a||a.role==='superadmin'||a.id===CU.id)return;
   acc=acc.filter(x=>x.id!==id);
+  addTombstone('accounts',id);
   DB.set('accounts',acc);
   logA('Deleted account: '+a.firstName+' '+a.lastName+' ('+a.username+', '+a.role+')');
   closeM();toast('Account deleted','success');rAccounts();
@@ -1568,6 +1596,7 @@ function confirmDeleteSelectedAccounts(){
   const deleted=[];
   ids.forEach(id=>{const a=acc.find(x=>x.id===id);if(a&&a.role!=='superadmin'&&a.id!==CU.id)deleted.push(a);});
   acc=acc.filter(a=>!deleted.some(d=>d.id===a.id));
+  deleted.forEach(d=>addTombstone('accounts',d.id));
   DB.set('accounts',acc);
   deleted.forEach(a=>logA('Deleted account: '+a.firstName+' '+a.lastName+' ('+a.username+', '+a.role+')'));
   closeM();toast(deleted.length+' account'+(deleted.length>1?'s':'')+' deleted','success');rAccounts();
@@ -2085,7 +2114,11 @@ function delTch(id){
     }
     return true;
   });
-  if(updatedAccounts.length<accounts.length)DB.set('accounts',updatedAccounts);
+  if(updatedAccounts.length<accounts.length){
+    accounts.forEach(a=>{if(!updatedAccounts.some(u=>u.id===a.id))addTombstone('accounts',a.id);});
+    DB.set('accounts',updatedAccounts);
+  }
+  addTombstone('teachers',id);
   DB.set('teachers',(DB.get('teachers')||[]).filter(t=>t.id!==id));
   logA('Deleted teacher'+(teacher?' '+teacher.name:'')+' and linked account');toast('Teacher and account deleted','danger');rTeachers();
 }
@@ -5166,7 +5199,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
-  'duty_places','duty_remarks','classroom_discipline','todos'
+  'duty_places','duty_remarks','classroom_discipline','todos','deleted_ids'
 ];
 
 function isSessionScopedKey(k){
@@ -5269,6 +5302,16 @@ async function syncDownAll(){
             const keys=Object.keys(v);
             if(keys.length>0&&keys.every(kk=>/^\d+$/.test(kk))){
               const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
+            }
+          }
+          // Never let the cloud resurrect something deleted here
+          if(Array.isArray(v)){
+            const vt=applyTombstones(k,v);
+            if(vt.length!==v.length){
+              console.warn('[Sync] Pull: dropped '+(v.length-vt.length)+' tombstoned entries from '+k);
+              v=vt;
+              const{db:db3,ref:ref3,set:set3}=window.__FB;
+              set3(ref3(db3,fbPath+k),v).catch(e=>console.warn('[Sync] Tombstone re-push failed for '+k,e));
             }
           }
           // A recent local write with FEWER items means a deletion happened here
@@ -5407,6 +5450,14 @@ function subscribeToCollection(k){
       const keys=Object.keys(v);
       if(keys.length>0&&keys.every(kk=>/^\d+$/.test(kk))){
         const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
+      }
+    }
+    // Never let the cloud resurrect something deleted here
+    if(Array.isArray(v)){
+      const vt=applyTombstones(k,v);
+      if(vt.length!==v.length){
+        console.warn('[Sync] Listener: dropped '+(v.length-vt.length)+' tombstoned entries from '+k);
+        v=vt;
       }
     }
     // Reject stale incoming data: if local was written recently and incoming
