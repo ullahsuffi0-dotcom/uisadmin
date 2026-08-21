@@ -1281,9 +1281,9 @@ function logA(action){if(!CU)return;const l=DB.get('activity_log')||[];l.unshift
 function fN(s){return((s.firstName||'')+' '+(s.lastName||'')).trim();}
 function gS(id){return(DB.get('students')||[]).find(s=>s.id===id);}
 function gA(id){return(DB.get('accounts')||[]).find(a=>a.id===id);}
-// VP class-based filtering: returns true if record matches VP's assigned classes (or VP has no class restriction)
+// Class-based filtering for VP and Student Advisor
 function vpClassMatch(rec){
-  if(CU.role!=='vice_principal')return true;
+  if(CU.role!=='vice_principal'&&CU.role!=='student_advisor')return true;
   const ac=CU.assignedClasses;if(!ac||!ac.length)return true;
   const g=String(rec.grade||''),sec=String(rec.section||'');
   if(g&&sec)return ac.includes(g+'-'+sec);
@@ -1293,7 +1293,7 @@ function vpClassMatch(rec){
   if(g)return ac.some(c=>c.startsWith(g+'-'));
   return true;
 }
-function vpFilter(arr){if(CU.role!=='vice_principal'||!CU.assignedClasses||!CU.assignedClasses.length)return arr;return arr.filter(vpClassMatch);}
+function vpFilter(arr){if((CU.role!=='vice_principal'&&CU.role!=='student_advisor')||!CU.assignedClasses||!CU.assignedClasses.length)return arr;return arr.filter(vpClassMatch);}
 function getAllClasses(){const sts=DB.get('students')||[];return[...new Set(sts.map(s=>grSec(s.grade,s.section)).filter(c=>c&&c!=='-'&&c!=='undefined-undefined'))].sort((a,b)=>{const[ga,sa]=a.split('-');const[gb,sb]=b.split('-');return(parseInt(ga)||0)-(parseInt(gb)||0)||a.localeCompare(b);});}
 function sOpts(roles=null){return(DB.get('accounts')||[]).filter(a=>a.active&&a.role!=='superadmin'&&(!roles||roles.includes(a.role))).map(a=>'<option value="'+a.id+'">'+a.firstName+' '+a.lastName+' ('+rL(a.role)+')</option>').join('');}
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -1604,19 +1604,19 @@ async function saveAcc(){const fn=document.getElementById('nafn').value.trim(),l
   acc.push(newAcc);DB.set('accounts',acc);logA('Created account: '+fn+' '+ln);closeM();rAccounts();
   openM('<div class="mh"><h3>✅ Account Created</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ag" style="margin-bottom:14px"><strong>'+esc(fn)+' '+esc(ln)+'</strong> account has been created.</div><div style="background:var(--sf2);border:2px solid var(--ac);border-radius:var(--rs);padding:16px;margin-bottom:14px"><div style="font-size:11px;text-transform:uppercase;color:var(--tx3);letter-spacing:0.5px;margin-bottom:10px;font-weight:700">Login Credentials</div><div style="display:flex;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:140px"><div style="font-size:10px;color:var(--tx3)">Username</div><div style="font-family:monospace;font-size:16px;font-weight:700;color:var(--ac);background:var(--bg);padding:6px 10px;border-radius:4px;border:1px dashed var(--bd);margin-top:3px">'+esc(un)+'</div></div><div style="flex:1;min-width:140px"><div style="font-size:10px;color:var(--tx3)">Password</div><div style="font-family:monospace;font-size:16px;font-weight:700;color:var(--ac);background:var(--bg);padding:6px 10px;border-radius:4px;border:1px dashed var(--bd);margin-top:3px">'+esc(pw)+'</div></div></div></div><div style="font-size:11px;color:var(--tx3)">Share these credentials with the user. They can change their password after login.</div></div><div class="mf"><button class="btn bg2" style="background:#25D366;color:#fff;border-color:#25D366" onclick="shareAccWA(\''+esc(fn).replace(/'/g,"\\'")+' '+esc(ln).replace(/'/g,"\\'")+'\',\''+esc(un).replace(/'/g,"\\'")+'\',\''+esc(pw).replace(/'/g,"\\'")+'\')"><span style="font-size:16px">📱</span> WhatsApp</button><button class="btn bp" onclick="closeM()">OK, Got It</button></div>');}
 function editAccM(id){const a=gA(id);if(!a)return;
-  const isVP=a.role==='vice_principal';const classes=isVP?getAllClasses():[];const assigned=a.assignedClasses||[];
+  const isVP=a.role==='vice_principal';const isAdv=a.role==='student_advisor';const showClasses=isVP||isAdv;const classes=showClasses?getAllClasses():[];const assigned=a.assignedClasses||[];
   openM('<div class="mh"><h3>Edit: '+a.firstName+' '+a.lastName+'</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fr f2"><div class="fg"><label>'+T('first_name')+'</label><input id="eafn" value="'+esc(a.firstName)+'"></div><div class="fg"><label>'+T('last_name')+'</label><input id="ealn" value="'+esc(a.lastName)+'"></div></div><div class="fr f2"><div class="fg"><label>📧 Gmail / Email <span style="font-size:10px;color:var(--ac)">🔑 For password reset</span></label><input id="eaem" type="email" value="'+esc(a.email||'')+'" placeholder="example@gmail.com"></div><div class="fg"><label>'+T('phone')+'</label><input id="raph" value="'+esc(a.phone||'')+'"></div></div>'+(!a.email?'<div class="al ad" style="margin-bottom:10px;font-size:11px">⚠️ No Gmail linked — this user cannot reset their password from the login page.</div>':'')+'<div class="fg"><label>'+T('role')+'</label><select id="earl" onchange="togVPClasses()">'+Object.entries(RL).filter(([k])=>k!=='superadmin').map(([k,v])=>'<option value="'+k+'"'+(a.role===k?' selected':'')+'>'+v.en+'</option>').join('')+'</select></div>'
-  +'<div id="vp-classes-wrap" style="'+(isVP?'':'display:none;')+'margin-bottom:10px"><div class="fg"><label>📚 Assigned Classes <span style="font-size:10px;color:var(--tx3)">(VP will only see cases for these classes)</span></label>'
+  +'<div id="vp-classes-wrap" style="'+(showClasses?'':'display:none;')+'margin-bottom:10px"><div class="fg"><label>📚 Assigned Classes <span style="font-size:10px;color:var(--tx3)">(will only see data for these classes)</span></label>'
   +'<div style="display:flex;gap:4px;margin-bottom:6px"><button class="btn bg2 bxs" onclick="document.querySelectorAll(\'.vp-cls-chk\').forEach(c=>c.checked=true)" type="button">Select All</button><button class="btn bg2 bxs" onclick="document.querySelectorAll(\'.vp-cls-chk\').forEach(c=>c.checked=false)" type="button">Clear All</button></div>'
   +'<div style="display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto;padding:8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs)">'
   +(classes.length?classes.map(c=>'<label style="display:flex;align-items:center;gap:5px;padding:5px 10px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);cursor:pointer;font-size:12px;min-width:80px"><input type="checkbox" class="vp-cls-chk" value="'+esc(c)+'"'+(assigned.includes(c)?' checked':'')+'>Gr '+esc(c)+'</label>').join(''):'<div style="font-size:11px;color:var(--tx3)">No classes found — add students first</div>')
   +'</div></div></div>'
   +'<div class="fg"><label>New Password (blank=keep)</label><input id="eapw" type="password"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveEditAcc(\''+id+'\')">'+T('save')+' →</button></div>');
-  window.togVPClasses=function(){document.getElementById('vp-classes-wrap').style.display=document.getElementById('earl').value==='vice_principal'?'':'none';};
+  window.togVPClasses=function(){var r=document.getElementById('earl').value;document.getElementById('vp-classes-wrap').style.display=(r==='vice_principal'||r==='student_advisor')?'':'none';};
 }
 async function saveEditAcc(id){const acc=DB.get('accounts')||[];const i=acc.findIndex(a=>a.id===id);if(i<0)return;acc[i].firstName=document.getElementById('eafn').value.trim()||acc[i].firstName;acc[i].lastName=document.getElementById('ealn').value.trim()||acc[i].lastName;acc[i].email=document.getElementById('eaem').value.trim();acc[i].phone=document.getElementById('raph').value.trim();const oldRole=acc[i].role;acc[i].role=document.getElementById('earl').value;
   // Save assigned classes for VP
-  if(acc[i].role==='vice_principal'){acc[i].assignedClasses=[...document.querySelectorAll('.vp-cls-chk:checked')].map(c=>c.value);}else{delete acc[i].assignedClasses;}
+  if(acc[i].role==='vice_principal'||acc[i].role==='student_advisor'){acc[i].assignedClasses=[...document.querySelectorAll('.vp-cls-chk:checked')].map(c=>c.value);}else{delete acc[i].assignedClasses;}
   // If role changed to teacher, ensure a teachers record exists
   if(acc[i].role==='teacher'&&!acc[i].teacherId){const teachers=DB.get('teachers')||[];const fullName=(acc[i].firstName+' '+acc[i].lastName).trim();const existing=teachers.find(t=>t.name.toLowerCase()===fullName.toLowerCase());if(existing){acc[i].teacherId=existing.id;}else{const tchId=nid('tch');teachers.push({id:tchId,name:fullName,employeeId:'',subject:'',department:'',phone:acc[i].phone||'',email:acc[i].email||'',note:'',active:true,created:new Date().toISOString().split('T')[0]});DB.set('teachers',teachers);acc[i].teacherId=tchId;}}
   const np=document.getElementById('eapw').value;if(np&&np.length>=6){acc[i].passwordHash=await hashPassword(np);acc[i]._cardPw=np;delete acc[i].password;}DB.set('accounts',acc);
@@ -1723,9 +1723,9 @@ function expAllAccountCards(){
   toast('All '+acc.length+' account cards generated','success');
 }
 function rStudents(){
-  const students=DB.get('students')||[];const canEdit=['superadmin','principal'].includes(CU.role);
+  const students=vpFilter(DB.get('students')||[]);const canEdit=['superadmin','principal'].includes(CU.role);
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;gap:8px;flex:1"><input id="stq" placeholder="🔍 '+T('search')+'…" oninput="fltStu()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="stgf" onchange="fltStu()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+g+'">Gr '+g+'</option>').join('')+'</select></div>'+(canEdit?'<div style="display:flex;gap:6px;margin-left:8px;flex-wrap:wrap">'+(CU.role==='superadmin'?'<button class="btn bg2 bsm" onclick="bulkStuM()" title="Super Admin: bulk delete or replace all students">⚙️ Bulk</button>':'')+'<button class="btn bg2 bsm" onclick="impStuM()">📥 CSV</button><button class="btn bp bsm" onclick="addStuM()">+ Add</button></div>':'')+'</div></div><div class="card" id="stw">'+buildStuTbl(students)+'</div>';
-  window.fltStu=function(){const q=document.getElementById('stq').value.toLowerCase(),gr=document.getElementById('stgf').value;let list=DB.get('students')||[];if(q)list=list.filter(s=>fN(s).toLowerCase().includes(q)||s.grade.includes(q)||(s.section||'').toLowerCase().includes(q)||(s.nationality||'').toLowerCase().includes(q));if(gr)list=list.filter(s=>s.grade===gr);document.getElementById('stw').innerHTML=buildStuTbl(list);};
+  window.fltStu=function(){const q=document.getElementById('stq').value.toLowerCase(),gr=document.getElementById('stgf').value;let list=vpFilter(DB.get('students')||[]);if(q)list=list.filter(s=>fN(s).toLowerCase().includes(q)||s.grade.includes(q)||(s.section||'').toLowerCase().includes(q)||(s.nationality||'').toLowerCase().includes(q));if(gr)list=list.filter(s=>s.grade===gr);document.getElementById('stw').innerHTML=buildStuTbl(list);};
 }
 function buildStuTbl(students){
   if(!students.length)return'<div class="emp"><div class="ei">👨‍🎓</div><p>'+T('no_records')+'</p></div>';
@@ -2780,7 +2780,7 @@ function rStudentHealth(){
   const canEdit=['student_advisor','superadmin'].includes(CU.role);
   const canView=canEdit||['principal','vice_principal','academic_supervisor','admin_assistant','activity_incharge','quality_supervisor'].includes(CU.role);
   if(!canView){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
-  const students=DB.get('students')||[];
+  const students=vpFilter(DB.get('students')||[]);
   const health=DB.get('student_health')||[];
   const withHealth=health.filter(h=>h.issues&&h.issues.length>0);
   // Severity counts
