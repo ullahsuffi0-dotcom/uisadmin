@@ -7426,14 +7426,42 @@ function renderPlacesMgr(){
     });
     html+='</div><button class="btn bg2 bxs" onclick="addDutySpot('+si+')" style="margin-top:5px;font-size:10px">+ Add Spot</button></div>';
   });
-  html+='<button class="btn bg2" onclick="addDutySlot()" style="margin-top:6px">+ Add New Time Slot</button>'
+  html+='<button class="btn bg2" onclick="addDutySlotM()" style="margin-top:6px">+ Add New Time Slot</button>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Cancel</button><button class="btn bd3" onclick="resetDutyPlaces()">↺ Reset to Defaults</button><button class="btn bp" onclick="saveDutyPlaces()">💾 Save Places</button></div>';
   openM(html,true);
 }
 
-function addDutySlot(){
+function addDutySlotM(){
+  const slots=window._editSlots.filter(s=>!s.isClassDuty);
+  let html='<div class="mh"><h3>+ Add New Time Slot</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="fg"><label>Slot Label *</label><input id="ns-label" placeholder="e.g. Lunch Break Duty"></div>'
+  +'<div class="fg"><label>Time Range *</label><input id="ns-time" placeholder="e.g. 11:00 – 11:15"></div>'
+  +'<div class="fg"><label>Insert After</label><select id="ns-pos" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;width:100%">'
+  +'<option value="top">📌 At the top (first slot)</option>'
+  +slots.map((s,i)=>'<option value="'+i+'">After: '+esc(s.label)+'</option>').join('')
+  +'</select></div>'
+  +'<div class="fg"><label>First Place / Spot</label><input id="ns-spot" placeholder="e.g. Main Gate" value="Place 1"></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM();renderPlacesMgr()">Cancel</button><button class="btn bp" onclick="confirmAddDutySlot()">Add Slot →</button></div>';
+  openM(html);
+}
+function confirmAddDutySlot(){
+  const label=(document.getElementById('ns-label').value||'').trim();
+  const time=(document.getElementById('ns-time').value||'').trim();
+  const spot=(document.getElementById('ns-spot').value||'').trim()||'Place 1';
+  if(!label){toast('Enter a slot label','danger');return;}
+  if(!time){toast('Enter a time range','danger');return;}
+  const pos=document.getElementById('ns-pos').value;
+  const newSlot={id:'slot_'+Date.now(),label:label,time:time,spots:[spot]};
   const slots=window._editSlots;
-  slots.push({id:'slot_'+Date.now(),label:'New Slot',time:'',spots:['Place 1']});
+  if(pos==='top'){
+    const firstNonClass=slots.findIndex(s=>!s.isClassDuty);
+    slots.splice(firstNonClass>=0?firstNonClass:0,0,newSlot);
+  }else{
+    const afterIdx=parseInt(pos);
+    const realIdx=slots.indexOf(slots.filter(s=>!s.isClassDuty)[afterIdx]);
+    slots.splice(realIdx+1,0,newSlot);
+  }
+  closeM();
   renderPlacesMgr();
 }
 
@@ -7934,9 +7962,16 @@ function rMyDuties(){
   const allRemarks=DB.get('duty_remarks')||[];
   const myRemarks=allRemarks.filter(rm=>(rm.teacher||'').trim().toLowerCase()===myFullNameLower).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 My Duties &amp; Substitutions</h3>'+(mySubs.length?'<button class="btn bg2 bsm" onclick="vAllMySubsHistory()">📜 View Full History</button>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">All extra duties assigned to you and your substitution coverage.</div></div>'
-  +'<div class="cg g3" style="margin-bottom:13px">'
+  const dutyLog=getDutyLog(myFullName);
+  const pastDuties=dutyLog.filter(d=>d.date<=today);
+  const totalDutyMin=pastDuties.reduce((s,d)=>s+d.minutes,0);
+  const dutyHrs=Math.floor(totalDutyMin/60);
+  const dutyMins=totalDutyMin%60;
+
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 My Duties &amp; Substitutions</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(mySubs.length?'<button class="btn bg2 bsm" onclick="vAllMySubsHistory()">📜 Substitution History</button>':'')+'<button class="btn bs bsm" onclick="vDutyLogM()">⏱️ Duty Log</button></div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">All extra duties assigned to you and your substitution coverage.</div></div>'
+  +'<div class="cg g2 g2m4" style="margin-bottom:13px">'
   +'<div class="stat bl"><div class="sl2">Upcoming Duties</div><div class="sv">'+upcoming.reduce((s,d)=>s+d.duties.length,0)+'</div><div class="sb3">next 14 days</div><div class="sic">📅</div></div>'
+  +'<div class="stat gn"><div class="sl2">Total Duty Time</div><div class="sv">'+dutyHrs+'h '+dutyMins+'m</div><div class="sb3">'+pastDuties.length+' duties completed</div><div class="sic">⏱️</div></div>'
   +'<div class="stat go"><div class="sl2">Pending Substitutions</div><div class="sv">'+myUpcomingSubs.length+'</div><div class="sb3">today + future</div><div class="sic">🔄</div></div>'
   +'<div class="stat gn"><div class="sl2">Total Substitutions Taken</div><div class="sv">'+mySubs.length+'</div><div class="sb3">all-time</div><div class="sic">✓</div></div>'
   +'</div>'
@@ -7953,6 +7988,69 @@ function rMyDuties(){
   +'<div class="cg g2"><div class="card"><div class="sh2"><h3>📅 Upcoming Duties</h3></div>'+(upcoming.length?upcoming.map(u=>'<div style="margin-bottom:11px"><div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:5px;background:var(--sf2);padding:6px 9px;border-radius:var(--rs)">📅 '+esc(u.day)+' · '+esc(u.date)+(u.date===today?' (Today)':'')+'</div>'+u.duties.map(d=>'<div style="padding:7px 11px;background:var(--sf2);border-radius:var(--rs);margin-bottom:4px;border-left:3px solid var(--ac);font-size:11px"><strong>'+esc(d.slotLabel)+'</strong> <span style="color:var(--tx3)">('+esc(d.time)+')</span><br>📍 '+esc(d.spot)+'</div>').join('')+'</div>').join(''):'<div class="emp" style="padding:14px"><div class="ei">📅</div><p style="font-size:11px">No duties scheduled in the next 14 days</p></div>')+'</div>'
   
   +'<div class="card"><div class="sh2"><h3>🔄 My Substitutions</h3></div>'+(mySubs.length?'<div style="background:var(--sf2);padding:9px 12px;border-radius:var(--rs);margin-bottom:10px;font-size:12px"><strong>📊 Total: '+mySubs.length+' substitutions</strong> · '+myUpcomingSubs.length+' pending · '+myPastSubs.length+' completed</div>'+(myUpcomingSubs.length?'<div style="font-size:11px;color:var(--tx3);margin-bottom:5px;font-weight:600">⏳ UPCOMING:</div>'+myUpcomingSubs.slice(0,5).map(s=>'<div style="padding:8px 11px;background:var(--sf2);border-radius:var(--rs);margin-bottom:5px;border-left:3px solid var(--gd);font-size:11px"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px"><strong>'+esc(s.date)+' · '+esc(s.period||'—')+'</strong>'+(s.date===today?'<span class="badge bgn" style="font-size:10px">Today</span>':'')+'</div><div style="margin-top:3px">'+esc(s.subject||'—')+(s.class?' · '+esc(s.class):'')+'</div><div style="color:var(--tx3);margin-top:2px">Covering: '+esc(s.absentName)+'</div></div>').join(''):'')+(myPastSubs.length?'<div style="font-size:11px;color:var(--tx3);margin:8px 0 5px;font-weight:600">📜 RECENT (last 5):</div>'+myPastSubs.slice(0,5).map(s=>'<div style="padding:6px 11px;background:var(--sf2);border-radius:var(--rs);margin-bottom:4px;border-left:3px solid var(--tx3);font-size:11px;opacity:.85"><strong>'+esc(s.date)+'</strong> · '+esc(s.period||'—')+' · '+esc(s.subject||'—')+' (covered '+esc(s.absentName)+')</div>').join('')+(mySubs.length>10?'<div style="text-align:center;margin-top:8px"><button class="btn bg2 bxs" onclick="vAllMySubsHistory()">📜 View All '+mySubs.length+' Substitutions →</button></div>':''):''):'<div class="emp" style="padding:14px"><div class="ei">🔄</div><p style="font-size:11px">No substitutions assigned</p></div>')+'</div></div>';
+}
+
+function parseDutyMinutes(timeStr){
+  if(!timeStr)return 0;
+  const m=timeStr.match(/(\d{1,2}):(\d{2})\s*[–—-]\s*(\d{1,2}):(\d{2})/);
+  if(!m)return 15;
+  const start=parseInt(m[1])*60+parseInt(m[2]);
+  const end=parseInt(m[3])*60+parseInt(m[4]);
+  return end>start?end-start:15;
+}
+
+function getDutyLog(teacherName){
+  const allRosters=DB.get('duty_rosters')||[];
+  const name=(teacherName||'').trim().toLowerCase();
+  const log=[];
+  allRosters.forEach(r=>{
+    if(!r.date)return;
+    const slots=getDutySlots(r);
+    slots.forEach(slot=>{
+      if(slot.isClassDuty){
+        (r.classDuties||[]).forEach(c=>{
+          if((c.teacher||'').trim().toLowerCase()===name){
+            log.push({date:r.date,day:r.day||'',slot:slot.label,spot:'Class '+c.classes+' ('+c.room+')',time:slot.time,minutes:parseDutyMinutes(slot.time)});
+          }
+        });
+      }else{
+        const slotData=(r.slots||{})[slot.id]||{};
+        slot.spots.forEach(spot=>{
+          const assigned=slotData[spot]||[];
+          assigned.forEach(t=>{
+            if((t||'').trim().toLowerCase()===name){
+              log.push({date:r.date,day:r.day||'',slot:slot.label,spot:spot,time:slot.time,minutes:parseDutyMinutes(slot.time)});
+            }
+          });
+        });
+      }
+    });
+  });
+  log.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  return log;
+}
+
+function vDutyLogM(){
+  const myFullName=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  const log=getDutyLog(myFullName);
+  const totalMin=log.reduce((s,d)=>s+d.minutes,0);
+  const hrs=Math.floor(totalMin/60);
+  const mins=totalMin%60;
+  const today=new Date().toISOString().split('T')[0];
+  const pastLog=log.filter(d=>d.date<=today);
+  const pastMin=pastLog.reduce((s,d)=>s+d.minutes,0);
+  const pastHrs=Math.floor(pastMin/60);
+  const pastMins=pastMin%60;
+  openM('<div class="mh"><h3>⏱️ My Duty Log</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+  +'<div class="cg g3" style="margin-bottom:12px">'
+  +'<div class="al ag" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;color:var(--gd);text-transform:uppercase;font-weight:700">Completed</div><div style="font-size:22px;font-weight:bold;color:var(--gd)">'+pastHrs+'h '+pastMins+'m</div><div style="font-size:10px;color:var(--tx3)">'+pastLog.length+' duties</div></div>'
+  +'<div class="al ai" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;color:var(--ac);text-transform:uppercase;font-weight:700">Total (incl. future)</div><div style="font-size:22px;font-weight:bold;color:var(--ac)">'+hrs+'h '+mins+'m</div><div style="font-size:10px;color:var(--tx3)">'+log.length+' duties</div></div>'
+  +'<div class="al" style="margin:0;padding:11px;text-align:center;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs)"><div style="font-size:10px;color:var(--tx3);text-transform:uppercase;font-weight:700">Avg / Day</div><div style="font-size:22px;font-weight:bold;color:var(--tx)">'+(pastLog.length?Math.round(pastMin/new Set(pastLog.map(d=>d.date)).size):0)+'m</div><div style="font-size:10px;color:var(--tx3)">per duty day</div></div>'
+  +'</div>'
+  +(log.length?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Date</th><th>Day</th><th>Slot</th><th>Place</th><th>Duration</th></tr></thead><tbody>'
+  +log.map(d=>'<tr style="'+(d.date>today?'opacity:.6;font-style:italic':'')+'"><td class="mono">'+esc(d.date)+'</td><td>'+esc(d.day)+'</td><td>'+esc(d.slot)+'</td><td>'+esc(d.spot)+'</td><td>'+d.minutes+'m</td></tr>').join('')
+  +'</tbody></table></div>':'<div class="emp"><div class="ei">📋</div><p>No duty records found</p></div>')
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Close</button></div>',true);
 }
 
 // Full duty remarks modal — for the logged-in teacher
