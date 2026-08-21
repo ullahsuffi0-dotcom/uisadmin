@@ -5305,10 +5305,12 @@ function logFBError(k,e){
   console.warn('[Sync] Write failed for '+k+':',e.message);
 }
 
+if(!window._localWriteTs)window._localWriteTs={};
 if(!DB._raw_set){
   const _origDBset=DB.set.bind(DB);
   DB.set=function(k,v){
     _origDBset(k,v);
+    window._localWriteTs[k]=Date.now();
     if(!SYNC_ENABLED){
       // Retry: if Firebase is available but SYNC_ENABLED was never set, auto-enable
       if(window.__FB&&window.__FB.db&&CURRENT_SCHOOL_ID){
@@ -5323,11 +5325,11 @@ if(!DB._raw_set){
       const path=getFirebaseSchoolPath()+k;
       set(ref(db,path),v).then(()=>{
         removePendingWrite(k);
+        SYNC_ECHO[k]=Date.now();
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#1dcd6c';
       }).catch(e=>{
         logFBError(k,e);
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#d63838';
-        // Keep in pending — will be retried on next boot
       });
     } else if(shouldSyncKey(k)&&CURRENT_SCHOOL_ID){
       // Sync not active — mark as pending so it gets flushed on next boot
@@ -5338,6 +5340,7 @@ if(!DB._raw_set){
   const _origRawSet=DB._raw_set;
   DB._raw_set=function(k,v){
     _origRawSet(k,v);
+    window._localWriteTs[k]=Date.now();
     if(!SYNC_ENABLED&&window.__FB&&window.__FB.db&&CURRENT_SCHOOL_ID){
       console.warn('[Sync] Auto-enabling SYNC via _raw_set');
       SYNC_ENABLED=true;SYNC_INITIAL_LOAD=true;
@@ -5349,6 +5352,7 @@ if(!DB._raw_set){
       const path=getFirebaseSchoolPath()+k;
       set(ref(db,path),v).then(()=>{
         removePendingWrite(k);
+        SYNC_ECHO[k]=Date.now();
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#1dcd6c';
       }).catch(e=>{
         logFBError(k,e);
@@ -5366,11 +5370,9 @@ function subscribeToCollection(k){
   const _pfx=DB._pfx;
   onValue(ref(db,getFirebaseSchoolPath()+k),(snap)=>{
     if(!SYNC_INITIAL_LOAD)return;
-    if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<3000)return;
+    if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<8000)return;
     if(getPendingWrites().includes(k))return;
     let v=snap.val();
-    // When all items are deleted, Firebase removes the node (val()===null)
-    // We must write empty array to localStorage so deletions sync properly
     if(v===null||v===undefined){v=[];}
     if(v&&typeof v==='object'&&!Array.isArray(v)){
       const keys=Object.keys(v);
@@ -5378,7 +5380,18 @@ function subscribeToCollection(k){
         const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
       }
     }
-    // Always accept Firebase data as source of truth (last-write-wins)
+    // Reject stale incoming data: if local was written recently and incoming
+    // has MORE items, it's likely a pre-delete echo from Firebase
+    const localWriteTime=window._localWriteTs&&window._localWriteTs[k];
+    if(localWriteTime&&Date.now()-localWriteTime<10000){
+      try{
+        const local=JSON.parse(localStorage.getItem(_pfx+k)||'null');
+        if(Array.isArray(local)&&Array.isArray(v)&&v.length>local.length){
+          console.warn('[Sync] Rejecting stale incoming data for '+k+': incoming='+v.length+' > local='+local.length);
+          return;
+        }
+      }catch(e){}
+    }
     localStorage.setItem(_pfx+k,JSON.stringify(v));
     let logicalKey=k;
     if(isSessionScopedKey(k)){
