@@ -1641,9 +1641,9 @@ function addWeekM(termId){
   if(last&&last.to){
     // Default to the 5-day school week starting the day after the previous week ends
     const d=new Date(last.to+'T00:00:00');d.setDate(d.getDate()+1);
-    from=d.toISOString().split('T')[0];
+    from=ymd(d);
     const e=new Date(d);e.setDate(e.getDate()+4);
-    to=e.toISOString().split('T')[0];
+    to=ymd(e);
   }
   openM('<div class="mh"><h3>🗓️ Add Week — '+esc(t.name)+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2"><div class="fg"><label>Week Number *</label><input type="number" id="wk-no" min="1" value="'+nextNo+'"></div>'
@@ -7203,7 +7203,7 @@ function rDutyRoster(){
   const savedDates=allRosters.map(r=>r.date).filter(Boolean).sort().reverse();
   const savedOpts=savedDates.map(d=>'<option value="'+d+'">'+d+' ('+getDayOfWeek(d)+')</option>').join('');
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportDutiesM()">📊 Export Duties (Excel)</button>'+(canEdit?'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button><button class="btn bd3 bsm" onclick="clearAllRostersM()">🗑️ Clear All Rosters</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportDutiesM()">📊 Export Duties (Excel)</button>'+(canEdit?'<button class="btn bp bsm" onclick="repeatWeekM()">🔁 Repeat Week</button>'+'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button><button class="btn bd3 bsm" onclick="clearAllRostersM()">🗑️ Clear All Rosters</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><label style="font-size:12px;font-weight:600">📅 Date:</label><input type="date" id="rd-date" value="'+window._rosterDate+'" onchange="onRosterDateChange()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
   +'<button class="btn bg2 bsm" onclick="rdShiftDate(-1)">← Prev</button><button class="btn bg2 bsm" onclick="rdShiftDate(1)">Next →</button><button class="btn bg2 bsm" onclick="rdToday()">Today</button>'
   +'<button class="btn bg2 bsm" onclick="exportRosterPDF()">📄 Print PDF</button>'
@@ -7343,6 +7343,159 @@ function runDutyExport(mode){
   closeM();
 }
 
+// ═══════════════════════════════════════════════════════════
+// REPEAT A WHOLE WEEK — copy a previous week's duties into another week
+// ═══════════════════════════════════════════════════════════
+
+// Local YYYY-MM-DD. toISOString() converts to UTC, which shifts the date by a
+// day in any timezone ahead of UTC (the school runs at GMT+3), so never use it
+// for date arithmetic on calendar dates.
+function ymd(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+// Every date inside a week's range.
+function weekDates(w){
+  const out=[];
+  if(!w||!w.from||!w.to)return out;
+  let d=new Date(w.from+'T00:00:00');
+  const end=new Date(w.to+'T00:00:00');
+  let safety=60;
+  while(safety-->0&&d<=end){out.push(ymd(d));d.setDate(d.getDate()+1);}
+  return out;
+}
+function countRosterAssignments(r){
+  let n=0;
+  Object.keys(r&&r.slots||{}).forEach(k=>{
+    const sl=r.slots[k];
+    if(sl&&typeof sl==='object')Object.keys(sl).forEach(sp=>{if(Array.isArray(sl[sp]))n+=sl[sp].length;});
+  });
+  n+=((r&&r.classDuties)||[]).filter(c=>c&&c.teacher).length;
+  return n;
+}
+function weekRosterStats(w){
+  const all=DB.get('duty_rosters')||[];
+  const dates=weekDates(w);
+  const rosters=dates.map(dt=>all.find(r=>r.date===dt)).filter(Boolean);
+  return {dates:dates,rosters:rosters,days:rosters.length,
+    assignments:rosters.reduce((s,r)=>s+countRosterAssignments(r),0)};
+}
+
+function repeatWeekM(){
+  const weeks=allWeeksOrdered();
+  if(!weeks.length){
+    openM('<div class="mh"><h3>🔁 Repeat Week</h3><button class="mc" onclick="closeM()">×</button></div>'
+    +'<div class="mb2"><div class="al aw">No terms or weeks are defined yet. Add them under <strong>Academic Calendar → Terms &amp; Weeks</strong> first.</div></div>'
+    +'<div class="mf"><button class="btn bg2" onclick="closeM()">Close</button></div>');
+    return;
+  }
+  const stats=weeks.map(w=>weekRosterStats(w));
+  const srcOpts=weeks.map((w,i)=>stats[i].days
+    ? '<option value="'+i+'">'+esc(w.label)+' ('+esc(w.from)+' → '+esc(w.to)+') — '+stats[i].days+' day(s), '+stats[i].assignments+' assignments</option>'
+    : '').join('');
+  if(!srcOpts){
+    openM('<div class="mh"><h3>🔁 Repeat Week</h3><button class="mc" onclick="closeM()">×</button></div>'
+    +'<div class="mb2"><div class="al aw">No saved duty rosters fall inside any defined week yet, so there is nothing to copy from.</div></div>'
+    +'<div class="mf"><button class="btn bg2" onclick="closeM()">Close</button></div>');
+    return;
+  }
+  const tgtOpts=weeks.map((w,i)=>'<option value="'+i+'">'+esc(w.label)+' ('+esc(w.from)+' → '+esc(w.to)+')'+(stats[i].days?' — already has '+stats[i].days+' day(s)':'')+'</option>').join('');
+  const today=new Date().toISOString().split('T')[0];
+  let cur=weeks.findIndex(w=>today>=w.from&&today<=w.to);
+  if(cur<0)cur=weeks.length-1;
+  openM('<div class="mh"><h3>🔁 Repeat Week</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Copies a previous week\'s duties into another week, matching day to day — Sunday to Sunday, Monday to Monday, and so on.</div>'
+  +'<div class="fg"><label>Copy duties FROM week *</label><select id="rw-src">'+srcOpts+'</select></div>'
+  +'<div class="fg"><label>Repeat INTO week *</label><select id="rw-tgt">'+tgtOpts+'</select></div>'
+  +'<div class="fg"><label style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" id="rw-ovr" style="width:auto;margin:0"> Overwrite days that already have a roster</label>'
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:3px">Leave unticked to keep existing rosters and only fill in empty days.</div></div>'
+  +'<div id="rw-prev" style="font-size:11px;margin-top:8px"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="runRepeatWeek()">🔁 Repeat Week →</button></div>');
+  const s=document.getElementById('rw-src'),t=document.getElementById('rw-tgt'),o=document.getElementById('rw-ovr');
+  t.value=String(cur);
+  const upd=function(){
+    const plan=planRepeatWeek(parseInt(s.value,10),parseInt(t.value,10),o.checked);
+    const el=document.getElementById('rw-prev');
+    if(plan.error){el.innerHTML='<span style="color:var(--dg)">⚠️ '+esc(plan.error)+'</span>';return;}
+    el.innerHTML='<div style="background:var(--sf2);padding:9px 11px;border-radius:var(--rs)">'
+      +'✅ Will copy <strong>'+plan.copy.length+'</strong> day(s), <strong>'+plan.assignments+'</strong> assignments.'
+      +(plan.skipped.length?'<br>⏭️ Skipping <strong>'+plan.skipped.length+'</strong> day(s) that already have a roster: '+esc(plan.skipped.map(x=>x.day).join(', '))+'.':'')
+      +(plan.overwritten.length?'<br>♻️ Overwriting <strong>'+plan.overwritten.length+'</strong> existing day(s): '+esc(plan.overwritten.map(x=>x.day).join(', '))+'.':'')
+      +(plan.unmatched.length?'<br>⚠️ No matching day in the target week for: '+esc(plan.unmatched.join(', '))+'.':'')
+      +'</div>';
+  };
+  s.onchange=upd;t.onchange=upd;o.onchange=upd;
+  upd();
+}
+
+// Works out exactly what a repeat would do, without changing anything.
+function planRepeatWeek(srcIdx,tgtIdx,overwrite){
+  const weeks=allWeeksOrdered();
+  const src=weeks[srcIdx],tgt=weeks[tgtIdx];
+  if(!src||!tgt)return {error:'Select both weeks.',copy:[],skipped:[],overwritten:[],unmatched:[],assignments:0};
+  if(src.from===tgt.from)return {error:'Source and target week are the same.',copy:[],skipped:[],overwritten:[],unmatched:[],assignments:0};
+  const all=DB.get('duty_rosters')||[];
+  const tgtByDay={};
+  weekDates(tgt).forEach(d=>{const dn=getDayOfWeek(d);if(!tgtByDay[dn])tgtByDay[dn]=d;});
+  const copy=[],skipped=[],overwritten=[],unmatched=[];
+  let assignments=0;
+  weekDates(src).forEach(sd=>{
+    const sr=all.find(r=>r.date===sd);
+    if(!sr||!countRosterAssignments(sr))return;
+    const dn=getDayOfWeek(sd);
+    const td=tgtByDay[dn];
+    if(!td){unmatched.push(dn);return;}
+    const existing=all.find(r=>r.date===td);
+    if(existing&&countRosterAssignments(existing)&&!overwrite){skipped.push({day:dn,date:td});return;}
+    if(existing&&countRosterAssignments(existing))overwritten.push({day:dn,date:td});
+    assignments+=countRosterAssignments(sr);
+    copy.push({from:sd,to:td,day:dn,src:sr});
+  });
+  return {error:'',copy:copy,skipped:skipped,overwritten:overwritten,unmatched:unmatched,assignments:assignments,src:src,tgt:tgt};
+}
+
+function runRepeatWeek(){
+  const srcIdx=parseInt(document.getElementById('rw-src').value,10);
+  const tgtIdx=parseInt(document.getElementById('rw-tgt').value,10);
+  const overwrite=document.getElementById('rw-ovr').checked;
+  const plan=planRepeatWeek(srcIdx,tgtIdx,overwrite);
+  if(plan.error){toast(plan.error,'danger');return;}
+  if(!plan.copy.length){toast('Nothing to copy — the target days already have rosters, or the source week is empty','danger');return;}
+  let msg='Copy '+plan.copy.length+' day(s) from '+plan.src.label+' into '+plan.tgt.label+'?\n\n'
+    +plan.copy.map(c=>'  • '+c.day+': '+c.from+' → '+c.to).join('\n');
+  if(plan.overwritten.length)msg+='\n\nThis REPLACES the existing roster on '+plan.overwritten.length+' day(s).';
+  msg+='\n\nThis saves directly to the roster.';
+  if(!confirm(msg))return;
+  const list=DB.get('duty_rosters')||[];
+  const stamp=new Date().toISOString();
+  const byWhom=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  plan.copy.forEach(c=>{
+    const tw=getTermWeekForDate(c.to);
+    const nr={
+      date:c.to,day:c.day,
+      slots:JSON.parse(JSON.stringify(c.src.slots||{})),
+      classDuties:JSON.parse(JSON.stringify(c.src.classDuties||[])),
+      copiedFrom:c.from,
+      updatedAt:stamp,updatedBy:byWhom
+    };
+    if(c.src.customSlots)nr.customSlots=JSON.parse(JSON.stringify(c.src.customSlots));
+    if(tw){nr.termId=tw.termId;nr.termName=tw.termName;nr.weekNo=tw.weekNo;}
+    const i=list.findIndex(r=>r.date===c.to);
+    if(i>=0){nr.createdAt=list[i].createdAt||stamp;nr.createdBy=list[i].createdBy||byWhom;list[i]=nr;}
+    else{nr.createdAt=stamp;nr.createdBy=byWhom;list.push(nr);}
+  });
+  DB.set('duty_rosters',list);
+  logA('Repeated '+plan.src.label+' duties into '+plan.tgt.label+' ('+plan.copy.length+' days)');
+  closeM();
+  toast('Copied '+plan.copy.length+' day(s) into '+plan.tgt.label,'success');
+  // Land on the first copied day so the result is visible immediately
+  delete window._workingRoster;
+  window._rosterDate=plan.copy[0].to;
+  window._rdTerm=plan.tgt.termId;
+  rDutyRoster();
+}
+
 // Term / week picker for the roster. Jumping to a week moves the date to the
 // first duty day inside it; the badge shows which week the current date is in.
 function rdTermWeekBar(){
@@ -7379,8 +7532,8 @@ function rdWeekJump(no){
   let d=new Date(w.from+'T00:00:00');
   const end=new Date(w.to+'T00:00:00');
   let safety=14;
-  while(safety-->0&&d<=end&&!isWorkDay(d.toISOString().split('T')[0]))d.setDate(d.getDate()+1);
-  const target=(d<=end?d:new Date(w.from+'T00:00:00')).toISOString().split('T')[0];
+  while(safety-->0&&d<=end&&!isWorkDay(ymd(d)))d.setDate(d.getDate()+1);
+  const target=ymd(d<=end?d:new Date(w.from+'T00:00:00'));
   delete window._workingRoster;
   window._rosterDate=target;
   window._rdTerm=t.id;
