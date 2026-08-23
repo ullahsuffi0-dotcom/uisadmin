@@ -379,7 +379,7 @@ async function migrateExistingDataToSchool(schoolId){
   const keys=['sv7','settings','accounts','students','teachers','complaints','tasks','infractions',
     'referrals','class_visits','notebook_checks','activities','activity_reports',
     'early_pickups','announcements','discipline_reports','activity_log','infraction_forms',
-    'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance',
+    'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
     'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements',
     'reexam_schedules','sessions','active_session_id','behaviour'];
   let migrated=0;
@@ -565,7 +565,7 @@ async function saveNewSchool(){
   const emptyCollections=['students','teachers','complaints','tasks','infractions','referrals',
     'class_visits','notebook_checks','activities','activity_reports','early_pickups',
     'announcements','discipline_reports','activity_log','infraction_forms','visit_forms',
-    'task_requests','exam_absents','academic_calendar','attendance','student_health',
+    'task_requests','exam_absents','academic_calendar','academic_terms','attendance','student_health',
     'remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules'];
   emptyCollections.forEach(k=>localStorage.setItem(pfx+k,JSON.stringify([])));
   localStorage.setItem(pfx+'sv7','true');
@@ -863,6 +863,7 @@ function seed(){
 }
 // Lightweight migration: ensure new collections exist for existing users
 async function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);if(!DB.get('attendance'))DB.set('attendance',[]);if(!DB.get('student_health'))DB.set('student_health',[]);if(!DB.get('remedial_plans'))DB.set('remedial_plans',[]);if(!DB.get('vp_reports'))DB.set('vp_reports',[]);if(!DB.get('warning_letters'))DB.set('warning_letters',[]);if(!DB.get('teacher_achievements'))DB.set('teacher_achievements',[]);if(!DB.get('reexam_schedules'))DB.set('reexam_schedules',[]);
+  if(!DB.get('academic_terms'))DB.set('academic_terms',[]);
   if(!DB.get('duty_places'))DB.set('duty_places',[]);
   if(!DB.get('duty_remarks'))DB.set('duty_remarks',[]);
   if(!DB.get('classroom_discipline'))DB.set('classroom_discipline',[]);
@@ -1537,11 +1538,148 @@ async function chgPwd(){const cur=document.getElementById('pcur').value,nw=docum
 function setTheme(k){applyTheme(k);const acc=DB.get('accounts')||[];const i=acc.findIndex(a=>a.id===CU.id);if(i>=0){acc[i].theme=k;DB.set('accounts',acc);CU.theme=k;}document.getElementById('sbav').style.background=TH[k]?.a||'var(--ac)';toast('Theme: '+TH[k]?.n,'success');rProfile();}
 function rCalendar(){
   const evts=(DB.get('academic_calendar')||[]).sort((a,b)=>a.date.localeCompare(b.date));const isSA=CU.role==='superadmin';const today=new Date();today.setHours(0,0,0,0);
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📅 '+T('academic_calendar')+'</h3>'+(isSA?'<button class="btn bp bsm" onclick="addEvt()">+</button>':'')+'</div><div class="al ai">Events within 15 days automatically show as a popup alert to all staff at login.</div></div><div class="card"><div class="tw"><table><thead><tr><th>'+T('event_name')+'</th><th>'+T('event_date')+'</th><th>'+T('note')+'</th><th>Days Left</th>'+(isSA?'<th>Actions</th>':'')+'</tr></thead><tbody>'+evts.map(ev=>{const d=new Date(ev.date);d.setHours(0,0,0,0);const diff=Math.ceil((d-today)/86400000);const badge=diff<0?'<span class="badge bgr">Past</span>':diff===0?'<span class="badge bgo">Today!</span>':diff<=15?'<span class="badge brd">'+diff+'d</span>':'<span class="badge bbl">'+diff+'d</span>';return'<tr><td><strong>'+ev.name+'</strong></td><td class="mono" style="font-size:11px">'+ev.date+'</td><td style="font-size:11px;color:var(--tx2)">'+(ev.note||'—')+'</td><td>'+badge+'</td>'+(isSA?'<td><button class="btn bd3 bxs" onclick="delEvt(\''+ev.id+'\')">Del</button></td>':'')+'</tr>';}).join('')+'</tbody></table></div></div>';
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📅 '+T('academic_calendar')+'</h3>'+(isSA?'<button class="btn bp bsm" onclick="addEvt()">+</button>':'')+'</div><div class="al ai">Events within 15 days automatically show as a popup alert to all staff at login.</div></div>'+rTermsCard(isSA)+'<div class="card"><div class="tw"><table><thead><tr><th>'+T('event_name')+'</th><th>'+T('event_date')+'</th><th>'+T('note')+'</th><th>Days Left</th>'+(isSA?'<th>Actions</th>':'')+'</tr></thead><tbody>'+evts.map(ev=>{const d=new Date(ev.date);d.setHours(0,0,0,0);const diff=Math.ceil((d-today)/86400000);const badge=diff<0?'<span class="badge bgr">Past</span>':diff===0?'<span class="badge bgo">Today!</span>':diff<=15?'<span class="badge brd">'+diff+'d</span>':'<span class="badge bbl">'+diff+'d</span>';return'<tr><td><strong>'+ev.name+'</strong></td><td class="mono" style="font-size:11px">'+ev.date+'</td><td style="font-size:11px;color:var(--tx2)">'+(ev.note||'—')+'</td><td>'+badge+'</td>'+(isSA?'<td><button class="btn bd3 bxs" onclick="delEvt(\''+ev.id+'\')">Del</button></td>':'')+'</tr>';}).join('')+'</tbody></table></div></div>';
 }
 function addEvt(){openM('<div class="mh"><h3>📅 '+T('add_event')+'</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>'+T('event_name')+' *</label><input id="evn"></div><div class="fr f2"><div class="fg"><label>'+T('event_date')+' *</label><input type="date" id="evd"></div><div class="fg"><label>'+T('note')+'</label><input id="evnt" placeholder="e.g. All grades"></div></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveEvt()">'+T('save')+' →</button></div>');}
 function saveEvt(){const n=document.getElementById('evn').value.trim(),d=document.getElementById('evd').value;if(!n||!d){toast('Fill required fields','danger');return;}const evts=DB.get('academic_calendar')||[];evts.push({id:nid('ev'),name:n,date:d,note:document.getElementById('evnt').value});DB.set('academic_calendar',evts);logA('Added calendar event: '+n);closeM();toast('Event added','success');rCalendar();}
 function delEvt(id){if(!confirm('Delete?'))return;DB.set('academic_calendar',(DB.get('academic_calendar')||[]).filter(e=>e.id!==id));rCalendar();}
+
+// ═══════════════════════════════════════════════════════════
+// ACADEMIC TERMS & WEEKS
+// A term holds numbered weeks, each with a date range. Duty time and
+// substitutions are reported week by week using these ranges. Grouping is
+// always derived from a record's date, so rosters saved before terms
+// existed still fall into the right week once the ranges are defined.
+// ═══════════════════════════════════════════════════════════
+function getTerms(){const t=DB.get('academic_terms');return Array.isArray(t)?t:[];}
+function sortedTerms(){return getTerms().slice().sort((a,b)=>(a.order||0)-(b.order||0)||(a.name||'').localeCompare(b.name||''));}
+function termWeeks(term){return (((term&&term.weeks)||[]).slice()).sort((a,b)=>(a.no||0)-(b.no||0));}
+
+// Which term/week does a date fall in? null when outside every defined range.
+function getTermWeekForDate(date){
+  if(!date)return null;
+  for(const t of sortedTerms()){
+    for(const w of termWeeks(t)){
+      if(w.from&&w.to&&date>=w.from&&date<=w.to)return {termId:t.id,termName:t.name,weekNo:w.no,from:w.from,to:w.to};
+    }
+  }
+  return null;
+}
+function weekDayCount(w){
+  if(!w||!w.from||!w.to)return '—';
+  const n=Math.round((new Date(w.to+'T00:00:00')-new Date(w.from+'T00:00:00'))/86400000)+1;
+  return n>0?n+'d':'—';
+}
+function fmtHM(min){return Math.floor((min||0)/60)+'h '+((min||0)%60)+'m';}
+
+// A date range must map to exactly one week, so reject overlaps across all terms.
+function findWeekOverlap(from,to,skipTermId,skipNo){
+  for(const t of sortedTerms()){
+    for(const w of termWeeks(t)){
+      if(t.id===skipTermId&&w.no===skipNo)continue;
+      if(w.from&&w.to&&from<=w.to&&to>=w.from)return t.name+' · Week '+w.no+' ('+w.from+' → '+w.to+')';
+    }
+  }
+  return null;
+}
+
+function rTermsCard(isSA){
+  const terms=sortedTerms();
+  const today=new Date().toISOString().split('T')[0];
+  const cur=getTermWeekForDate(today);
+  return '<div class="card" style="margin-bottom:12px">'
+  +'<div class="sh2"><h3>🗓️ Terms &amp; Weeks</h3>'+(isSA?'<button class="btn bp bsm" onclick="addTermM()">+ Add Term</button>':'')+'</div>'
+  +'<div class="al ai">Define each term\'s weeks and their date ranges. Duty time and substitutions are then reported week by week.'+(cur?' Today falls in <strong>'+esc(cur.termName)+' · Week '+cur.weekNo+'</strong>.':'')+'</div>'
+  +(terms.length?terms.map(t=>{
+    const ws=termWeeks(t);
+    return '<div style="border:1px solid var(--bd);border-radius:var(--rs);padding:10px;margin-bottom:9px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px"><strong style="font-size:13px">'+esc(t.name)+'</strong>'
+    +'<div style="display:flex;gap:5px">'+(isSA?'<button class="btn bs bxs" onclick="addWeekM(\''+t.id+'\')">+ Add Week</button><button class="btn bd3 bxs" onclick="delTerm(\''+t.id+'\')">Delete Term</button>':'')+'</div></div>'
+    +(ws.length?'<div class="tw" style="margin-top:8px"><table style="font-size:11px"><thead><tr><th>Week</th><th>From</th><th>To</th><th>Days</th>'+(isSA?'<th>Actions</th>':'')+'</tr></thead><tbody>'
+      +ws.map(w=>{
+        const isNow=cur&&cur.termId===t.id&&cur.weekNo===w.no;
+        return '<tr'+(isNow?' style="background:var(--ac2)"':'')+'><td><strong>Week '+w.no+'</strong>'+(isNow?' <span class="badge bgn" style="font-size:9px">Now</span>':'')+'</td><td class="mono">'+esc(w.from||'')+'</td><td class="mono">'+esc(w.to||'')+'</td><td>'+weekDayCount(w)+'</td>'+(isSA?'<td><button class="btn bd3 bxs" onclick="delWeek(\''+t.id+'\','+w.no+')">Del</button></td>':'')+'</tr>';
+      }).join('')+'</tbody></table></div>'
+      :'<div style="font-size:11px;color:var(--tx3);margin-top:6px">No weeks added yet.</div>')
+    +'</div>';
+  }).join('')
+  :'<div class="emp" style="padding:14px"><div class="ei">🗓️</div><p style="font-size:11px">No terms defined yet.'+(isSA?' Click “+ Add Term” to start.':'')+'</p></div>')
+  +'</div>';
+}
+
+function addTermM(){
+  const nextName='Term '+(getTerms().length+1);
+  openM('<div class="mh"><h3>🗓️ Add Term</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2"><div class="fg"><label>Term Name *</label><input id="trm-n" value="'+esc(nextName)+'" placeholder="e.g. Term 1"></div>'
+  +'<div class="al ai">Add the term first, then add its weeks and date ranges.</div></div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveTerm()">'+T('save')+' →</button></div>');
+}
+function saveTerm(){
+  const n=document.getElementById('trm-n').value.trim();
+  if(!n){toast('Term name required','danger');return;}
+  const terms=getTerms();
+  if(terms.some(t=>(t.name||'').toLowerCase()===n.toLowerCase())){toast('A term with that name already exists','danger');return;}
+  terms.push({id:nid('trm'),name:n,order:terms.length+1,weeks:[]});
+  DB.set('academic_terms',terms);
+  logA('Added term: '+n);closeM();toast('Term added','success');rCalendar();
+}
+function delTerm(id){
+  const t=getTerms().find(x=>x.id===id);
+  if(!t)return;
+  if(!confirm('Delete "'+t.name+'" and its weeks?\n\nSaved rosters, duties and substitutions are NOT deleted — they simply stop being grouped under this term.'))return;
+  DB.set('academic_terms',getTerms().filter(x=>x.id!==id));
+  logA('Deleted term: '+t.name);toast('Term deleted','danger');rCalendar();
+}
+
+function addWeekM(termId){
+  const t=getTerms().find(x=>x.id===termId);
+  if(!t)return;
+  const ws=termWeeks(t);
+  const nextNo=ws.length?Math.max.apply(null,ws.map(w=>w.no||0))+1:1;
+  let from='',to='';
+  const last=ws.length?ws[ws.length-1]:null;
+  if(last&&last.to){
+    // Default to the 5-day school week starting the day after the previous week ends
+    const d=new Date(last.to+'T00:00:00');d.setDate(d.getDate()+1);
+    from=d.toISOString().split('T')[0];
+    const e=new Date(d);e.setDate(e.getDate()+4);
+    to=e.toISOString().split('T')[0];
+  }
+  openM('<div class="mh"><h3>🗓️ Add Week — '+esc(t.name)+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2"><div class="fg"><label>Week Number *</label><input type="number" id="wk-no" min="1" value="'+nextNo+'"></div>'
+  +'<div class="fr f2"><div class="fg"><label>From Date *</label><input type="date" id="wk-from" value="'+from+'"></div>'
+  +'<div class="fg"><label>To Date *</label><input type="date" id="wk-to" value="'+to+'"></div></div>'
+  +'<div class="al ai">Any duty or substitution dated inside this range is counted under '+esc(t.name)+' · Week '+nextNo+'.</div></div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveWeek(\''+termId+'\')">'+T('save')+' →</button></div>');
+}
+function saveWeek(termId){
+  const terms=getTerms();
+  const i=terms.findIndex(x=>x.id===termId);
+  if(i<0)return;
+  const no=parseInt(document.getElementById('wk-no').value,10);
+  const from=document.getElementById('wk-from').value;
+  const to=document.getElementById('wk-to').value;
+  if(!no||no<1){toast('Enter a valid week number','danger');return;}
+  if(!from||!to){toast('Select both dates','danger');return;}
+  if(to<from){toast('End date cannot be before start date','danger');return;}
+  if(!Array.isArray(terms[i].weeks))terms[i].weeks=[];
+  if(terms[i].weeks.some(w=>w.no===no)){toast('Week '+no+' already exists in '+terms[i].name,'danger');return;}
+  const clash=findWeekOverlap(from,to,termId,no);
+  if(clash){toast('These dates overlap '+clash,'danger');return;}
+  terms[i].weeks.push({no:no,from:from,to:to});
+  DB.set('academic_terms',terms);
+  logA('Added '+terms[i].name+' Week '+no+' ('+from+' → '+to+')');
+  closeM();toast('Week '+no+' added','success');rCalendar();
+}
+function delWeek(termId,no){
+  const terms=getTerms();
+  const i=terms.findIndex(x=>x.id===termId);
+  if(i<0)return;
+  if(!confirm('Delete Week '+no+' from '+terms[i].name+'?'))return;
+  terms[i].weeks=(terms[i].weeks||[]).filter(w=>w.no!==no);
+  DB.set('academic_terms',terms);
+  toast('Week deleted','danger');rCalendar();
+}
 function rAccounts(){
   const acc=DB.get('accounts')||[];
   const isSA=CU.role==='superadmin';
@@ -5196,7 +5334,7 @@ const SYNC_KEYS = [
   'settings','accounts','students','teachers','complaints','tasks','infractions',
   'referrals','class_visits','notebook_checks','activities','activity_reports',
   'early_pickups','announcements','discipline_reports','activity_log','infraction_forms',
-  'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance',
+  'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
   'duty_places','duty_remarks','classroom_discipline','todos','deleted_ids'
@@ -5218,7 +5356,7 @@ const AUTO_REFRESH_MAP = {
   notebook_checks:['rNbChecks'],activities:['rActivities'],activity_reports:['rActivityReports'],
   early_pickups:['rPickup'],announcements:['rAnnouncements','rDash'],
   discipline_reports:['rDiscipline'],activity_log:['rActLog','rDash'],
-  task_requests:['rTaskReqs'],exam_absents:['rExamAbsent'],academic_calendar:['rCalendar'],
+  task_requests:['rTaskReqs'],exam_absents:['rExamAbsent'],academic_calendar:['rCalendar'],academic_terms:['rCalendar','rDutyRoster','rMyDuties'],
   attendance:['rAttendance'],student_health:['rStudentHealth'],remedial_plans:['rRemedial'],
   vp_reports:['rVPReports'],warning_letters:['rWarnings'],
   teacher_achievements:['rTeacherAchievements'],settings:['rSettings'],
@@ -5750,9 +5888,9 @@ function saveSettings(){const s=DB.get('settings')||{};Object.assign(s,{schoolNa
 function prevLogo(){const file=document.getElementById('logof').files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{document.getElementById('logoprev').innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:contain">';};reader.readAsDataURL(file);}
 function saveLogo(){const file=document.getElementById('logof').files[0],emoji=document.getElementById('logoem').value;if(file){const reader=new FileReader();reader.onload=e=>{const s=DB.get('settings')||{};s.logo=e.target.result;DB.set('settings',s);applyBrand(s);logA('Updated school logo (image)');toast('Logo saved','success');};reader.readAsDataURL(file);}else if(emoji){const s=DB.get('settings')||{};s.logo=emoji;DB.set('settings',s);applyBrand(s);logA('Updated school logo: '+emoji);toast('Logo saved','success');}}
 function setLiveMode(val){toast('Live Mode is no longer needed — demo panel has been permanently removed for production.','info');}
-function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','classroom_discipline'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
+function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','classroom_discipline'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
 function impAllM(){openM('<div class="mh"><h3>📤 Restore Backup</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ad">⚠️ This will overwrite ALL data. Export a backup first!</div><div class="fg"><label>Backup JSON File</label><input type="file" id="impjf" accept=".json"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bd3" onclick="procRestore()">Restore →</button></div>');window.procRestore=function(){const file=document.getElementById('impjf').files[0];if(!file){toast('Select file','danger');return;}const reader=new FileReader();reader.onload=e=>{try{const data=JSON.parse(e.target.result);Object.entries(data).forEach(([k,v])=>{if(k!=='exportedAt')DB.set(k,v);});closeM();toast('Data restored!','success');setTimeout(()=>{applyBrand(DB.get('settings')||{});navigate('dashboard');},500);}catch{toast('Invalid backup file','danger');}};reader.readAsText(file);};}
-function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','classroom_discipline','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
+function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','classroom_discipline','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
 function rInfForms(){const forms=DB.get('infraction_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>⚠️ '+T('infraction_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'infraction_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'infraction_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'infraction_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📄</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function rVisitForms(){const forms=DB.get('visit_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>📝 '+T('visit_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'visit_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'visit_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'visit_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📋</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function upFormM(k){openM('<div class="mh"><h3>📤 Upload Form</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Form Name *</label><input id="ufn"></div><div class="fg"><label>File *</label><input type="file" id="uff" accept=".pdf,.jpg,.png,.docx"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveForm(\''+k+'\')">Upload →</button></div>');}
@@ -7074,9 +7212,54 @@ function rDutyRoster(){
   +(savedDates.length?'<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:9px;padding-top:9px;border-top:1px solid var(--bd)"><label style="font-size:11px;font-weight:600;color:var(--tx3)">🔍 Jump to saved date:</label><select id="rd-search" onchange="rdJumpToDate(this.value)" style="padding:7px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;min-width:200px"><option value="">— Select date —</option>'+savedOpts+'</select>'
   +(canEdit?'<label style="font-size:11px;font-weight:600;color:var(--tx3);margin-left:12px">📋 Repeat from:</label><select id="rd-repeat" style="padding:7px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;min-width:200px"><option value="">— Select day to copy —</option>'+savedOpts+'</select><button class="btn bp bsm" onclick="rdRepeatFrom()">📋 Copy</button>':'')
   +'</div>':'')
+  +rdTermWeekBar()
   +'</div>'
   +'<div id="roster-body"></div>';
   rdRender();
+}
+
+// Term / week picker for the roster. Jumping to a week moves the date to the
+// first duty day inside it; the badge shows which week the current date is in.
+function rdTermWeekBar(){
+  const terms=sortedTerms();
+  const sel='padding:7px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px';
+  const wrap='display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:9px;padding-top:9px;border-top:1px solid var(--bd)';
+  if(!terms.length){
+    return '<div style="'+wrap+'"><span style="font-size:11px;color:var(--tx3)">🗓️ No terms defined yet — add them under <strong>Academic Calendar → Terms &amp; Weeks</strong> to group duties by week.</span></div>';
+  }
+  const cur=getTermWeekForDate(window._rosterDate);
+  const t=terms.find(x=>x.id===window._rdTerm)||terms.find(x=>cur&&x.id===cur.termId)||terms[0];
+  const ws=termWeeks(t);
+  return '<div style="'+wrap+'">'
+  +'<label style="font-size:11px;font-weight:600;color:var(--tx3)">🗓️ Term:</label>'
+  +'<select id="rd-term" onchange="rdTermChange(this.value)" style="'+sel+'">'
+  +terms.map(x=>'<option value="'+x.id+'"'+(x.id===t.id?' selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select>'
+  +'<label style="font-size:11px;font-weight:600;color:var(--tx3)">Week:</label>'
+  +'<select id="rd-week" onchange="rdWeekJump(this.value)" style="'+sel+';min-width:220px"><option value="">— Select week —</option>'
+  +ws.map(w=>'<option value="'+w.no+'"'+(cur&&cur.termId===t.id&&cur.weekNo===w.no?' selected':'')+'>Week '+w.no+' ('+esc(w.from)+' → '+esc(w.to)+')</option>').join('')
+  +'</select>'
+  +(cur?'<span class="badge bbl" style="font-size:10px">📍 '+esc(cur.termName)+' · Week '+cur.weekNo+'</span>'
+       :'<span class="badge bgr" style="font-size:10px">📍 Outside defined weeks</span>')
+  +(ws.length?'':'<span style="font-size:11px;color:var(--tx3)">No weeks in this term yet.</span>')
+  +'</div>';
+}
+function rdTermChange(id){window._rdTerm=id;rDutyRoster();}
+function rdWeekJump(no){
+  if(!no)return;
+  const t=sortedTerms().find(x=>x.id===(window._rdTerm||(document.getElementById('rd-term')||{}).value));
+  if(!t)return;
+  const w=termWeeks(t).find(x=>String(x.no)===String(no));
+  if(!w||!w.from)return;
+  // Land on the first Sun–Thu day inside the week, else the week's start
+  let d=new Date(w.from+'T00:00:00');
+  const end=new Date(w.to+'T00:00:00');
+  let safety=14;
+  while(safety-->0&&d<=end&&!isWorkDay(d.toISOString().split('T')[0]))d.setDate(d.getDate()+1);
+  const target=(d<=end?d:new Date(w.from+'T00:00:00')).toISOString().split('T')[0];
+  delete window._workingRoster;
+  window._rosterDate=target;
+  window._rdTerm=t.id;
+  rDutyRoster();
 }
 
 function rdShiftDate(delta){
@@ -7383,6 +7566,10 @@ function saveRoster(){
   
   r.updatedAt=new Date().toISOString();
   r.updatedBy=(CU.firstName||'')+' '+(CU.lastName||'');
+  // Stamp the term/week for display and export. Reporting always re-derives
+  // this from the date, so rosters saved before terms existed still group.
+  const rtw=getTermWeekForDate(r.date);
+  if(rtw){r.termId=rtw.termId;r.termName=rtw.termName;r.weekNo=rtw.weekNo;}
   // Filter out blank class duties
   r.classDuties=(r.classDuties||[]).filter(c=>c.classes||c.room||c.teacher);
   
@@ -8131,7 +8318,20 @@ function rMyDuties(){
   +'<div class="stat go"><div class="sl2">Pending Substitutions</div><div class="sv">'+myUpcomingSubs.length+'</div><div class="sb3">today + future</div><div class="sic">🔄</div></div>'
   +'<div class="stat gn"><div class="sl2">Total Substitutions Taken</div><div class="sv">'+mySubs.length+'</div><div class="sb3">all-time</div><div class="sic">✓</div></div>'
   +'</div>'
-  
+  // This week at a glance, based on the current term/week date range
+  +(function(){
+    const tw=getTermWeekForDate(today);
+    if(!tw)return '';
+    const res=buildWeeklyDutySummary(myFullName);
+    const row=res.rows.find(r=>r.from===tw.from&&r.to===tw.to)||{minutes:0,duties:0,subs:0};
+    return '<div class="cg g2 g2m4" style="margin-bottom:13px">'
+    +'<div class="stat bl"><div class="sl2">This Week</div><div class="sv">'+esc(tw.termName)+' · W'+tw.weekNo+'</div><div class="sb3">'+esc(tw.from)+' → '+esc(tw.to)+'</div><div class="sic">🗓️</div></div>'
+    +'<div class="stat gn"><div class="sl2">Duty Time This Week</div><div class="sv">'+fmtHM(row.minutes)+'</div><div class="sb3">'+row.duties+' duties</div><div class="sic">⏱️</div></div>'
+    +'<div class="stat go"><div class="sl2">Substitutions This Week</div><div class="sv">'+row.subs+'</div><div class="sb3">'+esc(tw.termName)+' · Week '+tw.weekNo+'</div><div class="sic">🔄</div></div>'
+    +'</div>';
+  })()
+  +rWeeklySummaryCard(myFullName)
+
   // Today's substitutions (highlighted at top)
   +(myUpcomingSubs.filter(s=>s.date===today).length?'<div class="card" style="margin-bottom:12px;border:2px solid var(--gd);background:var(--gdbg)"><div class="sh2"><h3>🔥 Today\'s Substitutions ('+myUpcomingSubs.filter(s=>s.date===today).length+')</h3></div>'+myUpcomingSubs.filter(s=>s.date===today).map(s=>'<div style="background:var(--sf);padding:11px;border-radius:var(--rs);margin-bottom:7px;border-left:4px solid var(--gd)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px"><strong style="font-size:13px">'+esc(s.period||'—')+(s.time?' ('+esc(s.time)+')':'')+'</strong><span class="badge bgn">Today</span></div><div style="font-size:12px;margin-top:5px">📚 <strong>'+esc(s.subject||'—')+'</strong>'+(s.class?' · Class '+esc(s.class):'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:3px">Covering for <strong>'+esc(s.absentName)+'</strong> · Assigned by '+esc(s.assignedByName||'VP')+'</div>'+(s.notes?'<div style="background:var(--sf2);padding:7px 9px;border-radius:var(--rs);margin-top:7px;font-size:11px;font-style:italic">📝 '+esc(s.notes)+'</div>':'')+'</div>').join('')+'</div>':'')
   
@@ -8187,6 +8387,43 @@ function getDutyLog(teacherName){
   return log;
 }
 
+// Week-by-week duty time and substitution counts for one teacher.
+// Buckets are derived from each record's date, so this works for rosters and
+// substitutions that were saved before terms and weeks were defined.
+function buildWeeklyDutySummary(teacherName){
+  const log=getDutyLog(teacherName);
+  const aliases=getDutyNameAliases(teacherName);
+  const subs=(DB.get('substitutions')||[]).filter(s=>aliases.has(normDutyName(s.substituteName)));
+  const map=new Map();
+  const bucket=function(date){
+    const tw=getTermWeekForDate(date);
+    const key=tw?(tw.termId+'|'+String(tw.weekNo).padStart(3,'0')):'~none';
+    if(!map.has(key))map.set(key,{key:key,label:tw?(tw.termName+' · Week '+tw.weekNo):'Outside defined weeks',
+      from:tw?tw.from:'',to:tw?tw.to:'',minutes:0,duties:0,subs:0});
+    return map.get(key);
+  };
+  log.forEach(d=>{const b=bucket(d.date);b.minutes+=d.minutes;b.duties++;});
+  subs.forEach(s=>{bucket(s.date).subs++;});
+  const rows=Array.from(map.values()).sort(function(a,b){
+    if(a.key==='~none')return 1;
+    if(b.key==='~none')return -1;
+    return (b.from||'').localeCompare(a.from||'');
+  });
+  return {rows:rows,totals:{minutes:log.reduce((s,d)=>s+d.minutes,0),duties:log.length,subs:subs.length}};
+}
+
+function rWeeklySummaryCard(teacherName){
+  const res=buildWeeklyDutySummary(teacherName);
+  if(!res.rows.length)return '';
+  const noTerms=!getTerms().length;
+  return '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📊 Week-by-Week Summary</h3></div>'
+  +(noTerms?'<div class="al aw">No terms or weeks are defined yet, so everything is grouped together. Ask an administrator to add them under <strong>Academic Calendar → Terms &amp; Weeks</strong> for a proper weekly breakdown.</div>':'')
+  +'<div class="tw"><table style="font-size:11px"><thead><tr><th>Week</th><th>Dates</th><th>Duties</th><th>Duty Time</th><th>Substitutions</th></tr></thead><tbody>'
+  +res.rows.map(r=>'<tr><td><strong>'+esc(r.label)+'</strong></td><td class="mono" style="font-size:10px">'+(r.from?esc(r.from)+' → '+esc(r.to):'—')+'</td><td>'+r.duties+'</td><td>'+fmtHM(r.minutes)+'</td><td>'+r.subs+'</td></tr>').join('')
+  +'<tr style="background:var(--sf2);font-weight:700"><td>TOTAL</td><td>—</td><td>'+res.totals.duties+'</td><td>'+fmtHM(res.totals.minutes)+'</td><td>'+res.totals.subs+'</td></tr>'
+  +'</tbody></table></div></div>';
+}
+
 function vDutyLogM(){
   const myFullName=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
   const log=getDutyLog(myFullName);
@@ -8204,8 +8441,17 @@ function vDutyLogM(){
   +'<div class="al ai" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;color:var(--ac);text-transform:uppercase;font-weight:700">Total (incl. future)</div><div style="font-size:22px;font-weight:bold;color:var(--ac)">'+hrs+'h '+mins+'m</div><div style="font-size:10px;color:var(--tx3)">'+log.length+' duties</div></div>'
   +'<div class="al" style="margin:0;padding:11px;text-align:center;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs)"><div style="font-size:10px;color:var(--tx3);text-transform:uppercase;font-weight:700">Avg / Day</div><div style="font-size:22px;font-weight:bold;color:var(--tx)">'+(pastLog.length?Math.round(pastMin/new Set(pastLog.map(d=>d.date)).size):0)+'m</div><div style="font-size:10px;color:var(--tx3)">per duty day</div></div>'
   +'</div>'
-  +(log.length?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Date</th><th>Day</th><th>Slot</th><th>Place</th><th>Duration</th></tr></thead><tbody>'
-  +log.map(d=>'<tr style="'+(d.date>today?'opacity:.6;font-style:italic':'')+'"><td class="mono">'+esc(d.date)+'</td><td>'+esc(d.day)+'</td><td>'+esc(d.slot)+'</td><td>'+esc(d.spot)+'</td><td>'+d.minutes+'m</td></tr>').join('')
+  +(function(){
+    const res=buildWeeklyDutySummary(myFullName);
+    if(!res.rows.length)return '';
+    return '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin:4px 0 6px">WEEK BY WEEK</div>'
+    +'<div class="tw" style="margin-bottom:12px"><table style="font-size:11px"><thead><tr><th>Week</th><th>Dates</th><th>Duties</th><th>Duty Time</th></tr></thead><tbody>'
+    +res.rows.map(r=>'<tr><td><strong>'+esc(r.label)+'</strong></td><td class="mono" style="font-size:10px">'+(r.from?esc(r.from)+' → '+esc(r.to):'—')+'</td><td>'+r.duties+'</td><td>'+fmtHM(r.minutes)+'</td></tr>').join('')
+    +'<tr style="background:var(--sf2);font-weight:700"><td>TOTAL</td><td>—</td><td>'+res.totals.duties+'</td><td>'+fmtHM(res.totals.minutes)+'</td></tr>'
+    +'</tbody></table></div>';
+  })()
+  +(log.length?'<div style="font-size:11px;font-weight:700;color:var(--tx3);margin:4px 0 6px">EVERY DUTY</div><div class="tw"><table style="font-size:11px"><thead><tr><th>Date</th><th>Day</th><th>Week</th><th>Slot</th><th>Place</th><th>Duration</th></tr></thead><tbody>'
+  +log.map(d=>{const tw=getTermWeekForDate(d.date);return '<tr style="'+(d.date>today?'opacity:.6;font-style:italic':'')+'"><td class="mono">'+esc(d.date)+'</td><td>'+esc(d.day)+'</td><td style="font-size:10px">'+(tw?esc(tw.termName)+' · W'+tw.weekNo:'—')+'</td><td>'+esc(d.slot)+'</td><td>'+esc(d.spot)+'</td><td>'+d.minutes+'m</td></tr>';}).join('')
   +'</tbody></table></div>':'<div class="emp"><div class="ei">📋</div><p>No duty records found</p></div>')
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">Close</button></div>',true);
 }
@@ -8365,6 +8611,16 @@ function vAllMySubsHistory(){
   
   openM('<div class="mh"><h3>📜 My Substitution History</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
   +'<div class="al ai">📋 Complete record of every substitution assigned to you. Use this for your own tracking and reference.</div>'
+  +(function(){
+    const res=buildWeeklyDutySummary(myFullName);
+    const wk=res.rows.filter(r=>r.subs>0);
+    if(!wk.length)return '';
+    return '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin:4px 0 6px">WEEK BY WEEK</div>'
+    +'<div class="tw" style="margin-bottom:12px"><table style="font-size:11px"><thead><tr><th>Week</th><th>Dates</th><th>Substitutions</th></tr></thead><tbody>'
+    +wk.map(r=>'<tr><td><strong>'+esc(r.label)+'</strong></td><td class="mono" style="font-size:10px">'+(r.from?esc(r.from)+' → '+esc(r.to):'—')+'</td><td>'+r.subs+'</td></tr>').join('')
+    +'<tr style="background:var(--sf2);font-weight:700"><td>TOTAL</td><td>—</td><td>'+res.totals.subs+'</td></tr>'
+    +'</tbody></table></div>';
+  })()
   +'<div class="cg g3" style="margin-bottom:12px"><div class="al ag" style="margin:0;padding:11px;text-align:center"><div style="font-size:10px;color:var(--gd);text-transform:uppercase;font-weight:700">Total</div><div style="font-size:24px;font-weight:bold;color:var(--gd)">'+mySubs.length+'</div></div><div class="al ai" style="margin:0;padding:11px;text-align:center;background:var(--ac2)"><div style="font-size:10px;color:var(--ac);text-transform:uppercase;font-weight:700">Upcoming</div><div style="font-size:24px;font-weight:bold;color:var(--ac)">'+upcomingCount+'</div></div><div class="al" style="margin:0;padding:11px;text-align:center;background:var(--sf2)"><div style="font-size:10px;color:var(--tx3);text-transform:uppercase;font-weight:700">Completed</div><div style="font-size:24px;font-weight:bold;color:var(--tx2)">'+pastCount+'</div></div></div>'
   +(mySubs.length?sortedMonths.map(m=>{
     const monthSubs=byMonth[m];
