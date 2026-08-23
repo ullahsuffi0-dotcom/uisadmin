@@ -7344,6 +7344,115 @@ function runDutyExport(mode){
 }
 
 // ═══════════════════════════════════════════════════════════
+// SUBSTITUTION EXPORT — any teacher or all, any week range
+// ═══════════════════════════════════════════════════════════
+
+// One row per substitution in a date range, newest weeks resolved from dates
+// so records saved before terms existed still group correctly.
+function buildSubExportRows(fromDate,toDate,teacherFilter){
+  const want=teacherFilter?normDutyName(teacherFilter):'';
+  const rows=(DB.get('substitutions')||[]).filter(s=>{
+    if(!s.date||s.date<fromDate||s.date>toDate)return false;
+    return want?normDutyName(s.substituteName)===want:true;
+  }).map(s=>{
+    const tw=getTermWeekForDate(s.date);
+    return {teacher:(s.substituteName||'').trim(),term:tw?tw.termName:'',week:tw?tw.weekNo:'',
+      weekFrom:tw?tw.from:'',weekTo:tw?tw.to:'',date:s.date,day:s.day||getDayOfWeek(s.date)||'',
+      period:s.period||'',periodNumber:s.periodNumber||0,cls:s.class||'',subject:s.subject||'',
+      absent:s.absentName||'',notes:s.notes||'',by:s.assignedByName||''};
+  });
+  rows.sort((a,b)=>(a.date||'').localeCompare(b.date||'')
+    ||(a.teacher||'').localeCompare(b.teacher||'')
+    ||(a.periodNumber||0)-(b.periodNumber||0));
+  return rows;
+}
+
+function exportSubsM(){
+  const weeks=allWeeksOrdered();
+  if(!weeks.length){
+    openM('<div class="mh"><h3>📊 Export Substitutions</h3><button class="mc" onclick="closeM()">×</button></div>'
+    +'<div class="mb2"><div class="al aw">No terms or weeks are defined yet. Add them under <strong>Academic Calendar → Terms &amp; Weeks</strong> first, then export by week range.</div></div>'
+    +'<div class="mf"><button class="btn bg2" onclick="closeM()">Close</button></div>');
+    return;
+  }
+  const opts=weeks.map((w,i)=>'<option value="'+i+'">'+esc(w.label)+' ('+esc(w.from)+' → '+esc(w.to)+')</option>').join('');
+  const today=new Date().toISOString().split('T')[0];
+  let cur=weeks.findIndex(w=>today>=w.from&&today<=w.to);
+  if(cur<0)cur=weeks.length-1;
+  const names=Array.from(new Set(buildSubExportRows(weeks[0].from,weeks[weeks.length-1].to).map(r=>r.teacher).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  openM('<div class="mh"><h3>📊 Export Substitutions</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Every substitution in the selected week range — period, class, subject, who was absent and who covered — with weekly and overall totals.</div>'
+  +'<div class="fr f2"><div class="fg"><label>From Week *</label><select id="sx-from">'+opts+'</select></div>'
+  +'<div class="fg"><label>To Week *</label><select id="sx-to">'+opts+'</select></div></div>'
+  +'<div class="fg"><label>Teacher (substitute)</label><select id="sx-tch"><option value="">— All teachers —</option>'+names.map(n=>'<option value="'+escJs(n)+'">'+esc(n)+'</option>').join('')+'</select></div>'
+  +'<div id="sx-prev" style="font-size:11px;color:var(--tx3);margin-top:6px"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bs" onclick="runSubExport(\'summary\')">📈 Summary</button>'
+  +'<button class="btn bp" onclick="runSubExport(\'detailed\')">📊 Export Excel →</button></div>');
+  const f=document.getElementById('sx-from'),t=document.getElementById('sx-to');
+  f.value=String(cur);t.value=String(cur);
+  const upd=function(){
+    const a=parseInt(f.value,10),b=parseInt(t.value,10);
+    if(a>b){document.getElementById('sx-prev').innerHTML='<span style="color:var(--dg)">⚠️ “From” week is after “To” week.</span>';return;}
+    const rows=buildSubExportRows(weeks[a].from,weeks[b].to,document.getElementById('sx-tch').value);
+    document.getElementById('sx-prev').innerHTML='📋 <strong>'+rows.length+'</strong> substitutions · <strong>'+new Set(rows.map(r=>normDutyName(r.teacher))).size+'</strong> substitute teacher(s) · <strong>'+new Set(rows.map(r=>r.date)).size+'</strong> day(s)';
+  };
+  f.onchange=upd;t.onchange=upd;document.getElementById('sx-tch').onchange=upd;
+  upd();
+}
+
+function runSubExport(mode){
+  const weeks=allWeeksOrdered();
+  const a=parseInt(document.getElementById('sx-from').value,10);
+  const b=parseInt(document.getElementById('sx-to').value,10);
+  if(isNaN(a)||isNaN(b))return;
+  if(a>b){toast('“From” week must not be after “To” week','danger');return;}
+  const tch=document.getElementById('sx-tch').value;
+  const from=weeks[a].from,to=weeks[b].to;
+  const rows=buildSubExportRows(from,to,tch);
+  if(!rows.length){toast('No substitutions found in that week range','danger');return;}
+  const tag=((tch?tch+'_':'')+weeks[a].label+'_to_'+weeks[b].label).replace(/[^A-Za-z0-9]+/g,'_');
+  if(mode==='summary'){
+    // One row per teacher per week, then that teacher's total
+    const byTeacher={};
+    rows.forEach(r=>{
+      const k=normDutyName(r.teacher);
+      if(!byTeacher[k])byTeacher[k]={name:r.teacher,weeks:{}};
+      const wk=(r.term||'—')+'|'+(r.week||'—');
+      if(!byTeacher[k].weeks[wk])byTeacher[k].weeks[wk]={term:r.term,week:r.week,from:r.weekFrom,to:r.weekTo,count:0};
+      byTeacher[k].weeks[wk].count++;
+    });
+    const out=[];
+    let grand=0;
+    Object.keys(byTeacher).sort((x,y)=>byTeacher[x].name.localeCompare(byTeacher[y].name)).forEach(k=>{
+      const t=byTeacher[k];
+      const ws=Object.keys(t.weeks).map(x=>t.weeks[x]).sort((x,y)=>(x.from||'').localeCompare(y.from||''));
+      let tot=0;
+      ws.forEach(w=>{tot+=w.count;out.push([t.name,w.term||'—','Week '+(w.week||'—'),w.from||'',w.to||'',w.count]);});
+      out.push([t.name,'TOTAL','','','',tot]);
+      grand+=tot;
+    });
+    out.push(['ALL TEACHERS','GRAND TOTAL','','','',grand]);
+    expCSV(['Teacher','Term','Week','Week From','Week To','Substitutions'],out,'substitutions_summary_'+tag);
+  }else{
+    const out=rows.map(r=>[r.teacher,r.term||'—','Week '+(r.week||'—'),r.weekFrom||'',r.weekTo||'',
+      r.date,r.day,r.period,r.cls,r.subject,r.absent,r.notes,r.by]);
+    // Weekly totals then the overall total, so the counts travel with the data
+    const byWeek={};
+    rows.forEach(r=>{const k=(r.term||'—')+' · Week '+(r.week||'—');byWeek[k]=(byWeek[k]||0)+1;});
+    out.push([]);
+    out.push(['WEEKLY TOTALS']);
+    Object.keys(byWeek).forEach(k=>out.push([k,'','','','','','','','','','','',byWeek[k]]));
+    out.push(['GRAND TOTAL','','','','','','','','','','','',rows.length]);
+    expCSV(['Teacher','Term','Week','Week From','Week To','Date','Day','Period','Class','Subject','Absent Teacher','Notes','Assigned By'],out,'substitutions_'+tag);
+  }
+  logA('Exported substitution '+mode+' ('+from+' → '+to+', '+rows.length+' rows)');
+  closeM();
+}
+
+// ═══════════════════════════════════════════════════════════
 // REPEAT A WHOLE WEEK — copy a previous week's duties into another week
 // ═══════════════════════════════════════════════════════════
 
@@ -8216,7 +8325,7 @@ function rSubstitutions(){
   const weekStartStr=weekStart.toISOString().split('T')[0];
   const weekCount=subs.filter(s=>s.date>=weekStartStr).length;
   
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🔄 Teacher Substitutions ('+subs.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bp bsm" onclick="addSubM()">+ Add Substitution</button>':'')+'<button class="btn bg2 bsm" onclick="expSubScheduleDayPDF()">📄 Day Schedule PDF</button>'+(['vice_principal','superadmin','principal'].includes(CU.role)?'<button class="btn bs bsm" onclick="shareSubScheduleWA()">📲 Share via WhatsApp</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">When a teacher is absent, assign a substitute from available staff. The substitute teacher is automatically notified on their dashboard.</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🔄 Teacher Substitutions ('+subs.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bp bsm" onclick="addSubM()">+ Add Substitution</button>':'')+'<button class="btn bs bsm" onclick="exportSubsM()">📊 Export Substitutions (Excel)</button><button class="btn bg2 bsm" onclick="expSubScheduleDayPDF()">📄 Day Schedule PDF</button>'+(['vice_principal','superadmin','principal'].includes(CU.role)?'<button class="btn bs bsm" onclick="shareSubScheduleWA()">📲 Share via WhatsApp</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">When a teacher is absent, assign a substitute from available staff. The substitute teacher is automatically notified on their dashboard.</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Today</div><div class="sv">'+todayCount+'</div><div class="sb3">'+todayDate+'</div><div class="sic">📅</div></div><div class="stat go"><div class="sl2">This Week</div><div class="sv">'+weekCount+'</div><div class="sic">📊</div></div><div class="stat gn"><div class="sl2">Total Recorded</div><div class="sv">'+subs.length+'</div><div class="sic">🔄</div></div><div class="stat tl"><div class="sl2">Unique Teachers</div><div class="sv">'+(new Set(subs.map(s=>s.substituteName))).size+'</div><div class="sb3">substituting</div><div class="sic">👥</div></div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="sub-q" placeholder="🔍 Search by absent teacher, substitute, period…" oninput="fltSubs()" style="flex:1;min-width:200px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><input type="date" id="sub-date" onchange="fltSubs()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><button class="btn bg2 bsm" onclick="document.getElementById(\'sub-date\').value=\''+todayDate+'\';fltSubs()">Today</button><button class="btn bg2 bsm" onclick="document.getElementById(\'sub-date\').value=\'\';fltSubs()">All</button><button class="btn bg2 bsm" onclick="vSubsByTeacher()">📊 By Teacher</button></div></div>'
   +'<div id="subs-list">'+buildSubsTable(subs,canEdit)+'</div>';
