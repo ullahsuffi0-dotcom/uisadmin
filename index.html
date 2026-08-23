@@ -7203,7 +7203,7 @@ function rDutyRoster(){
   const savedDates=allRosters.map(r=>r.date).filter(Boolean).sort().reverse();
   const savedOpts=savedDates.map(d=>'<option value="'+d+'">'+d+' ('+getDayOfWeek(d)+')</option>').join('');
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button><button class="btn bd3 bsm" onclick="clearAllRostersM()">🗑️ Clear All Rosters</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportDutiesM()">📊 Export Duties (Excel)</button>'+(canEdit?'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button><button class="btn bd3 bsm" onclick="clearAllRostersM()">🗑️ Clear All Rosters</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><label style="font-size:12px;font-weight:600">📅 Date:</label><input type="date" id="rd-date" value="'+window._rosterDate+'" onchange="onRosterDateChange()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
   +'<button class="btn bg2 bsm" onclick="rdShiftDate(-1)">← Prev</button><button class="btn bg2 bsm" onclick="rdShiftDate(1)">Next →</button><button class="btn bg2 bsm" onclick="rdToday()">Today</button>'
   +'<button class="btn bg2 bsm" onclick="exportRosterPDF()">📄 Print PDF</button>'
@@ -7216,6 +7216,131 @@ function rDutyRoster(){
   +'</div>'
   +'<div id="roster-body"></div>';
   rdRender();
+}
+
+// ═══════════════════════════════════════════════════════════
+// DUTY EXPORT — all teachers, any week range, one file
+// Principal / VP / Superadmin / Admin Assistant
+// ═══════════════════════════════════════════════════════════
+
+// Every defined week across all terms, ordered by start date.
+function allWeeksOrdered(){
+  const out=[];
+  sortedTerms().forEach(t=>termWeeks(t).forEach(w=>{
+    if(w.from&&w.to)out.push({termId:t.id,termName:t.name,weekNo:w.no,from:w.from,to:w.to,label:t.name+' · Week '+w.no});
+  }));
+  return out.sort((a,b)=>(a.from||'').localeCompare(b.from||''));
+}
+
+// One row per teacher per duty assignment across a date range.
+function buildDutyExportRows(fromDate,toDate,teacherFilter){
+  const want=teacherFilter?normDutyName(teacherFilter):'';
+  const rosters=(DB.get('duty_rosters')||[]).filter(r=>r.date&&r.date>=fromDate&&r.date<=toDate);
+  const rows=[];
+  rosters.forEach(r=>{
+    const tw=getTermWeekForDate(r.date);
+    const by=r.updatedBy||r.createdBy||'';
+    const push=function(name,slot,spot,type){
+      if(!name||!String(name).trim())return;
+      if(want&&normDutyName(name)!==want)return;
+      rows.push({teacher:String(name).trim(),term:tw?tw.termName:'',week:tw?tw.weekNo:'',
+        weekFrom:tw?tw.from:'',weekTo:tw?tw.to:'',date:r.date,day:r.day||getDayOfWeek(r.date)||'',
+        slot:slot.label,time:slot.time,spot:spot,type:type,minutes:parseDutyMinutes(slot.time),by:by});
+    };
+    getDutySlots(r).forEach(slot=>{
+      if(slot.isClassDuty){
+        (r.classDuties||[]).forEach(c=>{
+          push(c.teacher,slot,'Class '+(c.classes||'—')+(c.room?' (in '+c.room+')':''),'Class Duty');
+        });
+      }else{
+        const sd=(r.slots||{})[slot.id]||{};
+        (slot.spots||[]).forEach(spot=>{(sd[spot]||[]).forEach(n=>push(n,slot,spot,'Duty'));});
+      }
+    });
+  });
+  rows.sort((a,b)=>(a.date||'').localeCompare(b.date||'')
+    ||(a.teacher||'').localeCompare(b.teacher||'')
+    ||(a.slot||'').localeCompare(b.slot||''));
+  return rows;
+}
+
+function exportDutiesM(){
+  const weeks=allWeeksOrdered();
+  if(!weeks.length){
+    openM('<div class="mh"><h3>📊 Export Duties</h3><button class="mc" onclick="closeM()">×</button></div>'
+    +'<div class="mb2"><div class="al aw">No terms or weeks are defined yet. Add them under <strong>Academic Calendar → Terms &amp; Weeks</strong> first, then export by week range.</div></div>'
+    +'<div class="mf"><button class="btn bg2" onclick="closeM()">Close</button></div>');
+    return;
+  }
+  const opts=weeks.map((w,i)=>'<option value="'+i+'">'+esc(w.label)+' ('+esc(w.from)+' → '+esc(w.to)+')</option>').join('');
+  // Default range: the week containing today, else the whole year
+  const today=new Date().toISOString().split('T')[0];
+  let cur=weeks.findIndex(w=>today>=w.from&&today<=w.to);
+  if(cur<0)cur=weeks.length-1;
+  const names=Array.from(new Set(buildDutyExportRows(weeks[0].from,weeks[weeks.length-1].to).map(r=>r.teacher))).sort((a,b)=>a.localeCompare(b));
+  openM('<div class="mh"><h3>📊 Export Duties — All Teachers</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Every duty in the selected week range, one row per teacher per duty, including the duty place, slot, time and minutes.</div>'
+  +'<div class="fr f2"><div class="fg"><label>From Week *</label><select id="dx-from">'+opts+'</select></div>'
+  +'<div class="fg"><label>To Week *</label><select id="dx-to">'+opts+'</select></div></div>'
+  +'<div class="fg"><label>Teacher</label><select id="dx-tch"><option value="">— All teachers —</option>'+names.map(n=>'<option value="'+escJs(n)+'">'+esc(n)+'</option>').join('')+'</select></div>'
+  +'<div id="dx-prev" style="font-size:11px;color:var(--tx3);margin-top:6px"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bs" onclick="runDutyExport(\'summary\')">📈 Summary</button>'
+  +'<button class="btn bp" onclick="runDutyExport(\'detailed\')">📊 Export Excel →</button></div>');
+  const f=document.getElementById('dx-from'),t=document.getElementById('dx-to');
+  f.value=String(cur);t.value=String(cur);
+  const upd=function(){
+    const a=parseInt(f.value,10),b=parseInt(t.value,10);
+    if(a>b){document.getElementById('dx-prev').innerHTML='<span style="color:var(--dg)">⚠️ “From” week is after “To” week.</span>';return;}
+    const tch=document.getElementById('dx-tch').value;
+    const rows=buildDutyExportRows(weeks[a].from,weeks[b].to,tch);
+    const mins=rows.reduce((s,r)=>s+r.minutes,0);
+    document.getElementById('dx-prev').innerHTML='📋 <strong>'+rows.length+'</strong> duty rows · <strong>'+new Set(rows.map(r=>normDutyName(r.teacher))).size+'</strong> teachers · <strong>'+fmtHM(mins)+'</strong> total duty time';
+  };
+  f.onchange=upd;t.onchange=upd;document.getElementById('dx-tch').onchange=upd;
+  upd();
+}
+
+function runDutyExport(mode){
+  const weeks=allWeeksOrdered();
+  const a=parseInt(document.getElementById('dx-from').value,10);
+  const b=parseInt(document.getElementById('dx-to').value,10);
+  if(isNaN(a)||isNaN(b))return;
+  if(a>b){toast('“From” week must not be after “To” week','danger');return;}
+  const tch=document.getElementById('dx-tch').value;
+  const from=weeks[a].from,to=weeks[b].to;
+  const rows=buildDutyExportRows(from,to,tch);
+  if(!rows.length){toast('No duties found in that week range','danger');return;}
+  const tag=(weeks[a].label+'_to_'+weeks[b].label).replace(/[^A-Za-z0-9]+/g,'_');
+  if(mode==='summary'){
+    // One row per teacher per week, followed by that teacher's total
+    const byTeacher={};
+    rows.forEach(r=>{
+      const k=normDutyName(r.teacher);
+      if(!byTeacher[k])byTeacher[k]={name:r.teacher,weeks:{}};
+      const wk=(r.term||'—')+' · Week '+(r.week||'—');
+      if(!byTeacher[k].weeks[wk])byTeacher[k].weeks[wk]={term:r.term,week:r.week,from:r.weekFrom,to:r.weekTo,duties:0,minutes:0};
+      byTeacher[k].weeks[wk].duties++;byTeacher[k].weeks[wk].minutes+=r.minutes;
+    });
+    const out=[];
+    Object.keys(byTeacher).sort((x,y)=>byTeacher[x].name.localeCompare(byTeacher[y].name)).forEach(k=>{
+      const t=byTeacher[k];
+      const ws=Object.values(t.weeks).sort((x,y)=>(x.from||'').localeCompare(y.from||''));
+      let td=0,tm=0;
+      ws.forEach(w=>{td+=w.duties;tm+=w.minutes;
+        out.push([t.name,w.term||'—','Week '+(w.week||'—'),w.from||'',w.to||'',w.duties,w.minutes,fmtHM(w.minutes)]);});
+      out.push([t.name,'TOTAL','','','',td,tm,fmtHM(tm)]);
+    });
+    expCSV(['Teacher','Term','Week','Week From','Week To','Duties','Minutes','Duty Time'],out,'duty_summary_'+tag);
+  }else{
+    const out=rows.map(r=>[r.teacher,r.term||'—','Week '+(r.week||'—'),r.weekFrom||'',r.weekTo||'',
+      r.date,r.day,r.slot,r.time,r.spot,r.type,r.minutes,fmtHM(r.minutes),r.by]);
+    expCSV(['Teacher','Term','Week','Week From','Week To','Date','Day','Duty Slot','Time','Duty Place','Type','Minutes','Duration','Assigned By'],out,'duty_details_'+tag);
+  }
+  logA('Exported duty '+mode+' ('+from+' → '+to+', '+rows.length+' rows)');
+  closeM();
 }
 
 // Term / week picker for the roster. Jumping to a week moves the date to the
