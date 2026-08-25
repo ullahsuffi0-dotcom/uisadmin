@@ -818,8 +818,34 @@ function applyTombstones(k,arr){
   return arr.filter(x=>!(x&&ids.includes(x.id)));
 }
 
+// Does this bucket already hold real data? Used to stop seed() from
+// overwriting a live school whose data simply hasn't been pulled yet.
+function bucketHasRealData(){
+  const nonEmpty=k=>{const v=DB.get(k);return Array.isArray(v)&&v.length>0;};
+  if(nonEmpty('accounts')||nonEmpty('students')||nonEmpty('teachers'))return true;
+  const s=DB.get('settings');
+  return !!(s&&typeof s==='object'&&s.schoolName);
+}
+
 function seed(){
   if(DB.get('sv7'))return;
+  // GUARD: seed() replaces settings, accounts, students and teachers with demo
+  // defaults and empties every other collection. Running it against a school
+  // that already exists wipes real data — and because DB.set auto-enables sync,
+  // those defaults get pushed to Firebase and destroy it for every device.
+  if(bucketHasRealData()){
+    console.warn('[Seed] Skipped — bucket already has data. Marking as seeded.');
+    DB.set('sv7',true);
+    return;
+  }
+  // GUARD: when a school is selected and Firebase is reachable, never seed
+  // before the cloud has been checked — this device may simply not have pulled
+  // the school's data yet. Boot re-runs seed() after the pull.
+  if(CURRENT_SCHOOL_ID&&window.__FB&&window.__FB.db&&!window.__cloudChecked){
+    console.warn('[Seed] Deferred until cloud pull completes for school '+CURRENT_SCHOOL_ID);
+    window.__seedDeferred=true;
+    return;
+  }
   DB.set('settings',{schoolName:'UNAIZAH INTERNATIONAL SCHOOL',schoolNameAr:'مدرسة عنيزة العالمية',city:'Unaizah',academicYear:'2024-2025',logo:'🎓',liveMode:false});
   DB.set('accounts',[
     {id:'u1',username:'superadmin',password:'admin123',role:'superadmin',firstName:'System',lastName:'Administrator',email:'sa@school.sa',phone:'0500000001',active:true,created:'2024-01-01',theme:'gold',lang:'en'},
@@ -5337,7 +5363,10 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
-  'duty_places','duty_remarks','classroom_discipline','todos','deleted_ids'
+  'duty_places','duty_remarks','classroom_discipline','todos','deleted_ids',
+  // sv7 marks a bucket as already provisioned. It MUST sync: without it a
+  // second device sees no marker and re-seeds the school over live data.
+  'sv7'
 ];
 
 function isSessionScopedKey(k){
@@ -5502,6 +5531,13 @@ function logFBError(k,e){
 
 // Local write timestamps, persisted so they survive a page refresh.
 // Used to protect fresh local deletions from being clobbered by stale cloud data.
+// window.__FB is assigned before all its members are attached, so an early
+// write can see a truthy __FB with no ref/set and throw, silently losing the
+// write. Require the functions we actually call.
+function fbReady(){
+  return !!(window.__FB&&window.__FB.db&&typeof window.__FB.ref==='function'&&typeof window.__FB.set==='function');
+}
+
 const LWTS_KEY='sms7_localWriteTs';
 const LWTS_WINDOW=90000;
 function getLocalWriteTs(k){
@@ -5528,7 +5564,7 @@ if(!DB._raw_set){
         SYNC_ENABLED=true;SYNC_INITIAL_LOAD=true;
       }
     }
-    if(SYNC_ENABLED&&window.__FB&&shouldSyncKey(k)){
+    if(SYNC_ENABLED&&fbReady()&&shouldSyncKey(k)){
       const{db,ref,set}=window.__FB;
       SYNC_ECHO[k]=Date.now();
       addPendingWrite(k);
@@ -5555,7 +5591,7 @@ if(!DB._raw_set){
       console.warn('[Sync] Auto-enabling SYNC via _raw_set');
       SYNC_ENABLED=true;SYNC_INITIAL_LOAD=true;
     }
-    if(SYNC_ENABLED&&window.__FB&&shouldSyncKey(k)){
+    if(SYNC_ENABLED&&fbReady()&&shouldSyncKey(k)){
       const{db,ref,set}=window.__FB;
       SYNC_ECHO[k]=Date.now();
       addPendingWrite(k);
@@ -5583,7 +5619,23 @@ function subscribeToCollection(k){
     if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<8000)return;
     if(getPendingWrites().includes(k))return;
     let v=snap.val();
-    if(v===null||v===undefined){v=[];}
+    if(v===null||v===undefined){
+      // Firebase holds nothing at this path. Do NOT read that as "delete
+      // everything locally" — far more often the key was simply never pushed
+      // (Realtime DB also stores an empty list as null). Keep the local copy
+      // and heal the cloud from it instead of wiping real data.
+      try{
+        let local=JSON.parse(localStorage.getItem(_pfx+k)||'null');
+        if(Array.isArray(local))local=applyTombstones(k,local);
+        if(local&&(!Array.isArray(local)||local.length>0)){
+          console.warn('[Sync] Firebase has no '+k+' — keeping local copy and re-pushing');
+          const{db:dbH,ref:refH,set:setH}=window.__FB;
+          setH(refH(dbH,getFirebaseSchoolPath()+k),local).catch(()=>{});
+          return;
+        }
+      }catch(e){}
+      v=[];
+    }
     if(v&&typeof v==='object'&&!Array.isArray(v)){
       const keys=Object.keys(v);
       if(keys.length>0&&keys.every(kk=>/^\d+$/.test(kk))){
@@ -5642,6 +5694,12 @@ async function resyncForSchool(){
   // Pull this school's data from Firebase
   const hadData=await syncDownAll();
   console.log('[Sync] syncDownAll returned hadData='+hadData);
+  window.__cloudChecked=true;
+  if(window.__seedDeferred){
+    window.__seedDeferred=false;
+    seed();
+    if(typeof migrate==='function')await migrate();
+  }
   // Push local data up if Firebase is empty for this school
   const{db,ref,get}=window.__FB;
   try{
@@ -5714,6 +5772,14 @@ async function bootFirebaseSync(){
   // Re-read school path after session restore
   const hadData=await syncDownAll();
   console.log('[Sync] Boot: hadData='+hadData+', school='+CURRENT_SCHOOL_ID+', path='+getFirebaseSchoolPath());
+  // The cloud has now been consulted, so a deferred seed can safely decide
+  // whether this school is genuinely new.
+  window.__cloudChecked=true;
+  if(window.__seedDeferred){
+    window.__seedDeferred=false;
+    seed();
+    await migrate();
+  }
   SYNC_INITIAL_LOAD=true;
   SYNC_ENABLED=true;
   // Only push data up if we have a school context — don't push to data/ blindly
