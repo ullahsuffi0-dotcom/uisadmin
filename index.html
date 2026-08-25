@@ -807,9 +807,62 @@ function pdfHeaderHTML(opts){
 // never resurrect them, otherwise a delete silently undoes itself on refresh.
 function getTombstones(k){const t=DB.get('deleted_ids')||{};return Array.isArray(t[k])?t[k]:[];}
 function addTombstone(k,id){
+  // Never tombstone the last active superadmin — a tombstone is permanent and
+  // survives re-seeding, so this would lock everyone out of the school for good.
+  if(k==='accounts'){
+    const acc=DB.get('accounts')||[];
+    const target=acc.find(a=>a.id===id);
+    if(target&&target.role==='superadmin'){
+      const others=acc.filter(a=>a.role==='superadmin'&&a.active!==false&&a.id!==id);
+      if(!others.length){console.warn('[Tombstone] Refused to tombstone the last superadmin ('+id+')');return;}
+    }
+  }
   const t=DB.get('deleted_ids')||{};
   if(!Array.isArray(t[k]))t[k]=[];
   if(!t[k].includes(id)){t[k].push(id);DB.set('deleted_ids',t);}
+}
+
+// Lockout recovery. Runs only after the cloud has been consulted, so a device
+// that simply has not synced yet never triggers it. Covers every way the
+// superadmin can go missing: emptied accounts, deactivated, or tombstoned.
+function ensureSuperadminAccess(){
+  if(!window.__cloudChecked)return false;
+  const acc=DB.get('accounts')||[];
+  if(acc.some(a=>a.role==='superadmin'&&a.active!==false))return false;
+  // Drop any tombstone blocking a superadmin id, then see if one reappears
+  const t=DB.get('deleted_ids')||{};
+  const blocked=Array.isArray(t.accounts)?t.accounts:[];
+  if(blocked.length){
+    const stillThere=acc.filter(a=>a.role==='superadmin');
+    if(stillThere.length){
+      t.accounts=blocked.filter(id=>!stillThere.some(a=>a.id===id));
+      DB.set('deleted_ids',t);
+    }
+  }
+  // Reactivate a disabled superadmin if there is one
+  const disabled=acc.find(a=>a.role==='superadmin');
+  if(disabled){
+    disabled.active=true;
+    DB.set('accounts',acc);
+    console.warn('[Recovery] Re-enabled superadmin account '+disabled.username);
+    return true;
+  }
+  // None at all — recreate one with a fresh id so no tombstone can block it
+  let uname='superadmin';let n=2;
+  while(acc.some(a=>a.username===uname))uname='superadmin'+(n++);
+  const fresh={id:'u'+Date.now()+Math.random().toString(36).slice(2,5),username:uname,
+    password:'admin123',role:'superadmin',firstName:'System',lastName:'Administrator',
+    email:'',phone:'',active:true,created:new Date().toISOString().split('T')[0],theme:'gold',lang:'en'};
+  acc.push(fresh);
+  DB.set('accounts',acc);
+  hashPassword('admin123').then(h=>{
+    const list=DB.get('accounts')||[];
+    const i=list.findIndex(a=>a.id===fresh.id);
+    if(i>=0){list[i].passwordHash=h;list[i]._cardPw='admin123';delete list[i].password;DB.set('accounts',list);}
+  });
+  console.warn('[Recovery] No superadmin found — recreated "'+uname+'" with password admin123');
+  try{toast('Superadmin access restored — log in as "'+uname+'" / admin123','info');}catch(e){}
+  return true;
 }
 // Pure filter — returns arr with tombstoned entries removed.
 function applyTombstones(k,arr){
@@ -5940,6 +5993,7 @@ async function resyncForSchool(){
     seed();
     if(typeof migrate==='function')await migrate();
   }
+  ensureSuperadminAccess();
   // Push local data up if Firebase is empty for this school
   const{db,ref,get}=window.__FB;
   try{
@@ -6020,6 +6074,7 @@ async function bootFirebaseSync(){
     seed();
     await migrate();
   }
+  if(CURRENT_SCHOOL_ID)ensureSuperadminAccess();
   // The excuse portal renders before this pull finishes, so the student may
   // not have resolved yet. Re-render now that the roll is available.
   if(window.__earlyPortal==='excuse'&&document.getElementById('epr')&&!document.getElementById('ep-done')){
