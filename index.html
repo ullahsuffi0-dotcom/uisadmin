@@ -2490,6 +2490,84 @@ function delNbCheck(id){if(!confirm('Delete this notebook check? This cannot be 
 
 const CTS={'Academic':['Homework concern','Exam difficulty','Curriculum issue','Grade dispute','Teaching method'],'Bullying & Safety':['Peer bullying','Verbal abuse','Physical altercation','Cyberbullying'],'Teacher Conduct':['Unprofessional behavior','Favoritism','Communication issue'],'Administrative':['Scheduling','Document processing','Records issue'],'Facilities':['Classroom condition','Canteen quality','Transport','Safety hazard'],'Attendance':['Unjustified absence','Late entry mark'],'Communication':['App/portal issue','Notification gap'],'Religious/Values':['Prayer time concern','Dress code'],'Other':['General concern','Other']};
 
+// ═══════════════════════════════════════════════════════════
+// PARENT EXCUSE PORTAL — ?excuse=1&sid=<student>&d=<date>&sch=<school>
+// Linked from the absence WhatsApp message. A submission lands in the
+// Excused Students list straight away, flagged as a pending parent request.
+// ═══════════════════════════════════════════════════════════
+function buildExcuseLink(student,date){
+  const base=window.location.origin+window.location.pathname;
+  let u=base+'?excuse=1';
+  if(student&&student.id)u+='&sid='+encodeURIComponent(student.id);
+  if(date)u+='&d='+encodeURIComponent(date);
+  if(CURRENT_SCHOOL_ID)u+='&sch='+encodeURIComponent(CURRENT_SCHOOL_ID);
+  return u;
+}
+
+function checkExcuseMode(){
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('excuse')==='1'){renderExcusePortal();return true;}
+  return false;
+}
+
+function renderExcusePortal(){
+  const params=new URLSearchParams(window.location.search);
+  const sid=params.get('sid')||'';
+  const d=params.get('d')||new Date().toISOString().split('T')[0];
+  const s=DB.get('settings')||{};
+  const stu=sid?(DB.get('students')||[]).find(x=>x.id===sid):null;
+  document.getElementById('lp').classList.add('hidden');
+  document.getElementById('app').classList.add('hidden');
+  const old=document.getElementById('epr');if(old)old.remove();
+  const pp=document.createElement('div');pp.id='epr';
+  pp.style.cssText='min-height:100vh;background:var(--bg);display:flex;flex-direction:column;align-items:center;padding:20px';
+  pp.innerHTML='<div style="width:100%;max-width:560px">'
+  +'<div style="text-align:center;margin-bottom:22px;padding-top:16px"><div style="width:72px;height:72px;background:linear-gradient(135deg,var(--ac),var(--pu));border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 12px;overflow:hidden">'+(s.logo&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'🎓'))+'</div>'
+  +'<h1 style="font-size:22px;font-weight:700;color:var(--tx);margin-bottom:4px">'+esc(s.schoolName||'School')+'</h1>'
+  +'<p style="font-size:13px;color:var(--tx2)">Absence Excuse Request</p>'
+  +'<p style="font-size:11px;color:var(--tx3);margin-top:2px">'+esc(s.schoolNameAr||'')+' · طلب عذر غياب</p></div>'
+  +'<div class="card" id="ep-card" style="padding:20px">'
+  +'<div class="al ai" style="margin-bottom:14px">📝 Please complete this form to submit an excuse for your son\'s absence. The school will review it.<br><span style="font-size:11px">يرجى تعبئة هذا النموذج لتقديم عذر غياب ابنكم.</span></div>'
+  +(stu?'<div class="al ag" style="margin-bottom:12px">👨‍🎓 <strong>'+esc(fN(stu))+'</strong> — Grade '+esc(grSec(stu.grade,stu.section))+'</div><input type="hidden" id="ep-sid" value="'+esc(stu.id)+'"><input type="hidden" id="ep-sname" value="'+esc(fN(stu))+'">'
+    :'<input type="hidden" id="ep-sid" value="'+esc(sid)+'"><div class="fg"><label>Student Full Name * / اسم الطالب</label><input id="ep-sname" placeholder="Your son\'s full name"></div>')
+  +'<div class="fr f2"><div class="fg"><label>Parent Name * / اسم ولي الأمر</label><input id="ep-pname" placeholder="Your full name"></div>'
+  +'<div class="fg"><label>Parent Phone * / الجوال</label><input id="ep-pphone" type="tel" placeholder="05XXXXXXXX"></div></div>'
+  +'<div class="fr f2"><div class="fg"><label>Absent From * / من تاريخ</label><input type="date" id="ep-from" value="'+esc(d)+'"></div>'
+  +'<div class="fg"><label>Absent To * / إلى تاريخ</label><input type="date" id="ep-to" value="'+esc(d)+'"></div></div>'
+  +'<div class="fg"><label>Reason * / سبب الغياب</label><textarea id="ep-reason" placeholder="e.g. Medical appointment, illness, family travel" style="min-height:90px"></textarea></div>'
+  +'<button class="btn bp" style="width:100%;justify-content:center;padding:13px;font-size:14px" onclick="epSubmit()">📤 Submit Excuse Request →</button>'
+  +'</div>'
+  +'<div style="text-align:center;margin-top:18px;font-size:11px;color:var(--tx3)"><a href="?" style="color:var(--ac);text-decoration:none">Staff Login →</a></div></div>';
+  document.body.appendChild(pp);
+}
+
+function epSubmit(){
+  const nameEl=document.getElementById('ep-sname');
+  const sname=(nameEl?nameEl.value:'').trim();
+  const sid=(document.getElementById('ep-sid')||{}).value||'';
+  const pname=document.getElementById('ep-pname').value.trim();
+  const pphone=document.getElementById('ep-pphone').value.trim();
+  const from=document.getElementById('ep-from').value;
+  const to=document.getElementById('ep-to').value;
+  const reason=document.getElementById('ep-reason').value.trim();
+  if(!sname){toast('Enter the student name','danger');return;}
+  if(!pname||!pphone){toast('Enter your name and phone','danger');return;}
+  if(!from||!to){toast('Select both dates','danger');return;}
+  if(to<from){toast('End date cannot be before start date','danger');return;}
+  if(!reason){toast('Please give a reason','danger');return;}
+  const list=(function(){const e=DB.get('excused');return Array.isArray(e)?e:[];})();
+  list.push({id:nid('exc'),studentId:sid,studentName:sname,from:from,to:to,reason:reason,
+    source:'parent',status:'pending',parentName:pname,parentPhone:pphone,
+    addedBy:'Parent request',created:new Date().toISOString()});
+  DB.set('excused',list);
+  document.getElementById('ep-card').innerHTML='<div id="ep-done" style="text-align:center;padding:20px 10px">'
+  +'<div style="font-size:46px;margin-bottom:10px">✅</div>'
+  +'<div style="font-size:17px;font-weight:700;color:var(--su);margin-bottom:8px">Excuse Request Submitted</div>'
+  +'<div style="font-size:13px;color:var(--tx2);line-height:1.7">Thank you. Your excuse for <strong>'+esc(sname)+'</strong><br>('+esc(from)+' → '+esc(to)+') has been sent to the school.<br>You do not need to reply to the absence message.</div>'
+  +'<div style="font-size:12px;color:var(--tx3);margin-top:14px;direction:rtl">تم إرسال طلب العذر إلى المدرسة. شكراً لكم.</div>'
+  +'</div>';
+}
+
 function checkParentMode(){
   const params=new URLSearchParams(window.location.search);
   if(params.get('parent')==='1'){renderParentPortal();return true;}
@@ -2754,22 +2832,50 @@ function delExcused(id){
   toast('Excused period removed','danger');rAttendance();
 }
 
+// Generic link (no student pre-filled) for sharing outside the absence message
+function copyExcuseLink(){
+  const url=buildExcuseLink(null,window._attDate||new Date().toISOString().split('T')[0]);
+  const done=()=>toast('Parent excuse link copied','success');
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(done).catch(()=>prompt('Copy this link:',url));
+  }else{prompt('Copy this link:',url);}
+}
+
+function approveExcused(id){
+  const list=getExcused();
+  const i=list.findIndex(x=>x.id===id);
+  if(i<0)return;
+  list[i].status='approved';
+  list[i].approvedBy=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  list[i].approvedAt=new Date().toISOString();
+  DB.set('excused',list);
+  logA('Approved parent excuse for '+(list[i].studentName||'student'));
+  toast('Excuse approved','success');rAttendance();
+}
+
 function buildExcusedCard(sel,canM){
   const list=getExcused().slice().sort((a,b)=>(b.from||'').localeCompare(a.from||''));
   const activeNow=list.filter(e=>e.from<=sel&&sel<=e.to);
+  const pendingCount=list.filter(e=>e.source==='parent'&&e.status==='pending').length;
   return '<div class="card" style="margin-bottom:13px">'
   +'<div class="sh2"><h3>📝 Excused Students ('+activeNow.length+' on '+esc(sel)+')</h3>'
-  +(canM?'<button class="btn bp bsm" onclick="addExcusedM()">+ Add Excused Student</button>':'')+'</div>'
-  +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Excused students are still recorded absent, but their parents are skipped when sending WhatsApp messages.</div>'
+  +(canM?'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="copyExcuseLink()">🔗 Copy Parent Link</button><button class="btn bp bsm" onclick="addExcusedM()">+ Add Excused Student</button></div>':'')+'</div>'
+  +(pendingCount?'<div class="al aw" style="margin-bottom:8px">⏳ <strong>'+pendingCount+' parent request(s) awaiting review.</strong> They already count as excused, so no further messages are sent. Approve to confirm, or Reject to remove.</div>':'')
+  +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Excused students are still recorded absent, but their parents are skipped when sending WhatsApp messages. Parents can submit their own excuse using the link included in the absence message.</div>'
   +(list.length?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Student</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><th>Added By</th>'+(canM?'<th></th>':'')+'</tr></thead><tbody>'
     +list.map(e=>{
       const active=e.from<=sel&&sel<=e.to;
-      return '<tr'+(active?' style="background:var(--ac2)"':'')+'><td><strong>'+esc(e.studentName||'—')+'</strong></td>'
+      const pending=e.source==='parent'&&e.status==='pending';
+      return '<tr'+(pending?' style="background:var(--gdbg,#fff8e1)"':active?' style="background:var(--ac2)"':'')+'><td><strong>'+esc(e.studentName||'—')+'</strong>'
+      +(e.source==='parent'?'<div style="font-size:9px;color:var(--tx3)">📩 Parent request'+(e.parentName?' — '+esc(e.parentName):'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div>':'')+'</td>'
       +'<td class="mono">'+esc(e.from)+'</td><td class="mono">'+esc(e.to)+'</td>'
       +'<td style="color:var(--tx2)">'+esc(e.reason||'—')+'</td>'
-      +'<td>'+(active?'<span class="badge bgn">Excused on '+esc(sel)+'</span>':'<span class="badge bgr">Not this date</span>')+'</td>'
+      +'<td>'+(pending?'<span class="badge bgo">⏳ Pending review</span> ':'')
+        +(active?'<span class="badge bgn">Excused on '+esc(sel)+'</span>':'<span class="badge bgr">Not this date</span>')+'</td>'
       +'<td style="font-size:10px;color:var(--tx3)">'+esc(e.addedBy||'—')+'</td>'
-      +(canM?'<td><button class="btn bd3 bxs" onclick="delExcused(\''+e.id+'\')">Del</button></td>':'')+'</tr>';
+      +(canM?'<td style="display:flex;gap:4px;flex-wrap:wrap">'
+        +(pending?'<button class="btn bs bxs" onclick="approveExcused(\''+e.id+'\')">✓ Approve</button>':'')
+        +'<button class="btn bd3 bxs" onclick="delExcused(\''+e.id+'\')">'+(pending?'✕ Reject':'Del')+'</button></td>':'')+'</tr>';
     }).join('')+'</tbody></table></div>'
     :'<div class="emp" style="padding:14px"><div class="ei">📝</div><p style="font-size:11px">No excused students recorded.</p></div>')
   +'</div>';
@@ -2890,11 +2996,13 @@ const DEFAULT_ATT_MSG_TPL=
  +'Your son {STUDENT_NAME} Class {GRADE}-{SECTION} is absent today. '
  +'Kindly send to me an excused letter if applicable. '
  +'If you already sent an excuse letter please ignore this message.\n\n'
+ +'To send your excuse letter online, please use this link:\n{EXCUSE_LINK}\n\n'
  +'Administration\n'
  +'Unaizah International Schools\n\n'
  +'المكرم ولي الأمر،\n'
  +'لقد تغيب ابنكم اليوم . برجاء إرسال خطاب عذر الغياب .\n'
  +'إذا كنت قد أرسلت بالفعل خطاب العذر ، فيرجى تجاهل هذه الرسالة.\n'
+ +'لإرسال عذر الغياب إلكترونياً، استخدم الرابط أعلاه.\n'
  +'إدارة مدارس عنيزة العالمية';
 
 function getMsgTpl(){
@@ -2912,6 +3020,7 @@ function fmtMsg(student,date){
     .replace(/\{SECTION\}/g,student.section||'')
     .replace(/\{DATE\}/g,dateStr)
     .replace(/\{SCHOOL_NAME\}/g,s.schoolName||'School')
+    .replace(/\{EXCUSE_LINK\}/g,buildExcuseLink(student,date))
     .replace(/\{SN\}/g,student.sn||'');
 }
 
@@ -3047,7 +3156,7 @@ function finishWaQueue(opened,blocked,total){
 
 function msgTplM(){
   const tpl=getMsgTpl();
-  openM('<div class="mh"><h3>⚙️ WhatsApp Message Template</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ai">Customize the message sent to parents. Use these placeholders — they will be replaced with each student\'s actual data:<br><br><code>{STUDENT_NAME}</code> · <code>{GRADE}</code> · <code>{SECTION}</code> · <code>{DATE}</code> · <code>{SCHOOL_NAME}</code> · <code>{SN}</code></div><div class="fg"><label>Message Template *</label><textarea id="msgtpl" style="min-height:220px;font-family:\'JetBrains Mono\',monospace;font-size:12px">'+esc(tpl)+'</textarea></div><div class="al aw" style="margin-bottom:0">💡 Tip: Keep messages bilingual (English + Arabic) for best parent reach. Use \\n for line breaks.</div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bd3 bsm" onclick="resetMsgTpl()">↺ Reset to Default</button><button class="btn bp" onclick="saveMsgTpl()">'+T('save')+' →</button></div>');
+  openM('<div class="mh"><h3>⚙️ WhatsApp Message Template</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ai">Customize the message sent to parents. Use these placeholders — they will be replaced with each student\'s actual data:<br><br><code>{STUDENT_NAME}</code> · <code>{GRADE}</code> · <code>{SECTION}</code> · <code>{DATE}</code> · <code>{SCHOOL_NAME}</code> · <code>{SN}</code> · <code>{EXCUSE_LINK}</code><br><br><strong>{EXCUSE_LINK}</strong> becomes a personal link for that student and date. When the parent fills it in, the excuse appears in the Excused Students list automatically.</div><div class="fg"><label>Message Template *</label><textarea id="msgtpl" style="min-height:220px;font-family:\'JetBrains Mono\',monospace;font-size:12px">'+esc(tpl)+'</textarea></div><div class="al aw" style="margin-bottom:0">💡 Tip: Keep messages bilingual (English + Arabic) for best parent reach. Use \\n for line breaks.</div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bd3 bsm" onclick="resetMsgTpl()">↺ Reset to Default</button><button class="btn bp" onclick="saveMsgTpl()">'+T('save')+' →</button></div>');
 }
 
 function saveMsgTpl(){
@@ -5911,6 +6020,11 @@ async function bootFirebaseSync(){
     seed();
     await migrate();
   }
+  // The excuse portal renders before this pull finishes, so the student may
+  // not have resolved yet. Re-render now that the roll is available.
+  if(window.__earlyPortal==='excuse'&&document.getElementById('epr')&&!document.getElementById('ep-done')){
+    try{renderExcusePortal();}catch(e){}
+  }
   SYNC_INITIAL_LOAD=true;
   SYNC_ENABLED=true;
   // Only push data up if we have a school context — don't push to data/ blindly
@@ -6117,6 +6231,11 @@ function qExp(type,fmt){document.getElementById('exptype').value=type;doExp(fmt)
     const p=new URLSearchParams(window.location.search);
     if(p.get('parent')==='1'){window.__earlyPortal='parent';}
     else if(p.get('pickup')==='1'){window.__earlyPortal='pickup';}
+    else if(p.get('excuse')==='1'){window.__earlyPortal='excuse';}
+    // Portal links carry the school so they work on a device that has never
+    // signed in — otherwise there is no school context and no data.
+    const sch=p.get('sch');
+    if(sch)window.__urlSchool=sch;
   }catch(e){}
 })();
 
@@ -6125,7 +6244,7 @@ window.__doSeedAndStart=async function(){
   await initPlatform();
   populateSchoolDropdown();
   // If a school was previously selected in this session, restore it
-  const savedSchool=localStorage.getItem('sms7_current_school');
+  const savedSchool=window.__urlSchool||localStorage.getItem('sms7_current_school');
   if(savedSchool){selectSchool(savedSchool);}
   // Initialize sessions FIRST so DB.get/set is wrapped before any seed runs
   if(typeof initSessions==='function')initSessions();
@@ -6136,6 +6255,10 @@ window.__doSeedAndStart=async function(){
     checkParentMode();
   }else if(window.__earlyPortal==='pickup'&&typeof checkPickupMode==='function'){
     checkPickupMode();
+  }else if(window.__earlyPortal==='excuse'&&typeof checkExcuseMode==='function'){
+    checkExcuseMode();
+  }else if(typeof checkExcuseMode==='function'&&checkExcuseMode()){
+    // legacy detection
   }else if(checkParentMode()){
     // legacy detection in case the URL flag was added differently
   }else if(typeof checkPickupMode==='function'&&checkPickupMode()){
