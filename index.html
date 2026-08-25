@@ -5437,7 +5437,7 @@ async function flushPendingWrites(){
       const raw=localStorage.getItem(DB._pfx+k);
       if(raw!==null){
         const v=JSON.parse(raw);
-        await set(ref(db,fbPath+k),v);
+        await set(ref(db,fbPath+k),toFbValue(v));
         console.log('[Sync] Flushed pending write: '+k);
       }
       removePendingWrite(k);
@@ -5482,6 +5482,11 @@ async function syncDownAll(){
         if(shouldSyncKey(k)&&all[k]!==null&&all[k]!==undefined){
           if(stillPending.has(k)){console.warn('[Sync] Skipping pull for '+k+' — has unflushed local writes');return;}
           let v=all[k];
+          // An explicit empty marker means the collection was genuinely emptied
+          if(isFbEmptyMarker(v)){
+            localStorage.setItem(DB._pfx+k,'[]');
+            return;
+          }
           if(v&&typeof v==='object'&&!Array.isArray(v)){
             const keys=Object.keys(v);
             if(keys.length>0&&keys.every(kk=>/^\d+$/.test(kk))){
@@ -5495,7 +5500,7 @@ async function syncDownAll(){
               console.warn('[Sync] Pull: dropped '+(v.length-vt.length)+' tombstoned entries from '+k);
               v=vt;
               const{db:db3,ref:ref3,set:set3}=window.__FB;
-              set3(ref3(db3,fbPath+k),v).catch(e=>console.warn('[Sync] Tombstone re-push failed for '+k,e));
+              set3(ref3(db3,fbPath+k),toFbValue(v)).catch(e=>console.warn('[Sync] Tombstone re-push failed for '+k,e));
             }
           }
           // A recent local write with FEWER items means a deletion happened here
@@ -5508,7 +5513,7 @@ async function syncDownAll(){
               if(Array.isArray(local)&&Array.isArray(v)&&local.length<v.length){
                 console.warn('[Sync] Pull: local '+k+' has '+local.length+' items vs Firebase '+v.length+' — keeping local (possible pending delete)');
                 const{db:db2,ref:ref2,set:set2}=window.__FB;
-                set2(ref2(db2,fbPath+k),local).catch(e=>console.warn('[Sync] Re-push failed for '+k,e));
+                set2(ref2(db2,fbPath+k),toFbValue(local)).catch(e=>console.warn('[Sync] Re-push failed for '+k,e));
                 return;
               }
             }
@@ -5527,12 +5532,12 @@ async function syncUpAll(){
   try{
     const data={};
     const rawGet=DB._raw_get||DB.get.bind(DB);
-    SYNC_KEYS.forEach(k=>{const v=rawGet(k);if(v!==null&&v!==undefined)data[k]=v;});
+    SYNC_KEYS.forEach(k=>{const v=rawGet(k);if(v!==null&&v!==undefined)data[k]=toFbValue(v);});
     for(let i=0;i<localStorage.length;i++){
       const lkey=localStorage.key(i);
       if(!lkey||!lkey.startsWith(DB._pfx))continue;
       const k=lkey.substring(DB._pfx.length);
-      if(isSessionScopedKey(k)){const v=rawGet(k);if(v!==null&&v!==undefined)data[k]=v;}
+      if(isSessionScopedKey(k)){const v=rawGet(k);if(v!==null&&v!==undefined)data[k]=toFbValue(v);}
     }
     const fbPath=getFirebaseSchoolPath();
     await set(ref(db,fbPath),data);
@@ -5554,6 +5559,15 @@ function logFBError(k,e){
 function fbReady(){
   return !!(window.__FB&&window.__FB.db&&typeof window.__FB.ref==='function'&&typeof window.__FB.set==='function');
 }
+
+// Realtime DB cannot store an empty array — it removes the key instead, which
+// reads back identically to "never written". Deleting every record in a
+// collection would therefore look like a missing key and get healed back from
+// a stale local copy. Push an explicit marker so an emptied collection is
+// unambiguous and propagates as a real deletion.
+function toFbValue(v){return (Array.isArray(v)&&v.length===0)?{__empty:true}:v;}
+function isFbEmptyMarker(v){return !!(v&&typeof v==='object'&&!Array.isArray(v)&&v.__empty===true);}
+function fromFbValue(v){return isFbEmptyMarker(v)?[]:v;}
 
 const LWTS_KEY='sms7_localWriteTs';
 const LWTS_WINDOW=90000;
@@ -5586,7 +5600,7 @@ if(!DB._raw_set){
       SYNC_ECHO[k]=Date.now();
       addPendingWrite(k);
       const path=getFirebaseSchoolPath()+k;
-      set(ref(db,path),v).then(()=>{
+      set(ref(db,path),toFbValue(v)).then(()=>{
         removePendingWrite(k);
         SYNC_ECHO[k]=Date.now();
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#1dcd6c';
@@ -5613,7 +5627,7 @@ if(!DB._raw_set){
       SYNC_ECHO[k]=Date.now();
       addPendingWrite(k);
       const path=getFirebaseSchoolPath()+k;
-      set(ref(db,path),v).then(()=>{
+      set(ref(db,path),toFbValue(v)).then(()=>{
         removePendingWrite(k);
         SYNC_ECHO[k]=Date.now();
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#1dcd6c';
@@ -5636,7 +5650,10 @@ function subscribeToCollection(k){
     if(SYNC_ECHO[k]&&Date.now()-SYNC_ECHO[k]<8000)return;
     if(getPendingWrites().includes(k))return;
     let v=snap.val();
-    if(v===null||v===undefined){
+    // An explicit empty marker means every record really was deleted — accept
+    // it rather than falling into the "missing key" healing below.
+    if(isFbEmptyMarker(v))v=[];
+    else if(v===null||v===undefined){
       // Firebase holds nothing at this path. Do NOT read that as "delete
       // everything locally" — far more often the key was simply never pushed
       // (Realtime DB also stores an empty list as null). Keep the local copy
