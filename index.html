@@ -2906,13 +2906,104 @@ function approveExcused(id){
   toast('Excuse approved','success');rAttendance();
 }
 
+function dayCountInclusive(from,to){
+  if(!from||!to)return 0;
+  const n=Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/86400000)+1;
+  return n>0?n:0;
+}
+
+// Excused entries overlapping a date range, with the overlap itself measured
+// so a long excusal counts only the days that fall inside the period.
+function buildExcusedExportRows(from,to,studentFilter,statusFilter){
+  const want=studentFilter?normDutyName(studentFilter):'';
+  return getExcused().filter(e=>{
+    if(!e.from||!e.to)return false;
+    if(e.from>to||e.to<from)return false;                     // no overlap
+    if(want&&normDutyName(e.studentName)!==want)return false;
+    if(statusFilter==='pending'&&!(e.source==='parent'&&e.status==='pending'))return false;
+    if(statusFilter==='approved'&&(e.source==='parent'&&e.status==='pending'))return false;
+    return false||true;
+  }).map(e=>{
+    const s=e.studentId?gS(e.studentId):null;
+    const ovFrom=e.from>from?e.from:from;
+    const ovTo=e.to<to?e.to:to;
+    return {student:e.studentName||'—',
+      grade:s?grSec(s.grade,s.section):'',
+      from:e.from,to:e.to,totalDays:dayCountInclusive(e.from,e.to),
+      daysInPeriod:dayCountInclusive(ovFrom,ovTo),
+      reason:e.reason||'',
+      source:e.source==='parent'?'Parent request':'Staff',
+      status:(e.source==='parent'&&e.status==='pending')?'Pending review':(e.status==='approved'?'Approved':'Recorded'),
+      parentName:e.parentName||'',parentPhone:e.parentPhone||'',
+      addedBy:e.addedBy||'',approvedBy:e.approvedBy||'',
+      created:(e.created||'').split('T')[0]};
+  }).sort((a,b)=>(a.from||'').localeCompare(b.from||'')||(a.student||'').localeCompare(b.student||''));
+}
+
+function exportExcusedM(){
+  const all=getExcused();
+  if(!all.length){toast('No excused students recorded yet','info');return;}
+  const dates=all.map(e=>e.from).filter(Boolean).sort();
+  const ends=all.map(e=>e.to).filter(Boolean).sort();
+  const defFrom=dates[0]||new Date().toISOString().split('T')[0];
+  const defTo=ends[ends.length-1]||defFrom;
+  const names=Array.from(new Set(all.map(e=>e.studentName).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  openM('<div class="mh"><h3>📊 Export Excused Students</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Every excused period overlapping the dates you choose, with the reason, who recorded it and how many of those days fall inside the period.</div>'
+  +'<div class="fr f2"><div class="fg"><label>From Date *</label><input type="date" id="xx-from" value="'+esc(defFrom)+'"></div>'
+  +'<div class="fg"><label>To Date *</label><input type="date" id="xx-to" value="'+esc(defTo)+'"></div></div>'
+  +'<div class="fr f2"><div class="fg"><label>Student</label><select id="xx-stu"><option value="">— All students —</option>'+names.map(n=>'<option value="'+escJs(n)+'">'+esc(n)+'</option>').join('')+'</select></div>'
+  +'<div class="fg"><label>Status</label><select id="xx-status"><option value="">— All —</option><option value="approved">Approved / staff-recorded</option><option value="pending">Pending parent requests</option></select></div></div>'
+  +'<div id="xx-prev" style="font-size:11px;color:var(--tx3);margin-top:6px"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="runExcusedExport()">📊 Export Excel →</button></div>');
+  const f=document.getElementById('xx-from'),t=document.getElementById('xx-to');
+  const upd=function(){
+    const el=document.getElementById('xx-prev');
+    if(f.value&&t.value&&t.value<f.value){el.innerHTML='<span style="color:var(--dg)">⚠️ “To” date is before “From” date.</span>';return;}
+    const rows=buildExcusedExportRows(f.value,t.value,document.getElementById('xx-stu').value,document.getElementById('xx-status').value);
+    const days=rows.reduce((s,r)=>s+r.daysInPeriod,0);
+    el.innerHTML='📋 <strong>'+rows.length+'</strong> excused period(s) · <strong>'+new Set(rows.map(r=>normDutyName(r.student))).size+'</strong> student(s) · <strong>'+days+'</strong> excused day(s) in range';
+  };
+  f.onchange=upd;t.onchange=upd;
+  document.getElementById('xx-stu').onchange=upd;document.getElementById('xx-status').onchange=upd;
+  upd();
+}
+
+function runExcusedExport(){
+  const from=document.getElementById('xx-from').value;
+  const to=document.getElementById('xx-to').value;
+  if(!from||!to){toast('Select both dates','danger');return;}
+  if(to<from){toast('“To” date must not be before “From” date','danger');return;}
+  const rows=buildExcusedExportRows(from,to,document.getElementById('xx-stu').value,document.getElementById('xx-status').value);
+  if(!rows.length){toast('No excused students in that period','danger');return;}
+  const out=rows.map(r=>[r.student,r.grade,r.from,r.to,r.totalDays,r.daysInPeriod,r.reason,
+    r.source,r.status,r.parentName,r.parentPhone,r.addedBy,r.approvedBy,r.created]);
+  // Totals travel with the data
+  const byStudent={};
+  rows.forEach(r=>{const k=normDutyName(r.student);byStudent[k]=(byStudent[k]||0)+r.daysInPeriod;});
+  out.push([]);
+  out.push(['EXCUSED DAYS PER STUDENT (within '+from+' → '+to+')']);
+  Object.keys(byStudent).sort().forEach(k=>{
+    const disp=rows.find(r=>normDutyName(r.student)===k).student;
+    out.push([disp,'','','','',byStudent[k]]);
+  });
+  out.push(['GRAND TOTAL','','','','',rows.reduce((s,r)=>s+r.daysInPeriod,0)]);
+  expCSV(['Student','Grade','Excused From','Excused To','Total Days','Days In Period','Reason',
+    'Source','Status','Parent Name','Parent Phone','Recorded By','Approved By','Submitted'],
+    out,'excused_students_'+from+'_to_'+to);
+  logA('Exported excused students ('+from+' → '+to+', '+rows.length+' records)');
+  closeM();
+}
+
 function buildExcusedCard(sel,canM){
   const list=getExcused().slice().sort((a,b)=>(b.from||'').localeCompare(a.from||''));
   const activeNow=list.filter(e=>e.from<=sel&&sel<=e.to);
   const pendingCount=list.filter(e=>e.source==='parent'&&e.status==='pending').length;
   return '<div class="card" style="margin-bottom:13px">'
   +'<div class="sh2"><h3>📝 Excused Students ('+activeNow.length+' on '+esc(sel)+')</h3>'
-  +(canM?'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="copyExcuseLink()">🔗 Copy Parent Link</button><button class="btn bp bsm" onclick="addExcusedM()">+ Add Excused Student</button></div>':'')+'</div>'
+  +'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportExcusedM()">📊 Export Excused</button>'+(canM?'<button class="btn bg2 bsm" onclick="copyExcuseLink()">🔗 Copy Parent Link</button><button class="btn bp bsm" onclick="addExcusedM()">+ Add Excused Student</button>':'')+'</div></div>'
   +(pendingCount?'<div class="al aw" style="margin-bottom:8px">⏳ <strong>'+pendingCount+' parent request(s) awaiting review.</strong> They already count as excused, so no further messages are sent. Approve to confirm, or Reject to remove.</div>':'')
   +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Excused students are still recorded absent, but their parents are skipped when sending WhatsApp messages. Parents can submit their own excuse using the link included in the absence message.</div>'
   +(list.length?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Student</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><th>Added By</th>'+(canM?'<th></th>':'')+'</tr></thead><tbody>'
