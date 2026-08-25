@@ -7152,13 +7152,23 @@ const DEFAULT_DUTY_SLOTS=[
   {id:'special_combined',label:'Special Class Duty — Combined Classes (12:45 onwards)',time:'12:45 onwards',isClassDuty:true,spots:[]}
 ];
 
+// A saved slot list from before the class-duty slot was editable may not
+// contain it. Without it, class duties are never rendered or counted, so
+// always fold it back in. Returns a new array — never mutates the stored one.
+function ensureClassDutySlot(slots){
+  if(!Array.isArray(slots))return slots;
+  if(slots.some(s=>s&&s.isClassDuty))return slots;
+  const def=DEFAULT_DUTY_SLOTS.find(s=>s.isClassDuty);
+  return def?slots.concat([JSON.parse(JSON.stringify(def))]):slots;
+}
+
 function getDutySlots(dateOrRoster){
   if(dateOrRoster){
     let roster=typeof dateOrRoster==='string'?getRosterForDate(dateOrRoster):dateOrRoster;
-    if(roster&&roster.customSlots&&Array.isArray(roster.customSlots)&&roster.customSlots.length)return roster.customSlots;
+    if(roster&&roster.customSlots&&Array.isArray(roster.customSlots)&&roster.customSlots.length)return ensureClassDutySlot(roster.customSlots);
   }
   const custom=DB.get('duty_places');
-  if(custom&&Array.isArray(custom)&&custom.length)return custom;
+  if(custom&&Array.isArray(custom)&&custom.length)return ensureClassDutySlot(custom);
   return DEFAULT_DUTY_SLOTS;
 }
 
@@ -8209,6 +8219,21 @@ function setPlacesScope(scope){
   renderPlacesMgr();
 }
 
+// Live feedback on what the class-duty time is actually worth in minutes.
+// parseDutyMinutes only recognises a real range, so a value like
+// "12:45 onwards" silently falls back to the 15-minute default.
+function classDutyMinsHint(t){
+  const m=parseDutyMinutes(t);
+  const isRange=/(\d{1,2}):(\d{2})\s*[–—-]\s*(\d{1,2}):(\d{2})/.test(t||'');
+  return isRange
+    ? '<span style="color:var(--su,#10a169)">⏱️ Counts as <strong>'+m+' minutes</strong> for every teacher assigned.</span>'
+    : '<span style="color:var(--dg,#d63838)">⚠️ Not a time range — counts as the default <strong>'+m+' minutes</strong>. Enter something like <code>12:45 – 13:30</code> to count the real duration.</span>';
+}
+function updClassDutyMins(si){
+  const el=document.getElementById('cd-mins');
+  if(el&&window._editSlots&&window._editSlots[si])el.innerHTML=classDutyMinsHint(window._editSlots[si].time);
+}
+
 function renderPlacesMgr(){
   const slots=window._editSlots;
   if(!slots)return;
@@ -8221,7 +8246,20 @@ function renderPlacesMgr(){
   +'</div>'
   +'<div class="al '+(isToday?'aw':'ai')+'" style="margin-bottom:10px">'+(isToday?'⚠️ Changes will <strong>only apply to '+window._rosterDate+'</strong>. Other dates will keep using the default places.':'Changes apply to <strong>all future rosters</strong>. Existing saved rosters keep their data.')+'</div>';
   slots.forEach((slot,si)=>{
-    if(slot.isClassDuty)return; // skip class duty slot from editor
+    if(slot.isClassDuty){
+      // Label and time are editable; the classes and rooms themselves are
+      // entered per day on the roster, so there are no fixed spots here.
+      html+='<div style="border:1px dashed var(--ac);border-radius:var(--rs);padding:12px;margin-bottom:10px;background:var(--ac2)">'
+      +'<div style="font-size:10px;color:var(--ac);font-weight:700;margin-bottom:7px">⭐ SPECIAL CLASS DUTY — COMBINED CLASSES</div>'
+      +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+      +'<input value="'+esc(slot.label)+'" oninput="window._editSlots['+si+'].label=this.value" placeholder="Slot label" style="flex:2;min-width:200px;padding:7px 10px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);font-size:12px;font-weight:600">'
+      +'<input value="'+esc(slot.time)+'" oninput="window._editSlots['+si+'].time=this.value;updClassDutyMins('+si+')" placeholder="e.g. 12:45 – 13:30" style="flex:1;min-width:150px;padding:7px 10px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);font-size:12px">'
+      +'</div>'
+      +'<div id="cd-mins" style="font-size:10px;margin-top:7px">'+classDutyMinsHint(slot.time)+'</div>'
+      +'<div style="font-size:10px;color:var(--tx3);margin-top:4px">Classes and rooms are entered per day on the roster. This duration counts toward each assigned teacher\'s total duty time.</div>'
+      +'</div>';
+      return;
+    }
     html+='<div style="border:1px solid var(--bd);border-radius:var(--rs);padding:12px;margin-bottom:10px;background:var(--sf2)">'
     +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'
     +'<input value="'+esc(slot.label)+'" oninput="window._editSlots['+si+'].label=this.value" placeholder="Slot label" style="flex:2;min-width:200px;padding:7px 10px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);font-size:12px;font-weight:600">'
