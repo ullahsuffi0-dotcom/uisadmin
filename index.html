@@ -2791,9 +2791,23 @@ function buildAttHistory(allAtt,students){
 // WHATSAPP INTEGRATION — wa.me deep links
 // ═══════════════════════════════════════════════════════════
 
+// Default absence message sent to parents. A school can override it from
+// Attendance → Message Template; "Reset to Default" restores this text.
+const DEFAULT_ATT_MSG_TPL=
+  'Respected parents\n\n'
+ +'Your son {STUDENT_NAME} Class {GRADE}-{SECTION} is absent today. '
+ +'Kindly send to me an excused letter if applicable. '
+ +'If you already sent an excuse letter please ignore this message.\n\n'
+ +'Administration\n'
+ +'Unaizah International Schools\n\n'
+ +'المكرم ولي الأمر،\n'
+ +'لقد تغيب ابنكم اليوم . برجاء إرسال خطاب عذر الغياب .\n'
+ +'إذا كنت قد أرسلت بالفعل خطاب العذر ، فيرجى تجاهل هذه الرسالة.\n'
+ +'إدارة مدارس عنيزة العالمية';
+
 function getMsgTpl(){
   const s=DB.get('settings')||{};
-  return s.attMsgTpl||'Dear Parent / السلام عليكم،\n\nThis is to inform you that your child {STUDENT_NAME} (Grade {GRADE}-{SECTION}) was absent from school today, {DATE}.\n\nنود إعلامكم بأن ابنكم/ابنتكم كان غائباً اليوم.\n\nKindly contact the school office for any clarification.\nيرجى التواصل مع إدارة المدرسة.\n\n— {SCHOOL_NAME}';
+  return s.attMsgTpl||DEFAULT_ATT_MSG_TPL;
 }
 
 function fmtMsg(student,date){
