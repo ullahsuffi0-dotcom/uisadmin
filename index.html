@@ -848,22 +848,25 @@ function seed(){
   }
   DB.set('settings',{schoolName:'UNAIZAH INTERNATIONAL SCHOOL',schoolNameAr:'مدرسة عنيزة العالمية',city:'Unaizah',academicYear:'2024-2025',logo:'🎓',liveMode:false});
   DB.set('accounts',[
-    {id:'u1',username:'superadmin',password:'admin123',role:'superadmin',firstName:'System',lastName:'Administrator',email:'sa@school.sa',phone:'0500000001',active:true,created:'2024-01-01',theme:'gold',lang:'en'},
-    {id:'u2',username:'principal1',password:'admin123',role:'principal',firstName:'Hamza',lastName:'Alhalaly',email:'p@school.sa',phone:'0500000002',active:true,created:'2024-01-01',theme:'blue',lang:'en'},
-    {id:'u3',username:'vice1',password:'admin123',role:'vice_principal',firstName:'Suffi',lastName:'Ullah',email:'v.primary@school.sa',phone:'0500000003',active:true,created:'2024-01-01',theme:'purple',lang:'en',scope:'Primary'},
-    {id:'u3b',username:'vice2',password:'admin123',role:'vice_principal',firstName:'Abdulbasit',lastName:'',email:'v.middle@school.sa',phone:'0500000010',active:true,created:'2024-01-01',theme:'teal',lang:'en',scope:'Middle & Secondary'},
-    {id:'u4',username:'academic1',password:'admin123',role:'academic_supervisor',firstName:'Zain',lastName:'Ul Arfeen',email:'ac@school.sa',phone:'0500000004',active:true,created:'2024-01-01',theme:'teal',lang:'en'},
-    {id:'u5',username:'advisor1',password:'admin123',role:'student_advisor',firstName:'Abdulmonim',lastName:'',email:'ad@school.sa',phone:'0500000005',active:true,created:'2024-01-01',theme:'green',lang:'en'},
-    {id:'u6',username:'supervisor1',password:'admin123',role:'quality_supervisor',firstName:'ABC',lastName:'',email:'qs@school.sa',phone:'0500000006',active:true,created:'2024-01-01',theme:'blue',lang:'en'},
-    {id:'u7',username:'activity1',password:'admin123',role:'activity_incharge',firstName:'Activity',lastName:'Incharge',email:'ai@school.sa',phone:'0500000007',active:true,created:'2024-01-01',theme:'orange',lang:'en'},
-    {id:'u8',username:'assistant1',password:'admin123',role:'admin_assistant',firstName:'Admin',lastName:'Assistant',email:'aa@school.sa',phone:'0500000008',active:true,created:'2024-01-01',theme:'rose',lang:'en'},
-    {id:'u9',username:'quality1',password:'admin123',role:'quality_incharge',firstName:'Ahmed',lastName:'Alhatlani',email:'qi@school.sa',phone:'0500000009',active:true,created:'2024-01-01',theme:'teal',lang:'en'},
+    {id:'u1',username:'superadmin',password:'admin123',role:'superadmin',firstName:'System',lastName:'Administrator',email:'',phone:'',active:true,created:'2024-01-01',theme:'gold',lang:'en'},
+    {id:'u2',username:'principal1',password:'admin123',role:'principal',firstName:'Hamza',lastName:'Alhalaly',email:'',phone:'',active:true,created:'2024-01-01',theme:'blue',lang:'en'},
+    {id:'u3',username:'vice1',password:'admin123',role:'vice_principal',firstName:'Suffi',lastName:'Ullah',email:'',phone:'',active:true,created:'2024-01-01',theme:'purple',lang:'en',scope:'Primary'},
+    {id:'u3b',username:'vice2',password:'admin123',role:'vice_principal',firstName:'Abdulbasit',lastName:'',email:'',phone:'',active:true,created:'2024-01-01',theme:'teal',lang:'en',scope:'Middle & Secondary'},
+    {id:'u4',username:'academic1',password:'admin123',role:'academic_supervisor',firstName:'Zain',lastName:'Ul Arfeen',email:'',phone:'',active:true,created:'2024-01-01',theme:'teal',lang:'en'},
+    {id:'u5',username:'advisor1',password:'admin123',role:'student_advisor',firstName:'Abdulmonim',lastName:'',email:'',phone:'',active:true,created:'2024-01-01',theme:'green',lang:'en'},
+    {id:'u6',username:'supervisor1',password:'admin123',role:'quality_supervisor',firstName:'ABC',lastName:'',email:'',phone:'',active:true,created:'2024-01-01',theme:'blue',lang:'en'},
+    {id:'u7',username:'activity1',password:'admin123',role:'activity_incharge',firstName:'Activity',lastName:'Incharge',email:'',phone:'',active:true,created:'2024-01-01',theme:'orange',lang:'en'},
+    {id:'u8',username:'assistant1',password:'admin123',role:'admin_assistant',firstName:'Admin',lastName:'Assistant',email:'',phone:'',active:true,created:'2024-01-01',theme:'rose',lang:'en'},
+    {id:'u9',username:'quality1',password:'admin123',role:'quality_incharge',firstName:'Ahmed',lastName:'Alhatlani',email:'',phone:'',active:true,created:'2024-01-01',theme:'teal',lang:'en'},
   ]);
   // Hash all seed passwords asynchronously
   const acc=DB.get('accounts')||[];
   Promise.all(acc.map(async a=>{
     if(a.password&&!a.passwordHash){
       a.passwordHash=await hashPassword(a.password);
+      // Keep the plaintext for the account card / WhatsApp share. Without it
+      // the card reads "Not on record" until someone resets the password.
+      if(!a._cardPw)a._cardPw=a.password;
       delete a.password;
     }
   })).then(()=>DB.set('accounts',acc));
@@ -911,7 +914,7 @@ async function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports
   Object.entries(oldNames).forEach(([id,oldName])=>{const i=acc.findIndex(a=>a.id===id);if(i>=0&&((acc[i].firstName+' '+acc[i].lastName).trim()===oldName)){acc[i].firstName=newNames[id].f;acc[i].lastName=newNames[id].l;if(newNames[id].scope)acc[i].scope=newNames[id].scope;modified=true;}});
   // Add second VP if missing (Abdulbasit) — but never re-add it once deleted
   if(!acc.find(a=>a.id==='u3b')&&!getTombstones('accounts').includes('u3b')&&!DB.get('mig_u3b')){
-    acc.push({id:'u3b',username:'vice2',password:'admin123',role:'vice_principal',firstName:'Abdulbasit',lastName:'',email:'v.middle@school.sa',phone:'0500000010',active:true,created:'2024-01-01',theme:'teal',lang:'en',scope:'Middle & Secondary'});
+    acc.push({id:'u3b',username:'vice2',password:'admin123',role:'vice_principal',firstName:'Abdulbasit',lastName:'',email:'',phone:'',active:true,created:'2024-01-01',theme:'teal',lang:'en',scope:'Middle & Secondary'});
     modified=true;
   }
   if(!DB.get('mig_u3b'))DB.set('mig_u3b',true);
@@ -925,7 +928,7 @@ async function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports
   // Hash any remaining plaintext passwords
   let needsHash=false;
   acc.forEach(a=>{if(a.password&&!a.passwordHash)needsHash=true;});
-  if(needsHash){await Promise.all(acc.map(async a=>{if(a.password&&!a.passwordHash){a.passwordHash=await hashPassword(a.password);delete a.password;}}));modified=true;}
+  if(needsHash){await Promise.all(acc.map(async a=>{if(a.password&&!a.passwordHash){a.passwordHash=await hashPassword(a.password);if(!a._cardPw)a._cardPw=a.password;delete a.password;}}));modified=true;}
   if(modified)DB.set('accounts',acc);
 }
 let CU=null,SAR=null,SAIMP=false,_page='';
