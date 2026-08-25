@@ -7260,6 +7260,26 @@ function getDutyNameAliases(teacherName){
   return set;
 }
 
+// Everyone a duty or substitution can be assigned to: teacher records plus
+// every active staff account, whatever their role. Duties are not teacher-only.
+function getAssignableStaff(){
+  const out=[],seen=new Set();
+  const add=function(name,detail){
+    const n=(name||'').replace(/\s+/g,' ').trim();
+    if(!n)return;
+    const k=n.toLowerCase();
+    if(seen.has(k))return;
+    seen.add(k);
+    out.push({name:n,detail:detail||''});
+  };
+  (DB.get('teachers')||[]).forEach(t=>{if(t.active!==false)add(tchDisplayName(t),t.subject||'Teacher');});
+  (DB.get('accounts')||[]).forEach(a=>{
+    if(a.active===false)return;
+    add(((a.firstName||'')+' '+(a.lastName||'')).trim(),(typeof rL==='function'?rL(a.role):a.role)||'Staff');
+  });
+  return out.sort((a,b)=>a.name.localeCompare(b.name));
+}
+
 function getMyDutiesForDate(roster,teacherName){
   if(!roster)return [];
   const aliases=getDutyNameAliases(teacherName);
@@ -8137,13 +8157,8 @@ function dutyTchSearch(el,slotId,spot){
     if(existing)existing.remove();
     return;
   }
-  const teachers=DB.get('teachers')||[];
-  const accountTeachers=(DB.get('accounts')||[]).filter(a=>a.role==='teacher');
-  // Combine and dedupe by full name
-  const allNames=new Set();
-  const items=[];
-  teachers.forEach(t=>{const n=tchDisplayName(t);if(n&&!allNames.has(n.toLowerCase())){allNames.add(n.toLowerCase());items.push({name:n,subject:t.subject||''});}});
-  accountTeachers.forEach(a=>{const n=((a.firstName||'')+' '+(a.lastName||'')).trim();if(n&&!allNames.has(n.toLowerCase())){allNames.add(n.toLowerCase());items.push({name:n,subject:''});}});
+  // Any staff member can take a duty, not only teachers
+  const items=getAssignableStaff().map(s=>({name:s.name,subject:s.detail}));
   const matches=items.filter(it=>it.name.toLowerCase().includes(q)).slice(0,8);
   
   let dd=el.parentElement.querySelector('.tch-suggest');
@@ -8215,12 +8230,8 @@ function classDutyTchSearch(el,idx){
   const dd=document.getElementById('cdsd-'+idx);
   if(!dd)return;
   if(!q){dd.style.display='none';return;}
-  const teachers=DB.get('teachers')||[];
-  const accountTeachers=(DB.get('accounts')||[]).filter(a=>a.role==='teacher');
-  const allNames=new Set();
-  const items=[];
-  teachers.forEach(t=>{const n=tchDisplayName(t);if(n&&!allNames.has(n.toLowerCase())){allNames.add(n.toLowerCase());items.push(n);}});
-  accountTeachers.forEach(a=>{const n=((a.firstName||'')+' '+(a.lastName||'')).trim();if(n&&!allNames.has(n.toLowerCase())){allNames.add(n.toLowerCase());items.push(n);}});
+  // Any staff member can take a class duty, not only teachers
+  const items=getAssignableStaff().map(s=>s.name);
   const matches=items.filter(n=>n.toLowerCase().includes(q)).slice(0,6);
   if(!matches.length){dd.style.display='none';return;}
   dd.style.display='block';
@@ -8700,20 +8711,18 @@ function buildSubsTable(list,canEdit){
 }
 
 function addSubM(){
-  // Build list of available teachers (from teachers collection + teacher accounts)
-  const teachers=DB.get('teachers')||[];
-  const accountTeachers=(DB.get('accounts')||[]).filter(a=>a.role==='teacher');
-  const teacherNames=new Set();
-  teachers.forEach(t=>{const n=((t.firstName||'')+' '+(t.lastName||'')).trim();if(n)teacherNames.add(n);});
-  accountTeachers.forEach(a=>{const n=((a.firstName||'')+' '+(a.lastName||'')).trim();if(n)teacherNames.add(n);});
-  const sortedNames=[...teacherNames].sort();
-  
+  // Anyone on staff can cover a substitution, not only teachers.
+  const staff=getAssignableStaff();
+
   const today=new Date().toISOString().split('T')[0];
   const day=getDayOfWeek(today);
   const periods=[1,2,3,4,5,6,7];
-  
-  // Build the period grid header + rows
-  const teacherOpts=sortedNames.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join('');
+
+  // A datalist suggests known staff but still accepts a freely typed name,
+  // so someone not on the list can be assigned without adding them first.
+  const staffList='<datalist id="sub-staff-list">'
+    +staff.map(s=>'<option value="'+esc(s.name)+'">'+esc(s.detail)+'</option>').join('')
+    +'</datalist>';
   
   let gridHtml='<div style="overflow-x:auto;border:1px solid var(--bd);border-radius:var(--rs);background:var(--sf2);padding:0"><table id="sub-grid" style="width:100%;min-width:780px;border-collapse:collapse;font-size:11px"><thead><tr><th style="background:var(--ac);color:#fff;padding:8px 10px;text-align:left;width:90px;border-right:1px solid rgba(255,255,255,.15)">Field</th>';
   periods.forEach(p=>{
@@ -8738,17 +8747,18 @@ function addSubM(){
   // Substitute teacher row
   gridHtml+='<tr style="background:var(--sf)"><td style="padding:8px 10px;font-weight:600;color:var(--gd);border:1px solid var(--bd)">✓ Substitute</td>';
   periods.forEach(p=>{
-    gridHtml+='<td style="padding:5px;border:1px solid var(--bd)"><select id="sub-tch-p'+p+'" style="width:100%;padding:6px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px"><option value="">— None —</option>'+teacherOpts+'</select></td>';
+    gridHtml+='<td style="padding:5px;border:1px solid var(--bd)"><input id="sub-tch-p'+p+'" list="sub-staff-list" autocomplete="off" placeholder="— None —" style="width:100%;padding:6px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px;text-align:center"></td>';
   });
   gridHtml+='</tr>';
   
   gridHtml+='</tbody></table></div>';
   
   openM('<div class="mh"><h3>+ Add Substitutions (Periods 1–7)</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
-  +'<div class="al ai">📋 Fill in only the periods where this absent teacher needs a substitute. Each filled period will be saved as a separate substitution record. Empty period columns are skipped.</div>'
+  +staffList
+  +'<div class="al ai">📋 Fill in only the periods where cover is needed. Each filled period is saved as a separate substitution record; empty columns are skipped.<br><span style="font-size:11px">Any staff member can be assigned, and you can type a name that is not on the list.</span></div>'
   
   // Row 1: Absent teacher (single field)
-  +'<div style="background:var(--sf2);border-left:4px solid #d63838;border-radius:var(--rs);padding:11px 14px;margin-bottom:11px"><div style="font-size:11px;font-weight:700;color:#a52424;text-transform:uppercase;margin-bottom:6px">❌ Absent Teacher</div><select id="sub-absent" style="width:100%;padding:9px 11px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);font-size:13px;font-weight:600"><option value="">— Select absent teacher —</option>'+teacherOpts+'</select></div>'
+  +'<div style="background:var(--sf2);border-left:4px solid #d63838;border-radius:var(--rs);padding:11px 14px;margin-bottom:11px"><div style="font-size:11px;font-weight:700;color:#a52424;text-transform:uppercase;margin-bottom:6px">❌ Absent Staff Member</div><input id="sub-absent" list="sub-staff-list" autocomplete="off" placeholder="Type a name, or pick from the list" style="width:100%;padding:9px 11px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);font-size:13px;font-weight:600"></div>'
   
   // Date row
   +'<div class="fr f2"><div class="fg"><label>📅 Date *</label><input type="date" id="sub-d" value="'+today+'" onchange="document.getElementById(\'sub-day\').textContent=getDayOfWeek(this.value)||\'—\'"></div><div class="fg"><label>Day</label><div id="sub-day" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:13px;font-weight:600">'+esc(day||'—')+'</div></div></div>'
