@@ -2693,6 +2693,88 @@ function doExportAr(fmt){
 // remaining are auto-present. One-click WhatsApp to parents.
 // ═══════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════
+// EXCUSED STUDENTS — an approved absence over a date range.
+// Excused students are still recorded absent, but their parents are not
+// messaged: the absence is already accounted for.
+// ═══════════════════════════════════════════════════════════
+function getExcused(){const e=DB.get('excused');return Array.isArray(e)?e:[];}
+function excusedFor(studentId,date){
+  if(!studentId||!date)return null;
+  return getExcused().find(e=>e.studentId===studentId&&e.from&&e.to&&e.from<=date&&date<=e.to)||null;
+}
+function isExcusedOn(studentId,date){return !!excusedFor(studentId,date);}
+
+function addExcusedM(){
+  const today=new Date().toISOString().split('T')[0];
+  openM('<div class="mh"><h3>📝 Add Excused Student</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">The student stays marked absent on these days, but their parents are skipped when sending WhatsApp messages — the absence is already excused.</div>'
+  +'<div class="fg"><label>Student *</label>'+sw('pickExcStu','exc-si','exc-sd')+'</div>'
+  +'<div id="exc-sinfo" style="display:none" class="al ag"></div><input type="hidden" id="exc-sid">'
+  +'<div class="fr f2"><div class="fg"><label>Excused From *</label><input type="date" id="exc-from" value="'+today+'"></div>'
+  +'<div class="fg"><label>Excused To *</label><input type="date" id="exc-to" value="'+today+'"></div></div>'
+  +'<div class="fg"><label>Reason</label><input id="exc-reason" placeholder="e.g. Medical leave, family travel"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveExcused()">'+T('save')+' →</button></div>');
+  window.pickExcStu=function(sid){
+    const s=gS(sid);if(!s)return;
+    document.getElementById('exc-sid').value=sid;
+    document.getElementById('exc-si').value=fN(s);
+    document.getElementById('exc-sd').style.display='none';
+    const info=document.getElementById('exc-sinfo');
+    info.style.display='block';
+    info.textContent='✓ '+fN(s)+' — Gr '+grSec(s.grade,s.section);
+  };
+}
+
+function saveExcused(){
+  const sid=document.getElementById('exc-sid').value;
+  const from=document.getElementById('exc-from').value;
+  const to=document.getElementById('exc-to').value;
+  if(!sid){toast('Select a student','danger');return;}
+  if(!from||!to){toast('Select both dates','danger');return;}
+  if(to<from){toast('End date cannot be before start date','danger');return;}
+  const s=gS(sid);
+  const list=getExcused();
+  list.push({id:nid('exc'),studentId:sid,studentName:s?fN(s):'',from:from,to:to,
+    reason:document.getElementById('exc-reason').value.trim(),
+    addedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),created:new Date().toISOString()});
+  DB.set('excused',list);
+  logA('Excused '+(s?fN(s):'student')+' from '+from+' to '+to);
+  closeM();toast('Student excused','success');rAttendance();
+}
+
+function delExcused(id){
+  const e=getExcused().find(x=>x.id===id);
+  if(!e)return;
+  if(!confirm('Remove the excused period for '+(e.studentName||'this student')+' ('+e.from+' → '+e.to+')?'))return;
+  DB.set('excused',getExcused().filter(x=>x.id!==id));
+  logA('Removed excused period for '+(e.studentName||'student'));
+  toast('Excused period removed','danger');rAttendance();
+}
+
+function buildExcusedCard(sel,canM){
+  const list=getExcused().slice().sort((a,b)=>(b.from||'').localeCompare(a.from||''));
+  const activeNow=list.filter(e=>e.from<=sel&&sel<=e.to);
+  return '<div class="card" style="margin-bottom:13px">'
+  +'<div class="sh2"><h3>📝 Excused Students ('+activeNow.length+' on '+esc(sel)+')</h3>'
+  +(canM?'<button class="btn bp bsm" onclick="addExcusedM()">+ Add Excused Student</button>':'')+'</div>'
+  +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Excused students are still recorded absent, but their parents are skipped when sending WhatsApp messages.</div>'
+  +(list.length?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Student</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><th>Added By</th>'+(canM?'<th></th>':'')+'</tr></thead><tbody>'
+    +list.map(e=>{
+      const active=e.from<=sel&&sel<=e.to;
+      return '<tr'+(active?' style="background:var(--ac2)"':'')+'><td><strong>'+esc(e.studentName||'—')+'</strong></td>'
+      +'<td class="mono">'+esc(e.from)+'</td><td class="mono">'+esc(e.to)+'</td>'
+      +'<td style="color:var(--tx2)">'+esc(e.reason||'—')+'</td>'
+      +'<td>'+(active?'<span class="badge bgn">Excused on '+esc(sel)+'</span>':'<span class="badge bgr">Not this date</span>')+'</td>'
+      +'<td style="font-size:10px;color:var(--tx3)">'+esc(e.addedBy||'—')+'</td>'
+      +(canM?'<td><button class="btn bd3 bxs" onclick="delExcused(\''+e.id+'\')">Del</button></td>':'')+'</tr>';
+    }).join('')+'</tbody></table></div>'
+    :'<div class="emp" style="padding:14px"><div class="ei">📝</div><p style="font-size:11px">No excused students recorded.</p></div>')
+  +'</div>';
+}
+
 function rAttendance(){
   const canM=['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role);
   const canV=canM||['academic_supervisor','student_advisor','quality_incharge'].includes(CU.role);
@@ -2706,13 +2788,18 @@ function rAttendance(){
   const absentCount=absentSet.size;
   const presentCount=students.length-absentCount;
   const isToday=sel===today;
+  // Absent students whose absence is already excused for this date
+  const excusedAbsent=[...absentSet].filter(id=>isExcusedOn(id,sel));
+  const excusedCount=excusedAbsent.length;
+  const toNotify=absentCount-excusedCount;
   
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📅 '+T('daily_attendance')+'</h3><div style="display:flex;gap:6px;align-items:center"><label style="font-size:11px;color:var(--tx3)">Date:</label><input type="date" id="att-date" value="'+sel+'" max="'+today+'" onchange="window._attDate=this.value;rAttendance()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'+(canM?'<button class="btn bg2 bsm" onclick="msgTplM()">⚙️ Message Template</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canM?'Mark students absent below. All others will be automatically marked as present. Then click "📱 Send WhatsApp" to notify parents of absent students.':'View attendance records.')+'</div></div>'
-  +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Students</div><div class="sv">'+students.length+'</div><div class="sic">👨‍🎓</div></div><div class="stat gn"><div class="sl2">Present</div><div class="sv">'+presentCount+'</div><div class="sb3">'+(students.length?Math.round(presentCount/students.length*100):0)+'%</div><div class="sic">✅</div></div><div class="stat rd"><div class="sl2">Absent</div><div class="sv">'+absentCount+'</div><div class="sb3">'+(students.length?Math.round(absentCount/students.length*100):0)+'%</div><div class="sic">❌</div></div><div class="stat go"><div class="sl2">Status</div><div style="font-size:14px;font-weight:700;margin-top:8px">'+(dayRec.marked?'<span style="color:var(--su)">✓ Submitted</span>':'<span style="color:var(--gd)">⏳ Draft</span>')+'</div>'+(dayRec.markedAt?'<div class="sb3">'+new Date(dayRec.markedAt).toLocaleString()+'</div>':'')+'<div class="sic">📋</div></div></div>'
-  +(canM&&absentCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--ac2),var(--pubg));border-color:var(--ac3)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--ac);margin-bottom:3px">📱 Notify Parents via WhatsApp</div><div style="font-size:11px;color:var(--tx2)">Click below to open WhatsApp chats for each absent student\'s father and mother. You can review the message before sending.</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendWaAll(\'father\')">📱 Father ('+absentCount+')</button><button class="btn bs bsm" onclick="sendWaAll(\'mother\')">📱 Mother ('+absentCount+')</button><button class="btn bp bsm" onclick="sendWaAll(\'both\')">📱 Both Parents ('+(absentCount*2)+')</button></div></div></div>':'')
+  +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Students</div><div class="sv">'+students.length+'</div><div class="sic">👨‍🎓</div></div><div class="stat gn"><div class="sl2">Present</div><div class="sv">'+presentCount+'</div><div class="sb3">'+(students.length?Math.round(presentCount/students.length*100):0)+'%</div><div class="sic">✅</div></div><div class="stat rd"><div class="sl2">Absent</div><div class="sv">'+absentCount+'</div><div class="sb3">'+(excusedCount?excusedCount+' excused · '+toNotify+' to notify':(students.length?Math.round(absentCount/students.length*100):0)+'%')+'</div><div class="sic">❌</div></div><div class="stat go"><div class="sl2">Status</div><div style="font-size:14px;font-weight:700;margin-top:8px">'+(dayRec.marked?'<span style="color:var(--su)">✓ Submitted</span>':'<span style="color:var(--gd)">⏳ Draft</span>')+'</div>'+(dayRec.markedAt?'<div class="sb3">'+new Date(dayRec.markedAt).toLocaleString()+'</div>':'')+'<div class="sic">📋</div></div></div>'
+  +(canM&&absentCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--ac2),var(--pubg));border-color:var(--ac3)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--ac);margin-bottom:3px">📱 Notify Parents via WhatsApp</div><div style="font-size:11px;color:var(--tx2)">Click below to open WhatsApp chats for each absent student\'s father and mother. You can review the message before sending.'+(excusedCount?'<br><strong style="color:var(--su)">'+excusedCount+' excused student(s) will be skipped — no message needed.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendWaAll(\'both\')">📱 Both Parents ('+(toNotify*2)+')</button></div></div></div>':'')
+  +buildExcusedCard(sel,canM)
   +'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🔍 Mark Absent Students</h3><div style="display:flex;gap:6px">'+(canM?'<button class="btn bg2 bsm" onclick="markAllPresent()">↺ Reset All Present</button><button class="btn bp bsm" onclick="submitAtt()">'+(dayRec.marked?'Update':'Submit')+' Attendance →</button>':'')+'</div></div>'
   +'<div style="display:flex;gap:8px;margin-bottom:12px"><input id="attq" placeholder="🔍 Search by name or grade…" oninput="fltAtt()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="attgf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+g+'">Gr '+g+'</option>').join('')+'</select><select id="attsf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Status</option><option value="absent">Absent only</option><option value="present">Present only</option></select></div>'
-  +'<div id="attlist">'+buildAttList(students,absentSet,canM)+'</div></div>'
+  +'<div id="attlist">'+buildAttList(students,absentSet,canM,sel)+'</div></div>'
   +'<div class="card"><div class="sh2"><h3>📊 Attendance History</h3><button class="btn bg2 bsm" onclick="expAttHist()">📥 Export History</button></div>'+buildAttHistory(allAtt,students)+'</div>';
   
   window.fltAtt=function(){
@@ -2722,11 +2809,11 @@ function rAttendance(){
     if(gr)list=list.filter(s=>s.grade===gr);
     if(sf==='absent')list=list.filter(s=>absentSet.has(s.id));
     if(sf==='present')list=list.filter(s=>!absentSet.has(s.id));
-    document.getElementById('attlist').innerHTML=buildAttList(list,absentSet,canM);
+    document.getElementById('attlist').innerHTML=buildAttList(list,absentSet,canM,sel);
   };
 }
 
-function buildAttList(students,absentSet,canM){
+function buildAttList(students,absentSet,canM,attDate){
   if(!students.length)return'<div class="emp"><div class="ei">👨‍🎓</div><p>No students match filters</p></div>';
   // Group by grade-section
   const groups={};
@@ -2738,9 +2825,11 @@ function buildAttList(students,absentSet,canM){
     return'<div style="margin-bottom:13px;background:var(--sf2);border-radius:var(--r);overflow:hidden"><div style="padding:9px 12px;background:var(--sf3);font-size:12px;font-weight:600;display:flex;justify-content:space-between"><span>📚 '+k+'</span><span style="color:'+(grAbsent?'var(--dn)':'var(--su)')+'">'+grAbsent+' / '+list.length+' absent</span></div>'
     +'<div style="padding:6px">'+list.map(s=>{
       const isAbs=absentSet.has(s.id);
-      return'<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid var(--bd);background:'+(isAbs?'var(--dnbg)':'transparent')+';border-radius:var(--rs);margin-bottom:2px">'
+      const exc=attDate?excusedFor(s.id,attDate):null;
+      return'<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid var(--bd);background:'+(exc?'var(--ac2)':isAbs?'var(--dnbg)':'transparent')+';border-radius:var(--rs);margin-bottom:2px">'
       +(canM?'<input type="checkbox" id="att-'+s.id+'" '+(isAbs?'checked':'')+' onchange="togAbs(\''+s.id+'\')" style="width:17px;height:17px;cursor:pointer;accent-color:var(--dn)">':'<div style="width:17px"></div>')
       +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+fN(s)+'</div><div style="font-size:10px;color:var(--tx3)">SN: '+s.sn+' · '+(s.fatherPhone||s.motherPhone||'No phone')+'</div></div>'
+      +(exc?'<span class="badge bbl" style="justify-content:center" title="Excused '+esc(exc.from)+' → '+esc(exc.to)+(exc.reason?' · '+esc(exc.reason):'')+'">📝 Excused</span>':'')
       +'<span class="badge '+(isAbs?'brd':'bgn')+'" style="min-width:62px;justify-content:center">'+(isAbs?'❌ Absent':'✅ Present')+'</span>'
       +'</div>';
     }).join('')+'</div></div>';
@@ -2849,9 +2938,16 @@ function sendWaAll(target){
   const dayRec=allAtt.find(a=>a.date===sel);
   if(!dayRec||!dayRec.absentIds||!dayRec.absentIds.length){toast('No absent students for this date','danger');return;}
   const students=DB.get('students')||[];
-  const absent=dayRec.absentIds.map(id=>students.find(s=>s.id===id)).filter(Boolean);
-  if(!absent.length){toast('No students found','danger');return;}
-  
+  const allAbsent=dayRec.absentIds.map(id=>students.find(s=>s.id===id)).filter(Boolean);
+  if(!allAbsent.length){toast('No students found','danger');return;}
+  // Excused students already have an approved absence — skip messaging them
+  const skipped=allAbsent.filter(s=>isExcusedOn(s.id,sel)).map(s=>({name:fN(s),exc:excusedFor(s.id,sel)}));
+  const absent=allAbsent.filter(s=>!isExcusedOn(s.id,sel));
+  if(!absent.length){
+    toast('All '+allAbsent.length+' absent student(s) are excused — no messages needed','info');
+    return;
+  }
+
   // Build the queue of WhatsApp links
   const queue=[];
   absent.forEach(s=>{
@@ -2866,13 +2962,14 @@ function sendWaAll(target){
   if(!queue.length){toast('No phone numbers found for absent students','danger');return;}
   
   // Show confirmation modal with the queue and a "Open All" or one-by-one option
-  showWaQueue(queue,absent.length,sel,target);
+  showWaQueue(queue,absent.length,sel,target,skipped);
 }
 
-function showWaQueue(queue,absentCount,date,target){
+function showWaQueue(queue,absentCount,date,target,skipped){
   const tplPreview=fmtMsg({firstName:'<<Student>>',lastName:'',grade:'<<G>>',section:'<<S>>',sn:'<<SN>>'},date).slice(0,200)+'...';
   openM('<div class="mh"><h3>📱 Send WhatsApp to Parents</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ag" style="margin-bottom:12px">📲 <strong>'+queue.length+' WhatsApp messages</strong> ready to send for <strong>'+absentCount+'</strong> absent student(s) on <strong>'+date+'</strong>.</div>'
   +'<div class="al aw"><strong>How it works:</strong><br>• Click <strong>"Open All Chats"</strong> to launch all WhatsApp chats at once (browser may ask permission for popups — please allow).<br>• Or click each student\'s 📱 button below to open one chat at a time.<br>• In each WhatsApp tab, the message is pre-filled — just press <strong>Send</strong>.</div>'
+  +((skipped&&skipped.length)?'<div class="al ag" style="margin-bottom:12px"><strong>📝 '+skipped.length+' excused student(s) skipped — already excused, no message needed:</strong><div style="margin-top:5px;font-size:11px">'+skipped.map(x=>'• <strong>'+esc(x.name)+'</strong>'+(x.exc?' — excused '+esc(x.exc.from)+' → '+esc(x.exc.to)+(x.exc.reason?' ('+esc(x.exc.reason)+')':''):'')).join('<br>')+'</div></div>':'')
   +'<div style="background:var(--sf2);border-radius:var(--rs);padding:11px;margin-bottom:12px;max-height:280px;overflow-y:auto"><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;margin-bottom:7px">Send Queue</div>'
   +queue.map((q,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12px"><div style="flex:1"><strong>'+q.student+'</strong> — '+q.parent+'<br><span class="mono" style="font-size:10px;color:var(--tx3)">'+q.phone+'</span></div><button class="btn bs bxs" onclick="window.open(\''+q.url+'\',\'_blank\')">📱 Open</button></div>').join('')
   +'</div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="openAllWa()">📱 Open All '+queue.length+' Chats →</button></div>');
@@ -5380,7 +5477,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
-  'duty_places','duty_remarks','classroom_discipline','todos','deleted_ids',
+  'duty_places','duty_remarks','classroom_discipline','todos','deleted_ids','excused',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -5403,7 +5500,7 @@ const AUTO_REFRESH_MAP = {
   early_pickups:['rPickup'],announcements:['rAnnouncements','rDash'],
   discipline_reports:['rDiscipline'],activity_log:['rActLog','rDash'],
   task_requests:['rTaskReqs'],exam_absents:['rExamAbsent'],academic_calendar:['rCalendar'],academic_terms:['rCalendar','rDutyRoster','rMyDuties'],
-  attendance:['rAttendance'],student_health:['rStudentHealth'],remedial_plans:['rRemedial'],
+  attendance:['rAttendance'],excused:['rAttendance'],student_health:['rStudentHealth'],remedial_plans:['rRemedial'],
   vp_reports:['rVPReports'],warning_letters:['rWarnings'],
   teacher_achievements:['rTeacherAchievements'],settings:['rSettings'],
   reexam_schedules:['rReexam'],
