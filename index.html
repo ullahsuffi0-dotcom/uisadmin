@@ -4542,7 +4542,9 @@ function saveWarning(){
   // Offer WhatsApp notification
   setTimeout(()=>{
     const s=DB.get('settings')||{};
-    const siteUrl=s.siteUrl||'https://ullahsuffi0-dotcom.github.io/uisadmin/';
+    // Derive from wherever the app is actually being served, so moving to a
+    // different host or domain needs no code change.
+    const siteUrl=s.siteUrl||(window.location.origin+window.location.pathname);
     const notifMsg='Dear '+recName+',\n\nAn explanation letter has been issued to you by the Principal of '+(s.schoolName||'the school')+'.\n\nPlease login to the following link to view and reply:\n'+siteUrl+'\n\nRegards,\n'+(CU.firstName+' '+CU.lastName)+'\n'+(s.schoolName||'School');
     if(confirm('Explanation letter issued successfully.\n\nWould you like to notify '+recName+' via WhatsApp?')){
       waShareModal({phone:recPhone,name:recName,message:notifMsg,context:'explanation letter notification ('+subject+')'});
