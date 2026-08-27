@@ -6641,7 +6641,46 @@ function saveSettings(){const s=DB.get('settings')||{};Object.assign(s,{schoolNa
 function prevLogo(){const file=document.getElementById('logof').files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{document.getElementById('logoprev').innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:contain">';};reader.readAsDataURL(file);}
 function saveLogo(){const file=document.getElementById('logof').files[0],emoji=document.getElementById('logoem').value;if(file){const reader=new FileReader();reader.onload=e=>{const s=DB.get('settings')||{};s.logo=e.target.result;DB.set('settings',s);applyBrand(s);logA('Updated school logo (image)');toast('Logo saved','success');};reader.readAsDataURL(file);}else if(emoji){const s=DB.get('settings')||{};s.logo=emoji;DB.set('settings',s);applyBrand(s);logA('Updated school logo: '+emoji);toast('Logo saved','success');}}
 function setLiveMode(val){toast('Live Mode is no longer needed — demo panel has been permanently removed for production.','info');}
-function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','classroom_discipline'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
+// Complete off-site backup. Takes every key under the current school's prefix
+// verbatim — so session-scoped buckets are captured exactly as they are, not
+// just the active one — plus the platform registry, without which a restored
+// database would have no school to log into.
+function expAll(){
+  const pfx=DB._pfx;
+  const data={};
+  let records=0;
+  for(let i=0;i<localStorage.length;i++){
+    const lk=localStorage.key(i);
+    if(!lk||!lk.startsWith(pfx))continue;
+    const k=lk.substring(pfx.length);
+    if(k==='__pendingWrites')continue;
+    try{
+      const v=JSON.parse(localStorage.getItem(lk));
+      data[k]=v;
+      if(Array.isArray(v))records+=v.filter(Boolean).length;
+    }catch(e){}
+  }
+  const sch=CURRENT_SCHOOL_ID?getSchoolById(CURRENT_SCHOOL_ID):null;
+  const backup={
+    _format:'uis-backup-v2',
+    exportedAt:new Date().toISOString(),
+    exportedBy:CU?((CU.firstName||'')+' '+(CU.lastName||'')).trim():'',
+    school:{id:CURRENT_SCHOOL_ID||'',name:sch?sch.name:((DB.get('settings')||{}).schoolName||''),prefix:pfx},
+    platform:{
+      schools:JSON.parse(localStorage.getItem('sms7_platform_schools')||'[]'),
+      admins:JSON.parse(localStorage.getItem('sms7_platform_admins')||'[]')
+    },
+    counts:{collections:Object.keys(data).length,records:records},
+    data:data
+  };
+  const b=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b);
+  a.download='school_backup_'+((sch&&sch.name)||'school').replace(/[^A-Za-z0-9]+/g,'_')+'_'+new Date().toISOString().split('T')[0]+'.json';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast('Backup downloaded — '+records+' records across '+Object.keys(data).length+' collections','success');
+}
 // ═══════════════════════════════════════════════════════════
 // DATED SNAPSHOTS — point-in-time restore
 // A snapshot is a server-side copy of the whole school node, taken
@@ -6769,7 +6808,85 @@ async function takeSnapshotNow(){
   if(id){toast('Snapshot saved: '+id,'success');rSnapshotsM();}
 }
 
-function impAllM(){openM('<div class="mh"><h3>📤 Restore Backup</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ad">⚠️ This will overwrite ALL data. Export a backup first!</div><div class="fg"><label>Backup JSON File</label><input type="file" id="impjf" accept=".json"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bd3" onclick="procRestore()">Restore →</button></div>');window.procRestore=function(){const file=document.getElementById('impjf').files[0];if(!file){toast('Select file','danger');return;}const reader=new FileReader();reader.onload=e=>{try{const data=JSON.parse(e.target.result);Object.entries(data).forEach(([k,v])=>{if(k!=='exportedAt')DB.set(k,v);});closeM();toast('Data restored!','success');setTimeout(()=>{applyBrand(DB.get('settings')||{});navigate('dashboard');},500);}catch{toast('Invalid backup file','danger');}};reader.readAsText(file);};}
+function impAllM(){
+  openM('<div class="mh"><h3>📤 Restore from Backup File</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ad">⚠️ This replaces the data in <strong>'+esc((DB.get('settings')||{}).schoolName||'this school')+'</strong> with the contents of the file.</div>'
+  +'<div class="fg"><label>Backup JSON File</label><input type="file" id="impjf" accept=".json" onchange="previewBackup()"></div>'
+  +'<div id="imp-preview"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bd3" id="imp-go" onclick="procRestore()" disabled>Restore →</button></div>');
+}
+
+// Read the file and show what it holds before anything is overwritten
+function previewBackup(){
+  const file=document.getElementById('impjf').files[0];
+  const box=document.getElementById('imp-preview');
+  const go=document.getElementById('imp-go');
+  if(!file){box.innerHTML='';go.disabled=true;return;}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    let d=null;
+    try{d=JSON.parse(e.target.result);}catch(err){
+      box.innerHTML='<div class="al ad">❌ Not a valid backup file.</div>';go.disabled=true;return;}
+    window.__restoreData=d;
+    const isV2=d&&d._format==='uis-backup-v2';
+    const data=isV2?(d.data||{}):d;
+    const keys=Object.keys(data).filter(k=>k!=='exportedAt');
+    let records=0;
+    keys.forEach(k=>{const v=data[k];if(Array.isArray(v))records+=v.filter(Boolean).length;});
+    const rows=keys.filter(k=>Array.isArray(data[k])&&data[k].filter(Boolean).length)
+      .sort().map(k=>'<tr><td>'+esc(k)+'</td><td style="text-align:right">'+data[k].filter(Boolean).length+'</td></tr>').join('');
+    box.innerHTML='<div class="al ag"><strong>'+(isV2?'Full backup':'Older backup format')+'</strong><br>'
+      +'Taken: '+esc((d.exportedAt||'unknown').replace('T',' ').slice(0,16))+'<br>'
+      +(isV2&&d.school?'School: <strong>'+esc(d.school.name||'')+'</strong><br>':'')
+      +records+' records across '+keys.length+' collections'
+      +(isV2&&d.platform&&d.platform.schools?'<br>Includes the school registry ('+d.platform.schools.length+' school(s))':'')
+      +'</div>'
+      +(rows?'<div class="tw" style="max-height:200px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Collection</th><th style="text-align:right">Records</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'')
+      +(isV2?'':'<div class="al aw" style="margin-top:8px">This file predates the newer backup format, so it may not contain every collection.</div>');
+    go.disabled=false;
+  };
+  reader.readAsText(file);
+}
+
+function procRestore(){
+  const d=window.__restoreData;
+  if(!d){toast('Select a backup file first','danger');return;}
+  const isV2=d._format==='uis-backup-v2';
+  const data=isV2?(d.data||{}):d;
+  const keys=Object.keys(data).filter(k=>k!=='exportedAt');
+  if(!keys.length){toast('Backup contains no data','danger');return;}
+  if(!confirm('Restore '+keys.length+' collections into this school?\n\nEverything currently here is replaced.\n\nA snapshot of the current data is taken first where the cloud is available.'))return;
+  const finish=function(){
+    const pfx=DB._pfx;
+    keys.forEach(k=>{
+      try{localStorage.setItem(pfx+k,JSON.stringify(data[k]));}catch(e){}
+    });
+    // the school registry, without which there is nothing to log into
+    if(isV2&&d.platform){
+      if(d.platform.schools&&d.platform.schools.length)localStorage.setItem('sms7_platform_schools',JSON.stringify(d.platform.schools));
+      if(d.platform.admins&&d.platform.admins.length)localStorage.setItem('sms7_platform_admins',JSON.stringify(d.platform.admins));
+      localStorage.setItem('sms7_platform_initialized','true');
+    }
+    // push everything up so other devices receive it
+    if(typeof syncUpAll==='function'&&CURRENT_SCHOOL_ID){
+      syncUpAll().then(()=>{
+        logA('Restored '+keys.length+' collections from backup file');
+        alert('Restored '+keys.length+' collections.\nThe page will now reload.');
+        location.reload();
+      });
+    }else{
+      alert('Restored '+keys.length+' collections locally.\nThe page will now reload.');
+      location.reload();
+    }
+  };
+  if(typeof createSnapshot==='function'&&typeof fbReady==='function'&&fbReady()&&CURRENT_SCHOOL_ID){
+    toast('Taking a safety snapshot first…','info');
+    createSnapshot('before restoring backup file').then(finish).catch(finish);
+  }else finish();
+}
 function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','classroom_discipline','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
 function rInfForms(){const forms=DB.get('infraction_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>⚠️ '+T('infraction_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'infraction_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'infraction_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'infraction_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📄</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
 function rVisitForms(){const forms=DB.get('visit_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>📝 '+T('visit_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'visit_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'visit_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'visit_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📋</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
