@@ -6461,6 +6461,7 @@ async function bootFirebaseSync(){
     await migrate();
   }
   if(CURRENT_SCHOOL_ID)ensureSuperadminAccess();
+  if(CURRENT_SCHOOL_ID&&typeof autoDailySnapshot==='function')setTimeout(autoDailySnapshot,4000);
   // The excuse portal renders before this pull finishes, so the student may
   // not have resolved yet. Re-render now that the roll is available.
   if(window.__earlyPortal==='excuse'&&document.getElementById('epr')&&!document.getElementById('ep-done')){
@@ -6635,12 +6636,139 @@ function genInfLetter(){
   logA('Issued infraction letter for '+stuName+' (Degree '+degVal+')');
   closeM();toast('Infraction letter generated','success');
 }
-function rSettings(){const s=DB.get('settings')||{};const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="cg g2"><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🏫 School Information</h3></div><div class="fr f2"><div class="fg"><label>School Name (EN)</label><input id="ssn" value="'+esc(s.schoolName||'')+'"></div><div class="fg"><label>اسم المدرسة</label><input id="ssar" value="'+esc(s.schoolNameAr||'')+'" dir="rtl"></div></div><div class="fr f2"><div class="fg"><label>City</label><input id="scy" value="'+esc(s.city||'')+'"></div><div class="fg"><label>'+T('academic_year')+'</label><input id="say" value="'+esc(s.academicYear||'')+'"></div></div><div class="fr f2"><div class="fg"><label>'+T('phone')+'</label><input id="sph" value="'+esc(s.phone||'')+'"></div><div class="fg"><label>'+T('email')+'</label><input id="sem" value="'+esc(s.email||'')+'"></div></div><button class="btn bp" onclick="saveSettings()">'+T('save')+' & Apply →</button></div>'+(isSA?'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🖼️ School Logo</h3></div><div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:14px"><div id="logoprev" style="width:64px;height:64px;border-radius:12px;border:2px solid var(--bd);display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--sf2);font-size:26px">'+(s.logo&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'🎓'))+'</div><div style="flex:1"><div class="fg" style="margin-bottom:8px"><label>'+T('upload_logo')+'</label><input type="file" id="logof" accept="image/*" onchange="prevLogo()" style="padding:6px"></div><div class="fg"><label>'+T('logo_emoji')+'</label><input id="logoem" value="'+(!s.logo||s.logo.startsWith('data:')?'🎓':s.logo)+'" style="width:80px;font-size:20px;text-align:center"></div></div></div><button class="btn bp" onclick="saveLogo()">Save Logo →</button></div>':'')+(isSA?'<div class="card"><div class="sh2"><h3>🔐 Production Status</h3></div><div class="al ag" style="margin-bottom:0">✅ <strong>Live Mode Active</strong> — Demo credentials are permanently hidden from the login screen for production deployment. Staff log in with their personal usernames only.</div></div>':'')+'</div><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>📊 System Stats</h3></div><table style="font-size:12px;width:100%">'+[['Students',(DB.get('students')||[]).length],['Teachers',(DB.get('teachers')||[]).length],['Staff Accounts',(DB.get('accounts')||[]).length],['Complaints',(DB.get('complaints')||[]).length],['Tasks',(DB.get('tasks')||[]).length],['Infractions',(DB.get('infractions')||[]).length],['Referrals',(DB.get('referrals')||[]).length],['Class Visits',(DB.get('class_visits')||[]).length],['Notebook Checks',(DB.get('notebook_checks')||[]).length],['Activities',(DB.get('activities')||[]).length],['Activity Reports',(DB.get('activity_reports')||[]).length],['Exam Sessions',(DB.get('exam_sessions')||[]).length],['Exam Absents',(DB.get('exam_absents')||[]).length]].map(([k,v])=>'<tr><td style="color:var(--tx3);padding:6px 0;border-bottom:1px solid var(--bd)">'+k+'</td><td style="font-weight:500;text-align:right;border-bottom:1px solid var(--bd)">'+v+'</td></tr>').join('')+'</table></div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🚀 Deploy & Go Live</h3></div><div style="font-size:12px;color:var(--tx2);line-height:1.9;background:var(--sf2);border-radius:var(--rs);padding:12px"><strong style="color:var(--ac)">Quick Deploy (5 min):</strong><br>1. Save this file as <code>index.html</code><br>2. Go to <a href="https://app.netlify.com/drop" target="_blank" style="color:var(--ac)">app.netlify.com/drop</a><br>3. Drag the file in<br>4. Get live URL<br><br><strong style="color:var(--ac)">Or GitHub Pages:</strong><br>1. Push index.html to a GitHub repo<br>2. Settings → Pages → Deploy from main<br>3. Get live URL ✅</div></div>'+(isSA?'<div class="card"><div class="sh2"><h3>🗄️ Backup & Restore</h3></div><div style="display:flex;flex-direction:column;gap:8px"><button class="btn bg2 bsm" onclick="expAll()">📥 Export Full Backup</button><button class="btn bg2 bsm" onclick="impAllM()">📤 Restore from Backup</button><button class="btn bd3 bsm" onclick="if(confirm(\'RESET ALL DATA?\'))resetAll()">⚠️ Factory Reset</button></div></div>':'')+'</div></div>';}
+function rSettings(){const s=DB.get('settings')||{};const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="cg g2"><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🏫 School Information</h3></div><div class="fr f2"><div class="fg"><label>School Name (EN)</label><input id="ssn" value="'+esc(s.schoolName||'')+'"></div><div class="fg"><label>اسم المدرسة</label><input id="ssar" value="'+esc(s.schoolNameAr||'')+'" dir="rtl"></div></div><div class="fr f2"><div class="fg"><label>City</label><input id="scy" value="'+esc(s.city||'')+'"></div><div class="fg"><label>'+T('academic_year')+'</label><input id="say" value="'+esc(s.academicYear||'')+'"></div></div><div class="fr f2"><div class="fg"><label>'+T('phone')+'</label><input id="sph" value="'+esc(s.phone||'')+'"></div><div class="fg"><label>'+T('email')+'</label><input id="sem" value="'+esc(s.email||'')+'"></div></div><button class="btn bp" onclick="saveSettings()">'+T('save')+' & Apply →</button></div>'+(isSA?'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🖼️ School Logo</h3></div><div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:14px"><div id="logoprev" style="width:64px;height:64px;border-radius:12px;border:2px solid var(--bd);display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--sf2);font-size:26px">'+(s.logo&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'🎓'))+'</div><div style="flex:1"><div class="fg" style="margin-bottom:8px"><label>'+T('upload_logo')+'</label><input type="file" id="logof" accept="image/*" onchange="prevLogo()" style="padding:6px"></div><div class="fg"><label>'+T('logo_emoji')+'</label><input id="logoem" value="'+(!s.logo||s.logo.startsWith('data:')?'🎓':s.logo)+'" style="width:80px;font-size:20px;text-align:center"></div></div></div><button class="btn bp" onclick="saveLogo()">Save Logo →</button></div>':'')+(isSA?'<div class="card"><div class="sh2"><h3>🔐 Production Status</h3></div><div class="al ag" style="margin-bottom:0">✅ <strong>Live Mode Active</strong> — Demo credentials are permanently hidden from the login screen for production deployment. Staff log in with their personal usernames only.</div></div>':'')+'</div><div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>📊 System Stats</h3></div><table style="font-size:12px;width:100%">'+[['Students',(DB.get('students')||[]).length],['Teachers',(DB.get('teachers')||[]).length],['Staff Accounts',(DB.get('accounts')||[]).length],['Complaints',(DB.get('complaints')||[]).length],['Tasks',(DB.get('tasks')||[]).length],['Infractions',(DB.get('infractions')||[]).length],['Referrals',(DB.get('referrals')||[]).length],['Class Visits',(DB.get('class_visits')||[]).length],['Notebook Checks',(DB.get('notebook_checks')||[]).length],['Activities',(DB.get('activities')||[]).length],['Activity Reports',(DB.get('activity_reports')||[]).length],['Exam Sessions',(DB.get('exam_sessions')||[]).length],['Exam Absents',(DB.get('exam_absents')||[]).length]].map(([k,v])=>'<tr><td style="color:var(--tx3);padding:6px 0;border-bottom:1px solid var(--bd)">'+k+'</td><td style="font-weight:500;text-align:right;border-bottom:1px solid var(--bd)">'+v+'</td></tr>').join('')+'</table></div><div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🚀 Deploy & Go Live</h3></div><div style="font-size:12px;color:var(--tx2);line-height:1.9;background:var(--sf2);border-radius:var(--rs);padding:12px"><strong style="color:var(--ac)">Quick Deploy (5 min):</strong><br>1. Save this file as <code>index.html</code><br>2. Go to <a href="https://app.netlify.com/drop" target="_blank" style="color:var(--ac)">app.netlify.com/drop</a><br>3. Drag the file in<br>4. Get live URL<br><br><strong style="color:var(--ac)">Or GitHub Pages:</strong><br>1. Push index.html to a GitHub repo<br>2. Settings → Pages → Deploy from main<br>3. Get live URL ✅</div></div>'+(isSA?'<div class="card"><div class="sh2"><h3>🗄️ Backup & Restore</h3></div><div style="display:flex;flex-direction:column;gap:8px"><button class="btn bg2 bsm" onclick="expAll()">📥 Export Full Backup</button><button class="btn bs bsm" onclick="rSnapshotsM()">🕘 Restore to a Date</button><button class="btn bg2 bsm" onclick="impAllM()">📤 Restore from Backup</button><button class="btn bd3 bsm" onclick="if(confirm(\'RESET ALL DATA?\'))resetAll()">⚠️ Factory Reset</button></div></div>':'')+'</div></div>';}
 function saveSettings(){const s=DB.get('settings')||{};Object.assign(s,{schoolName:document.getElementById('ssn').value,schoolNameAr:document.getElementById('ssar').value,city:document.getElementById('scy').value,academicYear:document.getElementById('say').value,phone:document.getElementById('sph').value,email:document.getElementById('sem').value});DB.set('settings',s);applyBrand(s);logA('Updated school settings');toast('Settings saved & applied','success');}
 function prevLogo(){const file=document.getElementById('logof').files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{document.getElementById('logoprev').innerHTML='<img src="'+e.target.result+'" style="width:100%;height:100%;object-fit:contain">';};reader.readAsDataURL(file);}
 function saveLogo(){const file=document.getElementById('logof').files[0],emoji=document.getElementById('logoem').value;if(file){const reader=new FileReader();reader.onload=e=>{const s=DB.get('settings')||{};s.logo=e.target.result;DB.set('settings',s);applyBrand(s);logA('Updated school logo (image)');toast('Logo saved','success');};reader.readAsDataURL(file);}else if(emoji){const s=DB.get('settings')||{};s.logo=emoji;DB.set('settings',s);applyBrand(s);logA('Updated school logo: '+emoji);toast('Logo saved','success');}}
 function setLiveMode(val){toast('Live Mode is no longer needed — demo panel has been permanently removed for production.','info');}
 function expAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','classroom_discipline'];const data={};keys.forEach(k=>{data[k]=DB.get(k);});data.exportedAt=new Date().toISOString();const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='school_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();toast('Backup exported','success');}
+// ═══════════════════════════════════════════════════════════
+// DATED SNAPSHOTS — point-in-time restore
+// A snapshot is a server-side copy of the whole school node, taken
+// automatically once a day and on demand. Restoring one takes a safety
+// snapshot first, so a restore is itself reversible.
+// ═══════════════════════════════════════════════════════════
+const SNAPSHOT_KEEP=20;
+
+function snapStamp(d){
+  d=d||new Date();
+  const p=n=>('0'+n).slice(-2);
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes());
+}
+
+async function listSnapshots(){
+  if(!fbReady()||!CURRENT_SCHOOL_ID)return [];
+  const{db,ref,get}=window.__FB;
+  try{
+    const s=await get(ref(db,getFirebaseSchoolPath()+'__snapshots'));
+    if(!s.exists())return [];
+    const v=s.val()||{};
+    return Object.keys(v).map(k=>({id:k,meta:(v[k]&&v[k].__meta)||{}})).sort((a,b)=>b.id.localeCompare(a.id));
+  }catch(e){console.warn('[Snapshot] list failed',e);return [];}
+}
+
+// Copy the live school node into __snapshots/<stamp>
+async function createSnapshot(reason){
+  if(!fbReady()||!CURRENT_SCHOOL_ID){toast('Snapshots need a cloud connection','danger');return null;}
+  const{db,ref,get,set}=window.__FB;
+  try{
+    const root=await get(ref(db,getFirebaseSchoolPath()));
+    if(!root.exists()){toast('Nothing to snapshot yet','info');return null;}
+    const all=root.val()||{};
+    const copy={};let records=0;
+    Object.keys(all).forEach(k=>{
+      if(k==='__snapshots')return;              // never nest snapshots
+      copy[k]=all[k];
+      const v=all[k];
+      if(Array.isArray(v))records+=v.filter(Boolean).length;
+      else if(v&&typeof v==='object'&&!v.__empty)records+=Object.keys(v).length;
+    });
+    const id=snapStamp();
+    copy.__meta={created:new Date().toISOString(),by:CU?((CU.firstName||'')+' '+(CU.lastName||'')).trim():'system',
+      reason:reason||'manual',collections:Object.keys(copy).length,records:records};
+    await set(ref(db,getFirebaseSchoolPath()+'__snapshots/'+id),copy);
+    await pruneSnapshots();
+    return id;
+  }catch(e){console.error('[Snapshot] create failed',e);toast('Snapshot failed: '+e.message,'danger');return null;}
+}
+
+async function pruneSnapshots(){
+  const list=await listSnapshots();
+  if(list.length<=SNAPSHOT_KEEP)return;
+  const{db,ref,set}=window.__FB;
+  const old=list.slice(SNAPSHOT_KEEP);
+  for(const s of old){
+    try{await set(ref(db,getFirebaseSchoolPath()+'__snapshots/'+s.id),null);}catch(e){}
+  }
+}
+
+// One automatic snapshot per calendar day, taken by whichever device boots first
+async function autoDailySnapshot(){
+  if(!fbReady()||!CURRENT_SCHOOL_ID)return;
+  try{
+    const today=snapStamp().slice(0,10);
+    const list=await listSnapshots();
+    if(list.some(s=>s.id.slice(0,10)===today))return;
+    const id=await createSnapshot('automatic daily');
+    if(id)console.log('[Snapshot] daily snapshot created: '+id);
+  }catch(e){console.warn('[Snapshot] auto failed',e);}
+}
+
+async function restoreSnapshot(id){
+  if(!fbReady()||!CURRENT_SCHOOL_ID)return;
+  const{db,ref,get,set}=window.__FB;
+  const snap=await get(ref(db,getFirebaseSchoolPath()+'__snapshots/'+id));
+  if(!snap.exists()){toast('Snapshot not found','danger');return;}
+  const data=snap.val()||{};
+  const meta=data.__meta||{};
+  if(!confirm('Restore the school to the snapshot taken '+id.replace('_',' at ')+'?\n\n'
+    +(meta.records||'?')+' records across '+(meta.collections||'?')+' collections.\n\n'
+    +'Everything currently in the system is replaced by that copy.\n'
+    +'A safety snapshot of the CURRENT data is taken first, so this can be undone.'))return;
+  toast('Taking a safety snapshot first…','info');
+  const safety=await createSnapshot('before restoring '+id);
+  const keys=Object.keys(data).filter(k=>k!=='__meta'&&k!=='__snapshots');
+  let done=0;
+  for(const k of keys){
+    try{await set(ref(db,getFirebaseSchoolPath()+k),data[k]);done++;}
+    catch(e){console.error('[Restore] failed for '+k,e);}
+  }
+  logA('Restored school data from snapshot '+id+' ('+done+' collections)');
+  alert('Restored '+done+' collections from '+id+'.\n'
+    +(safety?'Safety snapshot of the previous data: '+safety+'\n':'')
+    +'\nThe page will now reload.');
+  location.reload();
+}
+
+async function rSnapshotsM(){
+  openM('<div class="mh"><h3>🕘 Restore to a Date</h3><button class="mc" onclick="closeM()">×</button></div>'
+   +'<div class="mb2"><div class="al ai">Loading snapshots…</div></div>',true);
+  const list=await listSnapshots();
+  const rows=list.map(s=>{
+    const m=s.meta||{};
+    const when=s.id.slice(0,10)+' at '+s.id.slice(11,13)+':'+s.id.slice(13,15);
+    return '<tr><td><strong>'+esc(when)+'</strong><div style="font-size:10px;color:var(--tx3)">'+esc(m.reason||'')+(m.by?' · '+esc(m.by):'')+'</div></td>'
+      +'<td style="font-size:11px">'+(m.records!==undefined?m.records+' records':'—')+'<div style="font-size:10px;color:var(--tx3)">'+(m.collections!==undefined?m.collections+' collections':'')+'</div></td>'
+      +'<td><button class="btn bd3 bxs" onclick="restoreSnapshot(\''+escJs(s.id)+'\')">↺ Restore</button></td></tr>';
+  }).join('');
+  openM('<div class="mh"><h3>🕘 Restore to a Date</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">A snapshot is a complete copy of this school\'s data. One is taken automatically each day, and you can take one any time. Restoring replaces everything with that copy — and takes a safety snapshot first, so it can be undone.</div>'
+  +(list.length?'<div class="tw"><table style="font-size:12px"><thead><tr><th>Taken</th><th>Size</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    :'<div class="al aw">No snapshots yet. Take one now so you have a restore point.</div>')
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:8px">The most recent '+SNAPSHOT_KEEP+' snapshots are kept. Snapshots live in the cloud database — keep a downloaded backup too for off-site safety.</div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">Close</button>'
+  +'<button class="btn bg2" onclick="expAll()">📥 Download Backup File</button>'
+  +'<button class="btn bp" onclick="takeSnapshotNow()">📸 Take Snapshot Now</button></div>',true);
+}
+
+async function takeSnapshotNow(){
+  toast('Taking snapshot…','info');
+  const id=await createSnapshot('manual');
+  if(id){toast('Snapshot saved: '+id,'success');rSnapshotsM();}
+}
+
 function impAllM(){openM('<div class="mh"><h3>📤 Restore Backup</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ad">⚠️ This will overwrite ALL data. Export a backup first!</div><div class="fg"><label>Backup JSON File</label><input type="file" id="impjf" accept=".json"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bd3" onclick="procRestore()">Restore →</button></div>');window.procRestore=function(){const file=document.getElementById('impjf').files[0];if(!file){toast('Select file','danger');return;}const reader=new FileReader();reader.onload=e=>{try{const data=JSON.parse(e.target.result);Object.entries(data).forEach(([k,v])=>{if(k!=='exportedAt')DB.set(k,v);});closeM();toast('Data restored!','success');setTimeout(()=>{applyBrand(DB.get('settings')||{});navigate('dashboard');},500);}catch{toast('Invalid backup file','danger');}};reader.readAsText(file);};}
 function resetAll(){const keys=['settings','accounts','students','teachers','complaints','tasks','infractions','referrals','class_visits','notebook_checks','activities','activity_reports','early_pickups','announcements','discipline_reports','activity_log','infraction_forms','visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance','student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules','duty_rosters','substitutions','duty_places','duty_remarks','classroom_discipline','sv7'];keys.forEach(k=>DB.del(k));toast('System reset. Reloading...','danger');setTimeout(()=>location.reload(),1500);}
 function rInfForms(){const forms=DB.get('infraction_forms')||[];const isSA=CU.role==='superadmin';document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>⚠️ '+T('infraction_forms')+' ('+forms.length+')</h3>'+(isSA?'<button class="btn bp bsm" onclick="upFormM(\'infraction_forms\')">+ Upload</button>':'')+'</div>'+forms.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd)"><div><div style="font-size:12px;font-weight:500">'+f.name+'</div><div style="font-size:10px;color:var(--tx3)">'+f.created+'</div></div><div style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="dlForm(\''+f.id+'\',\'infraction_forms\')">📥</button>'+(isSA?'<button class="btn bd3 bxs" onclick="delForm(\''+f.id+'\',\'infraction_forms\')">Del</button>':'')+'</div></div>').join('')+(forms.length===0?'<div class="emp"><div class="ei">📄</div><p>'+T('no_records')+'</p></div>':'')+'</div>';}
