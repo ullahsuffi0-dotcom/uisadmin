@@ -483,11 +483,83 @@ function rPlatformDash(){
     +'</div>';
 }
 
+// Disaster recovery from the platform screen. After a total loss the database
+// has no schools, so there is nothing to select at login and no way to reach
+// Settings — this rebuilds the school from a backup file under its original id.
+function platformRestoreM(){
+  openM('<div class="mh"><h3>♻️ Restore School from Backup</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Use this after a total loss, when no schools exist yet. The school is rebuilt under its original ID, so existing links and QR codes keep working.</div>'
+  +'<div class="fg"><label>Backup JSON File</label><input type="file" id="pf-file" accept=".json" onchange="pfPreview()"></div>'
+  +'<div id="pf-prev"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bp" id="pf-go" onclick="pfRestore()" disabled>♻️ Restore School →</button></div>');
+}
+
+function pfPreview(){
+  const f=document.getElementById('pf-file').files[0];
+  const box=document.getElementById('pf-prev');
+  const go=document.getElementById('pf-go');
+  if(!f){box.innerHTML='';go.disabled=true;return;}
+  const r=new FileReader();
+  r.onload=function(e){
+    let d=null;
+    try{d=JSON.parse(e.target.result);}catch(err){box.innerHTML='<div class="al ad">❌ Not a valid backup file.</div>';go.disabled=true;return;}
+    if(d._format!=='uis-backup-v2'||!d.school||!d.school.id){
+      box.innerHTML='<div class="al ad">❌ This file was made by an older version and does not record which school it came from.<br>'
+        +'Create the school manually with “+ Add School”, enter it, then use Settings → Restore from Backup.</div>';
+      go.disabled=true;return;
+    }
+    window.__pfData=d;
+    const keys=Object.keys(d.data||{});
+    let records=0;keys.forEach(k=>{const v=d.data[k];if(Array.isArray(v))records+=v.filter(Boolean).length;});
+    const exists=getPlatformSchools().some(s=>s.id===d.school.id);
+    box.innerHTML='<div class="al ag"><strong>'+esc(d.school.name||'School')+'</strong><br>'
+      +'Backup taken: '+esc((d.exportedAt||'').replace('T',' ').slice(0,16))+'<br>'
+      +records+' records across '+keys.length+' collections<br>'
+      +'School ID: <code>'+esc(d.school.id)+'</code></div>'
+      +(exists?'<div class="al aw">⚠️ A school with this ID already exists — its data will be replaced.</div>':'');
+    go.disabled=false;
+  };
+  r.readAsText(f);
+}
+
+async function pfRestore(){
+  const d=window.__pfData;
+  if(!d){toast('Select a backup file first','danger');return;}
+  const id=d.school.id;
+  const keys=Object.keys(d.data||{});
+  if(!confirm('Rebuild "'+(d.school.name||'School')+'" from this backup?\n\n'
+    +keys.length+' collections will be written under school ID '+id+'.'))return;
+  // 1) put the school back in the registry
+  const schools=getPlatformSchools();
+  const fromFile=(d.platform&&d.platform.schools)||[];
+  const entry=fromFile.find(s=>s&&s.id===id)||{id:id,name:d.school.name||'Restored School',active:true,
+    created:new Date().toISOString().split('T')[0]};
+  const i=schools.findIndex(s=>s&&s.id===id);
+  if(i>=0)schools[i]=entry;else schools.push(entry);
+  setPlatformSchools(schools);
+  // 2) write the data under that school's prefix
+  const pfx='sms7_sch_'+id+'_';
+  keys.forEach(k=>{try{localStorage.setItem(pfx+k,JSON.stringify(d.data[k]));}catch(e){}});
+  // 3) push it to the cloud under the same school path
+  const prevPfx=DB._pfx,prevId=CURRENT_SCHOOL_ID;
+  selectSchool(id);
+  try{ if(typeof syncUpAll==='function'&&fbReady())await syncUpAll(); }catch(e){console.warn('[Restore] upload failed',e);}
+  DB._pfx=prevPfx;CURRENT_SCHOOL_ID=prevId;
+  closeM();
+  alert('Restored "'+(entry.name||'School')+'" — '+keys.length+' collections.\n\n'
+    +'Sign out and log in choosing this school.\nThe page will now reload.');
+  location.reload();
+}
+
 function rPlatformSchools(){
   const schools=getPlatformSchools();
   document.getElementById('pc').innerHTML=
     '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🏫 Schools ('+schools.length+')</h3>'
     +'<div style="display:flex;gap:6px"><button class="btn bg2 bsm" onclick="migrateExistingM()">📦 Import Existing</button>'
+    +'<button class="btn bs bsm" onclick="platformRestoreM()">♻️ Restore School from Backup</button>'
     +'<button class="btn bp bsm" onclick="addSchoolM()">+ Add School</button></div></div></div>'
     +'<div class="card"><div class="tw"><table><thead><tr><th>School</th><th>City</th><th>Students</th><th>Staff</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>'
     +schools.map(s=>{
