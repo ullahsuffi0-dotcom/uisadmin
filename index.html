@@ -1388,16 +1388,37 @@ function fN(s){return((s.firstName||'')+' '+(s.lastName||'')).trim();}
 function gS(id){return(DB.get('students')||[]).find(s=>s.id===id);}
 function gA(id){return(DB.get('accounts')||[]).find(a=>a.id===id);}
 // Class-based filtering for VP and Student Advisor
+// Class names are written inconsistently — assignedClasses holds "5B", while a
+// record may carry grade "5B" with no section, or grade "5" + section "B", or a
+// className like "Grade 5 - B". Compare on a normalised form so they all match.
+function normClass(s){return String(s==null?'':s).replace(/[^a-z0-9]/gi,'').toLowerCase();}
+
 function vpClassMatch(rec){
   if(CU.role!=='vice_principal'&&CU.role!=='student_advisor')return true;
   const ac=CU.assignedClasses;if(!ac||!ac.length)return true;
-  const g=String(rec.grade||''),sec=String(rec.section||'');
-  if(g&&sec)return ac.includes(g+'-'+sec);
-  // Try className field (e.g. "Grade 9-A")
-  const cn=rec.className||'';const cm=cn.match(/(\d+)\s*-\s*(\S+)/);
-  if(cm)return ac.includes(cm[1]+'-'+cm[2]);
-  if(g)return ac.some(c=>c.startsWith(g+'-'));
-  return true;
+  if(!rec)return true;
+  // Always show what this user created, referred, or was referred — otherwise a
+  // record can be saved successfully and then be invisible to its own author.
+  if(rec.createdBy&&rec.createdBy===CU.id)return true;
+  if(rec.referredBy&&rec.referredBy===CU.id)return true;
+  if(rec.referredTo&&rec.referredTo===CU.id)return true;
+  const set=new Set(ac.map(normClass).filter(Boolean));
+  if(!set.size)return true;
+  const combined=normClass(String(rec.grade||'')+String(rec.section||''));
+  if(combined&&set.has(combined))return true;
+  const cn=normClass(String(rec.className||'').replace(/^\s*(grade|class|gr)\b\s*/i,''));
+  if(cn&&set.has(cn))return true;
+  // Grade-only record: show it if any assigned class is in that grade
+  if(!rec.section){
+    const gd=(String(rec.grade||'').match(/^\d+/)||[])[0];
+    if(gd){
+      for(const c of set){
+        const cd=(c.match(/^\d+/)||[])[0];
+        if(cd&&cd===gd)return true;
+      }
+    }
+  }
+  return false;
 }
 function vpFilter(arr){if((CU.role!=='vice_principal'&&CU.role!=='student_advisor')||!CU.assignedClasses||!CU.assignedClasses.length)return arr;return arr.filter(vpClassMatch);}
 function getAllClasses(){const sts=DB.get('students')||[];return[...new Set(sts.map(s=>grSec(s.grade,s.section)).filter(c=>c&&c!=='-'&&c!=='undefined-undefined'))].sort((a,b)=>{const[ga,sa]=a.split('-');const[gb,sb]=b.split('-');return(parseInt(ga)||0)-(parseInt(gb)||0)||a.localeCompare(b);});}
