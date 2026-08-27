@@ -10393,6 +10393,21 @@ function expDiscPDF(id){
 // Teacher page — my discipline reports
 function canEditDisc(r){return (r.status||'Pending')==='Pending'&&!r.vpRemarks&&!r.referralId;}
 
+// Why a report can no longer be edited or deleted. Hiding the buttons with no
+// explanation makes a working rule look like a broken feature.
+function discLockReason(r){
+  if(!r)return '';
+  if(r.referralId)return 'A referral to a student advisor was raised from this report, so it can no longer be deleted.';
+  if(r.vpRemarks)return 'The Vice Principal has added remarks, so it can no longer be deleted.';
+  if((r.status||'Pending')!=='Pending')return 'The Vice Principal has actioned this report (marked '+esc(r.status)+'), so it can no longer be deleted.';
+  return '';
+}
+function discLockedBtn(r){
+  const why=discLockReason(r);
+  if(!why)return '';
+  return '<span class="badge bgr" style="font-size:10px;cursor:help" title="'+esc(why)+'">🔒 Locked</span>';
+}
+
 // Staff a discipline report can be addressed to. Vice principals lead the list
 // since they are the usual recipient, then everyone else except the author.
 function discRecipientOpts(){
@@ -10416,7 +10431,7 @@ function rMyDisciplineReports(){
   +'<td style="font-size:11px">'+(r.issues||[]).map(i=>'<span class="badge brd" style="font-size:10px;margin:1px">'+esc(i)+'</span>').join('')+'</td>'
   +'<td style="font-size:11px">'+(r.actionsTaken||[]).map(a=>'<span class="badge bbl" style="font-size:10px;margin:1px">'+esc(a)+'</span>').join('')+'</td>'
   +'<td><span class="badge '+(r.status==='Resolved'?'bgn':r.status==='Reviewed'?'bbl':r.status==='Closed'?'bgr':'bgo')+'">'+(r.status||'Pending')+'</span></td>'
-  +'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="vMyDiscReport(\''+r.id+'\')">View</button>'+(canEditDisc(r)?'<button class="btn bg2 bxs" onclick="editDiscReportM(\''+r.id+'\')">✏️</button><button class="btn bd3 bxs" onclick="delMyDiscReport(\''+r.id+'\')">🗑️</button>':'')+'</td></tr>').join('')
+  +'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="vMyDiscReport(\''+r.id+'\')">View</button>'+(canEditDisc(r)?'<button class="btn bg2 bxs" onclick="editDiscReportM(\''+r.id+'\')">✏️</button><button class="btn bd3 bxs" onclick="delMyDiscReport(\''+r.id+'\')">🗑️</button>':discLockedBtn(r))+'</td></tr>').join('')
   +'</tbody></table></div>':'<div class="emp"><div class="ei">📋</div><p>No discipline reports submitted yet. Click "+ New Report" to report an issue.</p></div>')+'</div>';
 }
 
@@ -10499,7 +10514,7 @@ function vMyDiscReport(id){
   +'</div>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button><button class="btn bg2 bsm" onclick="expDiscPDF(\''+r.id+'\')">📄 PDF</button>'
   +(!r.teacherAck?'<button class="btn bs bsm" onclick="ackDiscReport(\''+r.id+'\',\'teacher\')">✓ Acknowledge</button>':'')
-  +(canEditDisc(r)?'<button class="btn bg2 bsm" onclick="closeM();editDiscReportM(\''+r.id+'\')">✏️ Edit</button><button class="btn bd3 bsm" onclick="delMyDiscReport(\''+r.id+'\')">🗑️ Delete</button>':'')
+  +(canEditDisc(r)?'<button class="btn bg2 bsm" onclick="closeM();editDiscReportM(\''+r.id+'\')">✏️ Edit</button><button class="btn bd3 bsm" onclick="delMyDiscReport(\''+r.id+'\')">🗑️ Delete</button>':(discLockReason(r)?'<span style="font-size:11px;color:var(--tx3);align-self:center">🔒 '+discLockReason(r)+'</span>':''))
   +'</div>',true);
 }
 
