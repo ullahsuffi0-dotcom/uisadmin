@@ -805,22 +805,26 @@ function pdfHeaderHTML(opts){
 // ── Deletion tombstones ──────────────────────────────────────
 // Ids a user deliberately deleted. Migrations and incoming cloud data must
 // never resurrect them, otherwise a delete silently undoes itself on refresh.
-function getTombstones(k){const t=DB.get('deleted_ids')||{};return Array.isArray(t[k])?t[k]:[];}
-function addTombstone(k,id){
-  // Never tombstone the last active superadmin — a tombstone is permanent and
-  // survives re-seeding, so this would lock everyone out of the school for good.
-  if(k==='accounts'){
-    const acc=DB.get('accounts')||[];
-    const target=acc.find(a=>a.id===id);
-    if(target&&target.role==='superadmin'){
-      const others=acc.filter(a=>a.role==='superadmin'&&a.active!==false&&a.id!==id);
-      if(!others.length){console.warn('[Tombstone] Refused to tombstone the last superadmin ('+id+')');return;}
-    }
+// ── Tombstones: RETIRED ──────────────────────────────────────
+// These filtered any id ever deleted out of accounts/teachers on every boot
+// and every sync, permanently and on every device. That was too blunt: an id
+// could never exist again, which locked a school out of its superadmin and
+// removed staff accounts that were still wanted.
+//
+// The problem they were added for — deleted accounts reappearing — is fixed at
+// source instead: migrate() no longer re-adds the default vice2 (mig_u3b flag),
+// and an emptied collection now syncs as an explicit marker rather than looking
+// like a missing key. So the filtering is gone; the helpers stay as no-ops so
+// existing call sites remain harmless.
+function getTombstones(k){return [];}
+function purgeTombstones(){
+  const t=DB.get('deleted_ids');
+  if(t&&typeof t==='object'&&Object.keys(t).length){
+    console.warn('[Tombstones] Purging retired deletion list — it was removing live accounts');
+    DB.set('deleted_ids',{});
   }
-  const t=DB.get('deleted_ids')||{};
-  if(!Array.isArray(t[k]))t[k]=[];
-  if(!t[k].includes(id)){t[k].push(id);DB.set('deleted_ids',t);}
 }
+function addTombstone(k,id){/* retired — see purgeTombstones() above */}
 
 // Lockout recovery. Runs only after the cloud has been consulted, so a device
 // that simply has not synced yet never triggers it. Covers every way the
@@ -864,12 +868,9 @@ function ensureSuperadminAccess(){
   try{toast('Superadmin access restored — log in as "'+uname+'" / admin123','info');}catch(e){}
   return true;
 }
-// Pure filter — returns arr with tombstoned entries removed.
-function applyTombstones(k,arr){
-  const ids=getTombstones(k);
-  if(!ids.length||!Array.isArray(arr))return arr;
-  return arr.filter(x=>!(x&&ids.includes(x.id)));
-}
+// Retired — returns the array untouched. Deletions now propagate through the
+// normal sync path instead of being filtered out forever on every device.
+function applyTombstones(k,arr){return arr;}
 
 // Does this bucket already hold real data? Used to stop seed() from
 // overwriting a live school whose data simply hasn't been pulled yet.
@@ -971,13 +972,8 @@ async function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports
     modified=true;
   }
   if(!DB.get('mig_u3b'))DB.set('mig_u3b',true);
-  // Drop anything the user deleted that crept back in via cloud or migration
-  const accPruned=applyTombstones('accounts',acc);
-  if(accPruned.length!==acc.length){acc.length=0;accPruned.forEach(a=>acc.push(a));modified=true;}
-  // Same for teachers
-  const tch=DB.get('teachers')||[];
-  const tchPruned=applyTombstones('teachers',tch);
-  if(tchPruned.length!==tch.length)DB.set('teachers',tchPruned);
+  // Clear the retired deletion list so it stops removing live accounts
+  purgeTombstones();
   // Hash any remaining plaintext passwords
   let needsHash=false;
   acc.forEach(a=>{if(a.password&&!a.passwordHash)needsHash=true;});
