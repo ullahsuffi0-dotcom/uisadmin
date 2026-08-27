@@ -2097,8 +2097,264 @@ function detectDelimiter(line){var tc=0,sc=0,cc=0;for(var i=0;i<line.length;i++)
 function splitCSVLine(line,delim){var cols=[],cur='',inQ=false;for(var i=0;i<line.length;i++){var ch=line[i];if(inQ){if(ch==='"'&&line[i+1]==='"'){cur+='"';i++;}else if(ch==='"'){inQ=false;}else{cur+=ch;}}else{if(ch==='"'){inQ=true;}else if(ch===delim){cols.push(cur.trim());cur='';}else{cur+=ch;}}}cols.push(cur.trim());return cols;}
 function mapCSVHeaders(h,delim){var cols=splitCSVLine(h,delim).map(function(c){return c.replace(/^"|"$/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');});var m={};cols.forEach(function(c,i){if(/^sn$|^serialn|^serial$|^no$/.test(c))m.sn=i;else if(/^cs$|^csn$|^civilservice|^civil$|^civilid/.test(c))m.cs=i;else if(/^first|^fname/.test(c))m.firstName=i;else if(/^last|^lname|^surname/.test(c))m.lastName=i;else if(/^grade|^gr$|^class$/.test(c))m.grade=i;else if(/^section|^sec$/.test(c))m.section=i;else if(/^gender|^gen$|^sex$/.test(c))m.gender=i;else if(/^nat|^country/.test(c))m.nationality=i;else if(/^father/.test(c))m.fatherPhone=i;else if(/^mother/.test(c))m.motherPhone=i;});return m;}
 function csvVal(cols,m,k){return m[k]!==undefined?(cols[m[k]]||''):'';}
+
+// ═══════════════════════════════════════════════════════════
+// SPREADSHEET IMPORT — real .xlsx as well as CSV/TSV, with the
+// columns matched by name instead of a fixed order.
+// ═══════════════════════════════════════════════════════════
+
+// Inflate one STORED or DEFLATE zip entry using the browser's own decompressor
+async function _unzipEntry(buf,dv,localOffset,method,size){
+  const nameLen=dv.getUint16(localOffset+26,true);
+  const extraLen=dv.getUint16(localOffset+28,true);
+  const start=localOffset+30+nameLen+extraLen;
+  const raw=buf.subarray(start,start+size);
+  if(method===0)return raw;
+  if(typeof DecompressionStream==='undefined')throw new Error('This browser cannot read .xlsx — save the file as CSV instead.');
+  const ds=new DecompressionStream('deflate-raw');
+  const stream=new Blob([raw]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function _readXlsxParts(file){
+  const buf=new Uint8Array(await file.arrayBuffer());
+  const dv=new DataView(buf.buffer);
+  let eo=-1;
+  for(let i=buf.length-22;i>=0;i--){if(dv.getUint32(i,true)===0x06054b50){eo=i;break;}}
+  if(eo<0)throw new Error('Not a valid .xlsx file');
+  const count=dv.getUint16(eo+10,true),cdOff=dv.getUint32(eo+16,true);
+  const dec=new TextDecoder();
+  const parts={};
+  let p=cdOff;
+  for(let i=0;i<count;i++){
+    const method=dv.getUint16(p+10,true);
+    const cSize=dv.getUint32(p+20,true);
+    const nameLen=dv.getUint16(p+28,true),extraLen=dv.getUint16(p+30,true),cmtLen=dv.getUint16(p+32,true);
+    const lho=dv.getUint32(p+42,true);
+    const name=dec.decode(buf.subarray(p+46,p+46+nameLen));
+    if(/^xl\/(workbook\.xml|sharedStrings\.xml|worksheets\/.+\.xml)$/.test(name)){
+      parts[name]=dec.decode(await _unzipEntry(buf,dv,lho,method,cSize));
+    }
+    p+=46+nameLen+extraLen+cmtLen;
+  }
+  return parts;
+}
+
+function _colToIndex(ref){
+  const m=String(ref||'').match(/^([A-Z]+)/);
+  if(!m)return 0;
+  let n=0;
+  for(let i=0;i<m[1].length;i++)n=n*26+(m[1].charCodeAt(i)-64);
+  return n-1;
+}
+
+// Returns a rectangular array of rows, each an array of cell strings
+async function readXlsxRows(file){
+  const parts=await _readXlsxParts(file);
+  const sheetName=Object.keys(parts).filter(k=>k.indexOf('xl/worksheets/')===0).sort()[0];
+  if(!sheetName)throw new Error('No worksheet found in the file');
+  // shared strings
+  const shared=[];
+  const ss=parts['xl/sharedStrings.xml'];
+  if(ss){
+    const items=ss.split(/<si[ >]/).slice(1);
+    items.forEach(si=>{
+      const texts=[...si.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(m=>m[1]);
+      shared.push(texts.join('').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'"));
+    });
+  }
+  const rows=[];
+  const sheet=parts[sheetName];
+  const rowChunks=sheet.split(/<row[ >]/).slice(1);
+  rowChunks.forEach(rc=>{
+    const cells=[];
+    const cellMatches=[...rc.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>|<c\b([^>]*)\/>/g)];
+    cellMatches.forEach(cm=>{
+      const attrs=cm[1]||cm[3]||'';
+      const body=cm[2]||'';
+      const refM=attrs.match(/r="([A-Z]+\d+)"/);
+      const idx=refM?_colToIndex(refM[1]):cells.length;
+      const t=(attrs.match(/t="([^"]+)"/)||[])[1];
+      let val='';
+      if(t==='inlineStr'){
+        val=[...body.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(m=>m[1]).join('');
+      }else{
+        const v=(body.match(/<v>([\s\S]*?)<\/v>/)||[])[1];
+        if(v!==undefined)val=(t==='s')?(shared[parseInt(v,10)]||''):v;
+      }
+      val=String(val).replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'");
+      while(cells.length<idx)cells.push('');
+      cells[idx]=val.trim();
+    });
+    rows.push(cells);
+  });
+  return rows;
+}
+
+// One entry point for any spreadsheet the user picks
+async function readSpreadsheet(file){
+  const name=(file.name||'').toLowerCase();
+  let rows;
+  if(/\.xlsx$/.test(name)||/\.xlsm$/.test(name)){
+    rows=await readXlsxRows(file);
+  }else if(/\.xls$/.test(name)){
+    throw new Error('Old .xls files are not supported — open it in Excel and “Save As” .xlsx or .csv');
+  }else{
+    const text=stripBOM(await file.text());
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    if(!lines.length)throw new Error('The file is empty');
+    const delim=detectDelimiter(lines[0]);
+    rows=lines.map(l=>splitCSVLine(l,delim).map(c=>String(c).replace(/^"|"$/g,'').trim()));
+  }
+  rows=rows.filter(r=>r&&r.some(c=>String(c||'').trim()!==''));
+  if(rows.length<2)throw new Error('Need a header row and at least one row of data');
+  const headers=rows[0].map(h=>String(h||'').trim());
+  return {headers:headers,rows:rows.slice(1)};
+}
+
+// Match a spreadsheet column to a field by name, however it is written
+function autoMapColumns(headers,fields){
+  const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const cols=headers.map(norm);
+  const map={},used={};
+  // Pass 1: the heading starts with a known word ("Grade", "First Name").
+  // Pass 2: it merely contains one ("Health Problem", "Student Grade Level"),
+  // which is how people actually label columns.
+  [false,true].forEach(loose=>{
+    fields.forEach(f=>{
+      if(map[f.key]!==undefined)return;
+      for(let i=0;i<cols.length;i++){
+        if(used[i]||!cols[i])continue;
+        const hit=(f.match||[]).some(p=>{
+          if(!loose)return p.test(cols[i]);
+          const body=p.source.replace(/^\^/,'').replace(/\$$/,'');
+          if(body.length<3)return false;     // too short to match loosely
+          return new RegExp(body).test(cols[i]);
+        });
+        if(hit){map[f.key]=i;used[i]=true;return;}
+      }
+    });
+  });
+  return map;
+}
+
+// Shared mapping + preview UI. onImport(rows, map) does the actual work.
+function importWizard(cfg){
+  window.__impCfg=cfg;
+  openM('<div class="mh"><h3>'+esc(cfg.title)+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">'+cfg.blurb+'<br><span style="font-size:11px">Excel (.xlsx) or CSV. The first row must be the column headings — their order does not matter.</span></div>'
+  +'<div class="fg"><label>File *</label><input type="file" id="iw-file" accept=".xlsx,.xlsm,.csv,.txt,.tsv" onchange="iwLoad()"></div>'
+  +'<div id="iw-body"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bp" id="iw-go" onclick="iwRun()" disabled>Import →</button></div>',true);
+}
+
+async function iwLoad(){
+  const f=document.getElementById('iw-file').files[0];
+  const body=document.getElementById('iw-body');
+  const go=document.getElementById('iw-go');
+  if(!f){body.innerHTML='';go.disabled=true;return;}
+  body.innerHTML='<div class="al ai">Reading file…</div>';
+  let parsed;
+  try{parsed=await readSpreadsheet(f);}
+  catch(e){body.innerHTML='<div class="al ad">❌ '+esc(e.message)+'</div>';go.disabled=true;return;}
+  const cfg=window.__impCfg;
+  window.__impRows=parsed.rows;
+  window.__impHeaders=parsed.headers;
+  window.__impMap=autoMapColumns(parsed.headers,cfg.fields);
+  iwRenderMap();
+  go.disabled=false;
+}
+
+function iwRenderMap(){
+  const cfg=window.__impCfg,headers=window.__impHeaders,rows=window.__impRows,map=window.__impMap;
+  const opts=i=>'<option value="">— not in file —</option>'+headers.map((h,idx)=>'<option value="'+idx+'"'+(map[cfg.fields[i].key]===idx?' selected':'')+'>'+esc(h||('Column '+(idx+1)))+'</option>').join('');
+  const missingRequired=cfg.fields.filter(f=>f.required&&map[f.key]===undefined).map(f=>f.label);
+  const rowsHtml=cfg.fields.map((f,i)=>'<tr><td style="white-space:nowrap">'+esc(f.label)+(f.required?' <span style="color:var(--dg)">*</span>':'')+'</td>'
+    +'<td><select onchange="iwSetMap(\''+f.key+'\',this.value)" style="width:100%;padding:5px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px">'+opts(i)+'</select></td>'
+    +'<td style="font-size:11px;color:var(--tx3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+      +(map[f.key]!==undefined?esc(String(rows[0][map[f.key]]||'')):'—')+'</td></tr>').join('');
+  document.getElementById('iw-body').innerHTML=
+   '<div class="al ag">📄 <strong>'+rows.length+'</strong> row(s) found · '+headers.length+' column(s): '+esc(headers.filter(Boolean).join(', ').slice(0,140))+'</div>'
+   +(missingRequired.length?'<div class="al ad">⚠️ Still needed: <strong>'+esc(missingRequired.join(', '))+'</strong> — pick the matching column below.</div>'
+     :'<div class="al ag">✓ All required columns matched automatically.</div>')
+   +'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:8px 0 4px">Column matching</div>'
+   +'<div class="tw" style="max-height:280px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Field</th><th>Column in your file</th><th>First row</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+}
+
+function iwSetMap(key,val){
+  if(val==='')delete window.__impMap[key];else window.__impMap[key]=parseInt(val,10);
+  iwRenderMap();
+}
+
+function iwRun(){
+  const cfg=window.__impCfg,map=window.__impMap,rows=window.__impRows;
+  const missing=cfg.fields.filter(f=>f.required&&map[f.key]===undefined);
+  if(missing.length){toast('Choose a column for: '+missing.map(f=>f.label).join(', '),'danger');return;}
+  const val=(row,key)=>map[key]===undefined?'':String(row[map[key]]===undefined?'':row[map[key]]).trim();
+  try{cfg.onImport(rows,val);}
+  catch(e){toast('Import failed: '+e.message,'danger');console.error(e);}
+}
 function stripBOM(t){return t.charCodeAt(0)===0xFEFF?t.slice(1):t;}
-function impStuM(){openM('<div class="mh"><h3>📥 Import Students CSV</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ai">CSV/Excel-exported file with header row — auto-detects columns and separators (comma, semicolon, tab). Missing columns like Section or Gender are OK.</div><div style="background:var(--sf2);border-radius:var(--rs);padding:9px;font-family:monospace;font-size:10px;color:var(--tx3);margin-bottom:12px">SN,CS,First Name,Last Name,Grade,Nationality,Father Phone,Mother Phone<br>1,1,Abdullah,Al-Harbi,10,Saudi,0501234567,0501234568</div><div class="fg"><label>CSV File *</label><input type="file" id="impf" accept=".csv,.txt,.tsv"></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="procImp()">Import →</button></div>');window.procImp=function(){const file=document.getElementById('impf').files[0];if(!file){toast('Select file','danger');return;}const reader=new FileReader();reader.onload=e=>{const raw=stripBOM(e.target.result);const allLines=raw.split(/\r?\n/).filter(l=>l.trim());if(allLines.length<2){toast('CSV needs a header row and at least one data row','danger');return;}const delim=detectDelimiter(allLines[0]);const hdr=mapCSVHeaders(allLines[0],delim);const useMap=hdr.firstName!==undefined&&hdr.lastName!==undefined&&hdr.grade!==undefined;const lines=allLines.slice(1);const students=DB.get('students')||[];let added=0;lines.forEach(line=>{const cols=splitCSVLine(line,delim);let sn,csn,fn,ln,grade,sec,gender,nat,fp,mp;if(useMap){sn=csvVal(cols,hdr,'sn');csn=csvVal(cols,hdr,'cs');fn=csvVal(cols,hdr,'firstName');ln=csvVal(cols,hdr,'lastName');grade=csvVal(cols,hdr,'grade');sec=csvVal(cols,hdr,'section');gender=csvVal(cols,hdr,'gender');nat=csvVal(cols,hdr,'nationality');fp=csvVal(cols,hdr,'fatherPhone');mp=csvVal(cols,hdr,'motherPhone');}else{[sn,csn,fn,ln,grade,sec,gender,nat,fp,mp]=cols;}if(fn&&ln&&grade){students.push({id:'s'+Date.now()+added,sn:parseInt(sn)||added+1,csn:parseInt(csn)||1,firstName:fn,lastName:ln,grade:grade,section:sec||'',gender:gender||'',nationality:nat||'',fatherPhone:fp||'',motherPhone:mp||'',advisorId:'',created:new Date().toISOString().split('T')[0]});added++;}});DB.set('students',students);logA('Imported '+added+' students from CSV');closeM();toast(added+' students imported','success');rStudents();};reader.readAsText(file);};}
+const STUDENT_IMPORT_FIELDS=[
+  {key:'firstName',label:'First Name',required:true,match:[/^first/,/^fname/,/^givenname/,/^name$/,/^studentname/,/^student$/,/^fullname/]},
+  {key:'lastName',label:'Last Name',match:[/^last/,/^lname/,/^surname/,/^family/,/^secondname/]},
+  {key:'grade',label:'Grade',required:true,match:[/^grade/,/^gr$/,/^class$/,/^classgrade/,/^level/,/^year$/]},
+  {key:'section',label:'Section',match:[/^section/,/^sec$/,/^div/,/^branch/]},
+  {key:'sn',label:'Serial No',match:[/^sn$/,/^serial/,/^no$/,/^s$/,/^sno/,/^index/]},
+  {key:'csn',label:'Class Serial',match:[/^cs$/,/^csn$/,/^classsn/,/^classno/,/^rollno/,/^roll/]},
+  {key:'gender',label:'Gender',match:[/^gender/,/^sex$/,/^gen$/]},
+  {key:'nationality',label:'Nationality',match:[/^nat/,/^country/,/^citizen/]},
+  {key:'fatherPhone',label:'Father Phone',match:[/^father/,/^dad/,/^guardianphone/,/^phone$/,/^mobile/,/^contact/]},
+  {key:'motherPhone',label:'Mother Phone',match:[/^mother/,/^mom/,/^mum/]},
+  {key:'dob',label:'Date of Birth',match:[/^dob/,/^birth/,/^dateofbirth/]}
+];
+
+function impStuM(){
+  importWizard({
+    title:'📥 Import Students',
+    blurb:'Add students from a spreadsheet. Columns are matched by their heading, so any layout works — check the matching below and correct anything that looks wrong.',
+    fields:STUDENT_IMPORT_FIELDS,
+    onImport:function(rows,val){
+      const students=DB.get('students')||[];
+      let added=0,skipped=0;
+      const startSn=students.reduce((m,s)=>Math.max(m,parseInt(s.sn)||0),0);
+      rows.forEach((row,i)=>{
+        let fn=val(row,'firstName'),ln=val(row,'lastName');
+        // one combined name column: split off the first word as the given name
+        if(fn&&!ln&&/\s/.test(fn)){const parts=fn.split(/\s+/);fn=parts.shift();ln=parts.join(' ');}
+        const grade=val(row,'grade');
+        if(!fn||!grade){skipped++;return;}
+        let g=grade,sec=val(row,'section');
+        // A single class column like "5B", "10-A", "10 A" or "10/A" becomes
+        // grade + section; a plain number stays as the grade.
+        if(!sec){
+          const m=g.match(/^\s*(\d+)\s*[-\/ ]?\s*([A-Za-z])\s*$/);
+          if(m){g=m[1];sec=m[2].toUpperCase();}
+        }
+        g=String(g).trim();
+        students.push({
+          id:'s'+Date.now()+'_'+i,
+          sn:parseInt(val(row,'sn'))||(startSn+added+1),
+          csn:parseInt(val(row,'csn'))||0,
+          firstName:fn,lastName:ln||'',grade:g,section:sec||'',
+          gender:val(row,'gender'),nationality:val(row,'nationality'),
+          fatherPhone:val(row,'fatherPhone'),motherPhone:val(row,'motherPhone'),
+          dob:val(row,'dob'),advisorId:'',
+          created:new Date().toISOString().split('T')[0]
+        });
+        added++;
+      });
+      DB.set('students',students);
+      logA('Imported '+added+' students from spreadsheet');
+      closeM();
+      toast(added+' student(s) imported'+(skipped?' · '+skipped+' row(s) skipped (no name or grade)':''),'success');
+      rStudents();
+    }
+  });
+}
 
 function rComplaints(){
   const canA=['superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
@@ -3713,7 +3969,7 @@ function rStudentHealth(){
   const moderateCount=withHealth.filter(h=>h.issues.some(i=>i.severity==='Moderate'&&!i.severity==='Severe')).length;
   const mildCount=withHealth.length-severeCount-moderateCount;
   
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🩺 '+T('student_health')+'</h3><div style="display:flex;gap:6px">'+(canEdit?'<button class="btn bp bsm" onclick="addHealthM()">+ Add Health Record</button>':'')+'<button class="btn bg2 bsm" onclick="expHealthPDF()">📄 Export PDF</button><button class="btn bg2 bsm" onclick="expHealthCSV()">📊 Export Excel</button></div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Maintain health records, allergies, medications, and emergency precautions for students.':'View health records and precautions for students.')+(CU.role==='quality_incharge'?' [Restricted]':'')+'</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🩺 '+T('student_health')+'</h3><div style="display:flex;gap:6px">'+(canEdit?'<button class="btn bs bsm" onclick="impHealthM()">📥 Import from Excel</button><button class="btn bp bsm" onclick="addHealthM()">+ Add Health Record</button>':'')+'<button class="btn bg2 bsm" onclick="expHealthPDF()">📄 Export PDF</button><button class="btn bg2 bsm" onclick="expHealthCSV()">📊 Export Excel</button></div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Maintain health records, allergies, medications, and emergency precautions for students.':'View health records and precautions for students.')+(CU.role==='quality_incharge'?' [Restricted]':'')+'</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Students with Records</div><div class="sv">'+withHealth.length+'</div><div class="sb3">of '+students.length+' total</div><div class="sic">🩺</div></div><div class="stat rd"><div class="sl2">Severe</div><div class="sv">'+severeCount+'</div><div class="sic">🚨</div></div><div class="stat go"><div class="sl2">Moderate</div><div class="sv">'+moderateCount+'</div><div class="sic">⚠️</div></div><div class="stat gn"><div class="sl2">Mild</div><div class="sv">'+mildCount+'</div><div class="sic">ℹ️</div></div></div>'
   +'<div class="card"><div class="sh2"><h3>🔍 Search Records</h3></div><div style="display:flex;gap:8px;margin-bottom:12px"><input id="hq" placeholder="🔍 Search by student name, condition, or grade…" oninput="fltHealth()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="hgf" onchange="fltHealth()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+g+'">Gr '+g+'</option>').join('')+'</select><select id="hsf" onchange="fltHealth()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Severities</option><option>Severe</option><option>Moderate</option><option>Mild</option></select></div><div id="hlist">'+buildHealthList(withHealth,students,canEdit)+'</div></div>';
   
@@ -3748,6 +4004,89 @@ function buildHealthList(healthRecords,students,canEdit){
     }).join('')
     +'</div></div>';
   }).join('');
+}
+
+// One row per health condition; several rows for the same student are merged
+// into that student's record.
+const HEALTH_IMPORT_FIELDS=[
+  {key:'student',label:'Student Name',required:true,match:[/^student/,/^name$/,/^fullname/,/^pupil/,/^childname/]},
+  {key:'grade',label:'Grade',match:[/^grade/,/^class$/,/^gr$/,/^level/]},
+  {key:'section',label:'Section',match:[/^section/,/^sec$/,/^div/]},
+  {key:'condition',label:'Condition',required:true,match:[/^condition/,/^illness/,/^disease/,/^diagnosis/,/^healthissue/,/^issue/,/^problem/,/^ailment/]},
+  {key:'type',label:'Type',match:[/^type/,/^category/,/^kind/]},
+  {key:'severity',label:'Severity',match:[/^sever/,/^level$/,/^degree/,/^risk/]},
+  {key:'medications',label:'Medications',match:[/^medic/,/^drug/,/^treatment/,/^prescri/]},
+  {key:'allergies',label:'Allergies',match:[/^allerg/]},
+  {key:'precautions',label:'Precautions',match:[/^precaution/,/^care/,/^avoid/,/^restriction/]},
+  {key:'emergencyAction',label:'Emergency Action',match:[/^emerg/,/^action/,/^firstaid/,/^incase/]},
+  {key:'notes',label:'Notes',match:[/^note/,/^remark/,/^comment/,/^detail/,/^other/]},
+  {key:'dateRecorded',label:'Date Recorded',match:[/^date/,/^recorded/,/^when/]}
+];
+
+function impHealthM(){
+  importWizard({
+    title:'🩺 Import Student Health Records',
+    blurb:'One row per health condition. Rows for the same student are merged into that student\'s record. Students are matched by name — anyone not on the roll is reported and skipped.',
+    fields:HEALTH_IMPORT_FIELDS,
+    onImport:function(rows,val){
+      const students=DB.get('students')||[];
+      const norm=s=>String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
+      const byName={};
+      students.forEach(s=>{
+        const full=norm(fN(s));
+        if(!byName[full])byName[full]=[];
+        byName[full].push(s);
+      });
+      const records=DB.get('student_health')||[];
+      const unmatched=[];let addedIssues=0,touched={};
+      rows.forEach(row=>{
+        const nameRaw=val(row,'student');
+        const cond=val(row,'condition');
+        if(!nameRaw||!cond)return;
+        let matches=byName[norm(nameRaw)]||[];
+        // several students share the name — narrow by grade/section if given
+        if(matches.length>1){
+          const g=val(row,'grade'),sec=val(row,'section');
+          const narrowed=matches.filter(s=>(!g||String(s.grade)===String(g))&&(!sec||String(s.section||'').toLowerCase()===sec.toLowerCase()));
+          if(narrowed.length)matches=narrowed;
+        }
+        if(!matches.length){unmatched.push(nameRaw);return;}
+        const stu=matches[0];
+        let rec=records.find(r=>r.studentId===stu.id);
+        if(!rec){
+          rec={id:nid('h'),studentId:stu.id,issues:[],
+            advisorId:CU.id,advisorName:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),
+            created:new Date().toISOString(),updated:new Date().toISOString()};
+          records.push(rec);
+        }
+        if(!Array.isArray(rec.issues))rec.issues=[];
+        rec.issues.push({
+          condition:cond,
+          type:val(row,'type'),
+          severity:val(row,'severity'),
+          dateRecorded:val(row,'dateRecorded')||new Date().toISOString().split('T')[0],
+          medications:val(row,'medications'),
+          allergies:val(row,'allergies'),
+          precautions:val(row,'precautions'),
+          emergencyAction:val(row,'emergencyAction'),
+          notes:val(row,'notes')
+        });
+        rec.updated=new Date().toISOString();
+        addedIssues++;touched[stu.id]=true;
+      });
+      DB.set('student_health',records);
+      logA('Imported '+addedIssues+' health condition(s) for '+Object.keys(touched).length+' student(s)');
+      closeM();
+      const msg=addedIssues+' condition(s) imported for '+Object.keys(touched).length+' student(s)';
+      if(unmatched.length){
+        const uniq=[...new Set(unmatched)];
+        alert(msg+'.\n\n'+uniq.length+' name(s) were not found on the student roll and were skipped:\n\n'
+          +uniq.slice(0,25).join('\n')+(uniq.length>25?'\n…and '+(uniq.length-25)+' more':''));
+      }
+      toast(msg,'success');
+      rStudentHealth();
+    }
+  });
 }
 
 function addHealthM(){
