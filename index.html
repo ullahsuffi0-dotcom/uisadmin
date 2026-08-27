@@ -1288,6 +1288,16 @@ Object.keys(NAV).forEach(function(role){
   var pi=arr.findIndex(function(i){return i.id==='my_profile';});
   if(pi>=0)arr.splice(pi,0,item);else arr.push(item);
 });
+// A teacher can address a discipline report to any staff member, so every
+// non-teaching role needs somewhere to read the ones sent to them.
+Object.keys(NAV).forEach(function(role){
+  if(role==='teacher')return;
+  var arr=NAV[role];
+  if(arr.some(function(i){return i.id==='classroom_discipline';}))return;
+  var item={id:'classroom_discipline',i:'📋',k:'classroom_discipline'};
+  var pi=arr.findIndex(function(i){return i.id==='my_todos'||i.id==='my_profile';});
+  if(pi>=0)arr.splice(pi,0,item);else arr.push(item);
+});
 // ── Notification helpers: track unread items per tab per user ──
 function getLastSeen(tabId){try{const ls=JSON.parse(localStorage.getItem('_navSeen_'+(CU?CU.id:''))||'{}');return ls[tabId]||'';}catch(e){return '';}}
 function markSeen(tabId){try{const key='_navSeen_'+(CU?CU.id:'');const ls=JSON.parse(localStorage.getItem(key)||'{}');ls[tabId]=new Date().toISOString();localStorage.setItem(key,JSON.stringify(ls));}catch(e){}}
@@ -10059,10 +10069,19 @@ const DISCIPLINE_ACTIONS=[
 
 // VP page — view all discipline reports
 function rClassroomDiscipline(){
-  if(!['superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role)){
-    document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;
+  const all=DB.get('classroom_discipline')||[];
+  // These roles oversee discipline and see every report. Anyone else sees only
+  // the reports a teacher addressed to them personally.
+  const isOversight=['superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
+  const addressedToMe=all.filter(r=>r&&r.reportedToId===CU.id);
+  if(CU.role==='teacher'){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
+  if(!isOversight&&!addressedToMe.length){
+    document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>📋 '+T('classroom_discipline')+'</h3></div>'
+      +'<div class="emp"><div class="ei">📋</div><p>No discipline reports have been sent to you.</p>'
+      +'<div style="font-size:11px;color:var(--tx3);margin-top:6px">Teachers can address a report to you when they submit it.</div></div></div>';
+    return;
   }
-  const reports=vpFilter((DB.get('classroom_discipline')||[])).slice().sort((a,b)=>(b.created||'').localeCompare(a.created||''));
+  const reports=(isOversight?vpFilter(all):addressedToMe).slice().sort((a,b)=>(b.created||'').localeCompare(a.created||''));
   const pending=reports.filter(r=>r.status!=='Resolved'&&r.status!=='Closed');
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 '+T('classroom_discipline')+' ('+reports.length+')</h3></div>'
   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Reports submitted by teachers about classroom discipline issues.</div></div>'
@@ -10082,7 +10101,7 @@ function buildDiscList(reports){
   return'<div class="tw"><table><thead><tr><th>Date</th><th>Student</th><th>Class</th><th>Issues</th><th>Actions Taken</th><th>Reported By</th><th>Status</th><th></th></tr></thead><tbody>'
   +reports.map(r=>'<tr><td class="mono" style="font-size:11px">'+(r.date||'').split('T')[0]+'</td>'
   +'<td><strong>'+esc(r.studentName||'—')+'</strong></td>'
-  +'<td>'+esc(r.className||'—')+'</td>'
+  +'<td>'+esc(r.className||'—')+'</td>'+'<td style="font-size:11px">'+esc(r.reportedToName||'Vice Principal')+'</td>'
   +'<td style="font-size:11px;max-width:200px">'+(r.issues||[]).slice(0,2).map(i=>'<span class="badge brd" style="font-size:10px;margin:1px">'+esc(i)+'</span>').join('')+((r.issues||[]).length>2?'<span style="font-size:10px;color:var(--tx3)"> +'+((r.issues||[]).length-2)+' more</span>':'')+'</td>'
   +'<td style="font-size:11px;max-width:180px">'+(r.actionsTaken||[]).slice(0,2).map(a=>'<span class="badge bbl" style="font-size:10px;margin:1px">'+esc(a)+'</span>').join('')+((r.actionsTaken||[]).length>2?'<span style="font-size:10px;color:var(--tx3)"> +'+((r.actionsTaken||[]).length-2)+' more</span>':'')+'</td>'
   +'<td style="font-size:11px">'+esc(r.teacherName||'—')+'</td>'
@@ -10104,7 +10123,7 @@ function vDiscReport(id){
   const r=(DB.get('classroom_discipline')||[]).find(x=>x.id===id);if(!r)return;
   const canManage=['superadmin','principal','vice_principal'].includes(CU.role);
   openM('<div class="mh"><h3>📋 Discipline Report</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
-  +'<div class="cg g3" style="margin-bottom:12px;font-size:12px"><div><div style="font-size:10px;color:var(--tx3)">Student</div><div style="font-weight:700">'+esc(r.studentName||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Class</div><div style="font-weight:600">'+esc(r.className||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Date</div><div style="font-weight:600">'+(r.date||'').split('T')[0]+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Reported By</div><div style="font-weight:600">'+esc(r.teacherName||'—')+'</div></div></div>'
+  +'<div class="cg g3" style="margin-bottom:12px;font-size:12px"><div><div style="font-size:10px;color:var(--tx3)">Student</div><div style="font-weight:700">'+esc(r.studentName||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Class</div><div style="font-weight:600">'+esc(r.className||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Date</div><div style="font-weight:600">'+(r.date||'').split('T')[0]+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Reported By</div><div style="font-weight:600">'+esc(r.teacherName||'—')+'</div></div><div><div style="font-size:10px;color:var(--tx3)">Sent To</div><div style="font-weight:600">'+esc(r.reportedToName||'Vice Principal')+(r.reportedToRole?' <span style="font-size:10px;color:var(--tx3)">('+esc(rL(r.reportedToRole))+')</span>':'')+'</div></div></div>'
   +'<div class="fg"><label>Discipline Issues</label><div style="display:flex;gap:5px;flex-wrap:wrap">'+(r.issues||[]).map(i=>'<span class="badge brd">'+esc(i)+'</span>').join('')+'</div></div>'
   +(r.otherIssue?'<div class="fg"><label>Other Issue Detail</label><div style="background:var(--sf2);padding:9px;border-radius:var(--rs);font-size:12px">'+esc(r.otherIssue)+'</div></div>':'')
   +'<div class="fg"><label>Actions Taken</label><div style="display:flex;gap:5px;flex-wrap:wrap">'+(r.actionsTaken||[]).map(a=>'<span class="badge bbl">'+esc(a)+'</span>').join('')+'</div></div>'
@@ -10373,6 +10392,17 @@ function expDiscPDF(id){
 
 // Teacher page — my discipline reports
 function canEditDisc(r){return (r.status||'Pending')==='Pending'&&!r.vpRemarks&&!r.referralId;}
+
+// Staff a discipline report can be addressed to. Vice principals lead the list
+// since they are the usual recipient, then everyone else except the author.
+function discRecipientOpts(){
+  const order={vice_principal:0,principal:1,academic_supervisor:2,student_advisor:3,quality_incharge:4,quality_supervisor:5,activity_incharge:6,admin_assistant:7,superadmin:8,teacher:9};
+  const staff=(DB.get('accounts')||[])
+    .filter(a=>a&&a.active!==false&&a.id!==(CU&&CU.id))
+    .sort((a,b)=>(order[a.role]===undefined?99:order[a.role])-(order[b.role]===undefined?99:order[b.role])
+      ||((a.firstName||'')+a.lastName).localeCompare((b.firstName||'')+b.lastName));
+  return staff.map(a=>'<option value="'+esc(a.id)+'">'+esc(((a.firstName||'')+' '+(a.lastName||'')).trim())+' — '+esc(rL(a.role))+'</option>').join('');
+}
 function rMyDisciplineReports(){
   if(CU.role!=='teacher'){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>This page is only available to teachers</p></div>';return;}
   const myName=((CU.firstName||'')+' '+(CU.lastName||'')).trim().toLowerCase();
@@ -10381,7 +10411,7 @@ function rMyDisciplineReports(){
 
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 '+T('student_discipline_report')+' ('+reports.length+')</h3><button class="btn bp bsm" onclick="addClassDisciplineM()">+ New Report</button></div>'
   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Report classroom discipline issues. These are visible to the Vice Principal and Principal.</div></div>'
-  +'<div class="card">'+(reports.length?'<div class="tw"><table><thead><tr><th>Date</th><th>Student</th><th>Class</th><th>Issues</th><th>Actions Taken</th><th>Status</th><th></th></tr></thead><tbody>'
+  +'<div class="card">'+(reports.length?'<div class="tw"><table><thead><tr><th>Date</th><th>Student</th><th>Class</th><th>Sent To</th><th>Issues</th><th>Actions Taken</th><th>Status</th><th></th></tr></thead><tbody>'
   +reports.map(r=>'<tr><td class="mono" style="font-size:11px">'+(r.date||'').split('T')[0]+'</td><td><strong>'+esc(r.studentName||'—')+'</strong></td><td>'+esc(r.className||'—')+'</td>'
   +'<td style="font-size:11px">'+(r.issues||[]).map(i=>'<span class="badge brd" style="font-size:10px;margin:1px">'+esc(i)+'</span>').join('')+'</td>'
   +'<td style="font-size:11px">'+(r.actionsTaken||[]).map(a=>'<span class="badge bbl" style="font-size:10px;margin:1px">'+esc(a)+'</span>').join('')+'</td>'
@@ -10394,7 +10424,9 @@ function addClassDisciplineM(){
   const students=DB.get('students')||[];
   const grades=[...new Set(students.map(s=>s.grade))].sort((a,b)=>a-b);
   openM('<div class="mh"><h3>📋 Classroom Discipline Report</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
-  +'<div class="al ai">📋 Report a classroom discipline issue. This report will be visible to the Vice Principal.</div>'
+  +'<div class="al ai">📋 Report a classroom discipline issue. It is always visible to the Vice Principal and Principal; choose below if it should also go to someone else.</div>'
+  +'<div class="fg"><label>Send Report To *</label><select id="cd-to">'+discRecipientOpts()+'</select>'
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:3px">Any staff member — the person you choose will see this report on their Student Discipline Reports page.</div></div>'
   +'<div class="fr f2"><div class="fg"><label>Student *</label>'+sw('pickDiscStu','cd-si','cd-sd')+'</div><input type="hidden" id="cd-sid"></div>'
   +'<div id="cd-stuinfo" style="display:none" class="al ai" style="margin-bottom:8px"></div>'
   +'<div class="fr f2"><div class="fg"><label>Class / Grade-Section *</label><input id="cd-class" placeholder="e.g. Grade 9-A" readonly></div><div class="fg"><label>Date *</label><input type="date" id="cd-date" value="'+new Date().toISOString().split('T')[0]+'"></div></div>'
@@ -10436,11 +10468,16 @@ function saveClassDiscipline(){
   if(issues.includes('Other')&&!otherIssue){toast('Specify the other issue','danger');return;}
 
   const s=gS(sid);
+  const toEl=document.getElementById('cd-to');
+  const toId=toEl?toEl.value:'';
+  const toAcc=toId?(DB.get('accounts')||[]).find(a=>a.id===toId):null;
   const list=DB.get('classroom_discipline')||[];
   list.push({
     id:nid('cd'),studentId:sid,studentName:fN(s),grade:s.grade,section:s.section,
     className,date,issues,otherIssue,actionsTaken,additionalNotes:notes,
     teacherId:CU.id,teacherName:CU.firstName+' '+CU.lastName,
+    reportedToId:toId||'',reportedToName:toAcc?((toAcc.firstName||'')+' '+(toAcc.lastName||'')).trim():'',
+    reportedToRole:toAcc?toAcc.role:'',
     status:'Pending',created:new Date().toISOString()
   });
   DB.set('classroom_discipline',list);
