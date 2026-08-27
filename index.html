@@ -2550,6 +2550,26 @@ const CTS={'Academic':['Homework concern','Exam difficulty','Curriculum issue','
 // ═══════════════════════════════════════════════════════════
 // Public portal links must carry the school, or a parent's phone — which has
 // never signed in — has no school context and reads/writes the wrong bucket.
+// Authoritative active session for the current school, read from Firebase so
+// it is correct even on a device whose initial pull has not finished.
+async function resolveActiveSessionId(){
+  let sid=null;
+  if(window.__FB&&window.__FB.db&&window.__FB.get&&window.__FB.ref){
+    try{
+      const{db,ref,get}=window.__FB;
+      const snap=await get(ref(db,getFirebaseSchoolPath()+'active_session_id'));
+      if(snap.exists()){
+        const v=snap.val();
+        if(typeof v==='string'&&v)sid=v;
+      }
+    }catch(e){}
+  }
+  if(!sid&&typeof getActiveSessionId==='function'){
+    try{sid=getActiveSessionId();}catch(e){}
+  }
+  return sid||'default';
+}
+
 function portalUrl(flag){
   const base=window.location.origin+window.location.pathname;
   let u=base+'?'+flag+'=1';
@@ -6533,9 +6553,11 @@ async function submitPickupRequest(){
   const id='pu'+Date.now();
   const newEntry={id,trackNo,studentName:sn,grade:gr||'—',guardianName:gn,guardianPhone:gp,pickedBy,pickedByName:pickedByName||(pickedBy==='Father'||pickedBy==='Mother'?gn:''),pickedByPhone:pickedByPhone||(pickedBy==='Father'||pickedBy==='Mother'?gp:''),pickedById,reason,pickupTime:time,notes,status:'Pending',source:'parent_qr',submittedAt:new Date().toISOString(),created:new Date().toISOString()};
   // Pull latest from Firebase before appending to avoid overwriting existing records
-  // Read the school's own session, not a cached one — a parent's device caches
-  // 'default' before the pull brings the school's real active session.
-  const sid=(typeof getActiveSessionId==='function'?getActiveSessionId():null)||window.__activeSessionId||'default';
+  // Resolve the school's active session from Firebase itself. A parent's phone
+  // can submit before the initial pull finishes, and a stale 'default' would
+  // file the request in a session bucket staff never read.
+  const sid=await resolveActiveSessionId();
+  window.__activeSessionId=sid;   // so DB.set routes to the same bucket
   const fbKey='early_pickups_'+sid;
   // null means "not loaded" so an absent Firebase key falls back to local
   // rather than replacing every existing request with just this one.
