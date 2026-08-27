@@ -2548,6 +2548,15 @@ const CTS={'Academic':['Homework concern','Exam difficulty','Curriculum issue','
 // Linked from the absence WhatsApp message. A submission lands in the
 // Excused Students list straight away, flagged as a pending parent request.
 // ═══════════════════════════════════════════════════════════
+// Public portal links must carry the school, or a parent's phone — which has
+// never signed in — has no school context and reads/writes the wrong bucket.
+function portalUrl(flag){
+  const base=window.location.origin+window.location.pathname;
+  let u=base+'?'+flag+'=1';
+  if(CURRENT_SCHOOL_ID)u+='&sch='+encodeURIComponent(CURRENT_SCHOOL_ID);
+  return u;
+}
+
 function buildExcuseLink(student,date){
   const base=window.location.origin+window.location.pathname;
   let u=base+'?excuse=1';
@@ -2719,7 +2728,7 @@ function rQRCode(){
   if(!isAuth){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Only administration can access this page</p></div>';return;}
   const s=DB.get('settings')||{};
   const baseUrl=window.location.origin+window.location.pathname;
-  const parentUrl=baseUrl+'?parent=1';
+  const parentUrl=portalUrl('parent');
   // QR API: using free public QR generator (Google Charts API or qrserver.com)
   const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='+encodeURIComponent(parentUrl)+'&margin=10';
   const qrLargeUrl='https://api.qrserver.com/v1/create-qr-code/?size=600x600&data='+encodeURIComponent(parentUrl)+'&margin=20';
@@ -2734,7 +2743,7 @@ function qrDownload(url){
 function qrPrintPoster(){
   const s=DB.get('settings')||{};
   const baseUrl=window.location.origin+window.location.pathname;
-  const parentUrl=baseUrl+'?parent=1';
+  const parentUrl=portalUrl('parent');
   const qrLargeUrl='https://api.qrserver.com/v1/create-qr-code/?size=600x600&data='+encodeURIComponent(parentUrl)+'&margin=20';
   const w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Parent Portal QR Poster</title><style>@page{size:A4;margin:0}body{font-family:Arial,sans-serif;margin:0;padding:30mm 20mm;text-align:center;color:#1a3a5c}.logo{font-size:80px;margin-bottom:10px}.school{font-size:32px;font-weight:bold;margin-bottom:6px}.school-ar{font-size:24px;color:#666;margin-bottom:30px;direction:rtl}.title{font-size:48px;font-weight:bold;color:#1a5f7a;margin:30px 0 20px;letter-spacing:1px}.subtitle{font-size:18px;color:#444;margin-bottom:30px;line-height:1.5}.qr-box{background:#fff;border:8px solid #1a5f7a;border-radius:20px;padding:25px;display:inline-block;margin:20px 0}.qr-box img{display:block;width:300px;height:300px}.steps{display:flex;justify-content:center;gap:30px;margin-top:40px;flex-wrap:wrap}.step{flex:1;min-width:150px;max-width:200px}.step-num{background:#1a5f7a;color:#fff;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px;margin:0 auto 10px}.step-text{font-size:14px;color:#555;line-height:1.4}.url{margin-top:30px;padding:12px;background:#f0f0f0;border-radius:8px;font-family:monospace;font-size:13px;color:#1a5f7a;word-break:break-all}.footer{margin-top:30px;font-size:12px;color:#999;border-top:1px solid #ddd;padding-top:15px}@media print{body{padding:20mm}}</style></head><body><div class="logo">'+(s.logo&&!s.logo.startsWith('data:')?s.logo:'🎓')+'</div><div class="school">'+(s.schoolName||'School')+'</div>'+(s.schoolNameAr?'<div class="school-ar">'+s.schoolNameAr+'</div>':'')+'<div class="title">Parent Complaint Portal</div><div class="subtitle">Scan this QR code with your phone camera<br>to submit or track a complaint<br><span style="font-style:italic;color:#888">امسح رمز الاستجابة لتقديم أو متابعة شكوى</span></div><div class="qr-box"><img src="'+qrLargeUrl+'" alt="Parent Portal QR"></div><div class="steps"><div class="step"><div class="step-num">1</div><div class="step-text"><b>Open Camera</b><br>Point at the QR code</div></div><div class="step"><div class="step-num">2</div><div class="step-text"><b>Tap Link</b><br>Open the portal page</div></div><div class="step"><div class="step-num">3</div><div class="step-text"><b>Submit</b><br>Fill in complaint details</div></div><div class="step"><div class="step-num">4</div><div class="step-text"><b>Track</b><br>Save tracking number</div></div></div><div class="url">'+parentUrl+'</div><div class="footer">© '+new Date().getFullYear()+' '+(s.schoolName||'School')+' · Powered by EduAdmin Pro</div><script>setTimeout(()=>window.print(),700);<\/script></body></html>');
@@ -6079,6 +6088,9 @@ async function resyncForSchool(){
   const hadData=await syncDownAll();
   console.log('[Sync] syncDownAll returned hadData='+hadData);
   window.__cloudChecked=true;
+  // initSessions() runs before this pull, so the cached active session can be a
+  // stale 'default'. Refresh it or session-scoped writes land in the wrong bucket.
+  if(typeof getActiveSessionId==='function')window.__activeSessionId=getActiveSessionId();
   if(window.__seedDeferred){
     window.__seedDeferred=false;
     seed();
@@ -6160,6 +6172,9 @@ async function bootFirebaseSync(){
   // The cloud has now been consulted, so a deferred seed can safely decide
   // whether this school is genuinely new.
   window.__cloudChecked=true;
+  // initSessions() runs before this pull, so the cached active session can be a
+  // stale 'default'. Refresh it or session-scoped writes land in the wrong bucket.
+  if(typeof getActiveSessionId==='function')window.__activeSessionId=getActiveSessionId();
   if(window.__seedDeferred){
     window.__seedDeferred=false;
     seed();
@@ -6518,24 +6533,30 @@ async function submitPickupRequest(){
   const id='pu'+Date.now();
   const newEntry={id,trackNo,studentName:sn,grade:gr||'—',guardianName:gn,guardianPhone:gp,pickedBy,pickedByName:pickedByName||(pickedBy==='Father'||pickedBy==='Mother'?gn:''),pickedByPhone:pickedByPhone||(pickedBy==='Father'||pickedBy==='Mother'?gp:''),pickedById,reason,pickupTime:time,notes,status:'Pending',source:'parent_qr',submittedAt:new Date().toISOString(),created:new Date().toISOString()};
   // Pull latest from Firebase before appending to avoid overwriting existing records
-  const sid=window.__activeSessionId||(typeof getActiveSessionId==='function'?getActiveSessionId():'default');
+  // Read the school's own session, not a cached one — a parent's device caches
+  // 'default' before the pull brings the school's real active session.
+  const sid=(typeof getActiveSessionId==='function'?getActiveSessionId():null)||window.__activeSessionId||'default';
   const fbKey='early_pickups_'+sid;
-  let list=[];
+  // null means "not loaded" so an absent Firebase key falls back to local
+  // rather than replacing every existing request with just this one.
+  let list=null;
   if(window.__FB&&window.__FB.db){
     try{
       const{db,ref,get}=window.__FB;
-      const snap=await get(ref(db,'data/'+fbKey));
+      const snap=await get(ref(db,getFirebaseSchoolPath()+fbKey));
       if(snap.exists()){
         let v=snap.val();
-        if(v&&typeof v==='object'&&!Array.isArray(v)){
+        if(typeof isFbEmptyMarker==='function'&&isFbEmptyMarker(v))v=[];
+        else if(v&&typeof v==='object'&&!Array.isArray(v)){
           const ks=Object.keys(v);
           if(ks.length>0&&ks.every(kk=>/^\d+$/.test(kk))){const arr=[];ks.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;}
           else v=Object.values(v);
         }
         if(Array.isArray(v))list=v;
       }
-    }catch(e){list=DB.get('early_pickups')||[];}
-  }else{list=DB.get('early_pickups')||[];}
+    }catch(e){}
+  }
+  if(!Array.isArray(list))list=DB.get('early_pickups')||[];
   list.push(newEntry);
   DB.set('early_pickups',list);
   // Show success page
@@ -6554,7 +6575,7 @@ function rPickupQR(){
   if(!canV){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
   const s=DB.get('settings')||{};
   const baseUrl=window.location.href.split('?')[0].split('#')[0];
-  const pickupUrl=baseUrl+'?pickup=1';
+  const pickupUrl=portalUrl('pickup');
   const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data='+encodeURIComponent(pickupUrl);
   const qrLgUrl='https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=20&data='+encodeURIComponent(pickupUrl);
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🚗 '+T('pickup_qr')+'</h3></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Print this poster and display at the school entrance, parent meeting hall, or share its link directly. Parents scan the QR with any phone camera to submit early pickup requests.</div></div>'
