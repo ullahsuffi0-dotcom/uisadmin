@@ -3049,9 +3049,224 @@ const EVAL_TOTAL=106; // sum of all max scores
 function evalGetTotal(scores){let t=0;EVAL_RUBRIC.forEach(c=>c.items.forEach(it=>{t+=parseInt(scores?.[it.k])||0;}));return t;}
 function evalGetGrade(pct){if(pct>=90)return{l:'Excellent',c:'bgn'};if(pct>=75)return{l:'Good',c:'btl'};if(pct>=60)return{l:'Satisfactory',c:'bgo'};return{l:'Needs Improvement',c:'brd'};}
 
+// ═══════════════════════════════════════════════════════════
+// TEACHER EVALUATION — Administrative Performance Evaluation Report
+// Criteria, wording and marks are taken verbatim from the school's form.
+// ═══════════════════════════════════════════════════════════
+const TEVAL_LOGO='data:image/png;base64,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';
+const TEVAL_CRITERIA=[{n:1,d:"Personal Traits",t:"Commitment to professional ethics, work confidentiality, and belonging to the school",m:4},
+  {n:2,d:"Personal Traits",t:"Ability to withstand work pressures",m:4},
+  {n:3,d:"Personal Traits",t:"Acceptance of the tasks assigned to him / her and carrying them out",m:4},
+  {n:4,d:"Personal Traits",t:"Appropriate appearance and suitable attire for work in line with the schools' directions",m:3},
+  {n:5,d:"Personal Traits",t:"Acting in emergency situations with responsibility, wisdom, and balance",m:4},
+  {n:6,d:"Personal Traits",t:"Working with the administration and colleagues in a team spirit to ensure the success of the school's programs and projects",m:4},
+  {n:7,d:"Job Performance and Duties",t:"Commitment to supervisory duty in terms of time, presence in place, and effectiveness in it",m:4},
+  {n:8,d:"Job Performance and Duties",t:"Respect for the scheduled deadlines for completing tasks and submitting them according to proper procedures",m:4},
+  {n:9,d:"Job Performance and Duties",t:"Commitment to official working hours in attendance and departure according to what the school determines",m:4},
+  {n:10,d:"Job Performance and Duties",t:"Respect for the start and end times of class periods",m:4},
+  {n:11,d:"Job Performance and Duties",t:"Attendance at the morning assembly and school broadcast, and interaction in both",m:4},
+  {n:12,d:"Job Performance and Duties",t:"Ensuring non-absence and reducing leaves / departures",m:4},
+  {n:13,d:"Job Performance and Duties",t:"Effectiveness in managing examinations (implementation, invigilation, commitment to instructions, etc.)",m:4},
+  {n:14,d:"Job Performance and Duties",t:"Accuracy and organization of work records according to regulations and proper procedures",m:4},
+  {n:15,d:"Job Performance and Duties",t:"Participation in school activities and programs according to what is assigned to him / her",m:4},
+  {n:16,d:"Job Performance and Duties",t:"Commitment to the school's systems and directions",m:4},
+  {n:17,d:"Communication and Interaction",t:"Respect for the person in charge and acceptance of what is issued by him / her regarding work",m:4},
+  {n:18,d:"Communication and Interaction",t:"Follow-up and communication with the person in charge regarding points of deficiency in the work environment",m:4},
+  {n:19,d:"Communication and Interaction",t:"Good treatment of work colleagues",m:4},
+  {n:20,d:"Communication and Interaction",t:"Good relationship and dealings with parents, and meeting them at the specified times",m:4},
+  {n:21,d:"Educational Role",t:"Interaction with the behavioral values project and working to instill values and attitudes",m:4},
+  {n:22,d:"Educational Role",t:"Serves as a good role model for students, respects them, and communicates with them using educational methods",m:4},
+  {n:23,d:"Self and Professional Development",t:"Presenting developmental ideas for work and solving problems in the work environment",m:4},
+  {n:24,d:"Self and Professional Development",t:"Initiative and volunteering for tasks that serve the work environment without being assigned",m:4},
+  {n:25,d:"Management Opinion and General Impression",t:"Management opinion and the general impression",m:4}];
+const TEVAL_MAX=TEVAL_CRITERIA.reduce(function(a,c){return a+c.m;},0);
+const TEVAL_DOMAINS=TEVAL_CRITERIA.reduce(function(a,c){if(a.indexOf(c.d)<0)a.push(c.d);return a;},[]);
+
+function getTevals(){const v=DB.get('teacher_evaluations');return Array.isArray(v)?v:[];}
+
+function tevalM(id){
+  const canDo=['superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
+  if(!canDo){toast('Only the principal, vice principal or academic supervisor can evaluate','danger');return;}
+  const ex=id?getTevals().find(x=>x.id===id):null;
+  const scores=(ex&&ex.scores)||{};
+  const s=DB.get('settings')||{};
+  const staff=getAssignableStaff();
+  let body='';
+  TEVAL_DOMAINS.forEach(function(dom){
+    const rows=TEVAL_CRITERIA.filter(function(c){return c.d===dom;});
+    const domMax=rows.reduce(function(a,c){return a+c.m;},0);
+    body+='<div style="margin-bottom:10px;border:1px solid var(--bd);border-radius:var(--rs);overflow:hidden">'
+     +'<div style="background:var(--ac3);padding:7px 11px;font-size:12px;font-weight:700;color:var(--ac);display:flex;justify-content:space-between">'
+     +'<span>'+esc(dom)+'</span><span style="font-size:11px">out of '+domMax+'</span></div>'
+     +'<table style="width:100%;border-collapse:collapse;font-size:11px">'
+     +rows.map(function(c){
+       return '<tr style="border-bottom:1px solid var(--bd)">'
+        +'<td style="padding:6px 8px;width:26px;color:var(--tx3)">'+c.n+'</td>'
+        +'<td style="padding:6px 8px">'+esc(c.t)+'</td>'
+        +'<td style="padding:6px 8px;width:52px;text-align:center;color:var(--tx3)">'+c.m+'</td>'
+        +'<td style="padding:4px 8px;width:78px"><input type="number" id="tv-'+c.n+'" min="0" max="'+c.m+'" step="0.5" value="'+(scores[c.n]!==undefined?esc(String(scores[c.n])):'')+'" oninput="tevalTotal()" style="width:100%;padding:4px 6px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;text-align:center"></td>'
+        +'</tr>';
+     }).join('')
+     +'</table></div>';
+  });
+  openM('<div class="mh"><h3>📋 Administrative Performance Evaluation</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Administrative Performance Evaluation Report for Teachers — enter the mark obtained for each criterion.</div>'
+  +'<div class="fr f2"><div class="fg"><label>Employee / Teacher Name *</label>'
+    +'<input id="tv-name" list="tv-staff" autocomplete="off" value="'+esc((ex&&ex.teacher)||'')+'" placeholder="Type or pick a name">'
+    +'<datalist id="tv-staff">'+staff.map(function(x){return '<option value="'+esc(x.name)+'">'+esc(x.detail)+'</option>';}).join('')+'</datalist></div>'
+  +'<div class="fg"><label>Specialization</label><input id="tv-spec" value="'+esc((ex&&ex.specialization)||'')+'" placeholder="e.g. Mathematics"></div></div>'
+  +'<div class="fr f3"><div class="fg"><label>Stage</label><input id="tv-stage" value="'+esc((ex&&ex.stage)||'')+'" placeholder="e.g. Primary"></div>'
+  +'<div class="fg"><label>Academic Year</label><input id="tv-year" value="'+esc((ex&&ex.academicYear)||s.academicYear||'')+'"></div>'
+  +'<div class="fg"><label>Date</label><input type="date" id="tv-date" value="'+esc((ex&&ex.date)||new Date().toISOString().split('T')[0])+'"></div></div>'
+  +body
+  +'<div class="fg"><label>Notes</label><textarea id="tv-notes" placeholder="Any additional remarks…">'+esc((ex&&ex.notes)||'')+'</textarea></div>'
+  +'<div id="tv-total" class="al ag" style="font-size:14px;font-weight:700"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +(ex?'<button class="btn bg2 bsm" onclick="expTevalPDF(\''+escJs(ex.id)+'\')">📄 PDF</button>':'')
+  +'<button class="btn bp" onclick="saveTeval('+(ex?'\''+escJs(ex.id)+'\'':'null')+')">'+T('save')+' →</button></div>',true);
+  tevalTotal();
+}
+
+function tevalTotal(){
+  let got=0,filled=0;
+  TEVAL_CRITERIA.forEach(function(c){
+    const el=document.getElementById('tv-'+c.n);
+    if(!el)return;
+    let v=parseFloat(el.value);
+    if(isNaN(v))return;
+    if(v>c.m){v=c.m;el.value=c.m;}
+    if(v<0){v=0;el.value=0;}
+    got+=v;filled++;
+  });
+  const el=document.getElementById('tv-total');
+  if(!el)return;
+  const pct=TEVAL_MAX?Math.round(got/TEVAL_MAX*1000)/10:0;
+  el.innerHTML='Total: <strong>'+got+'</strong> / '+TEVAL_MAX+' &nbsp;·&nbsp; '+pct+'%'
+    +' <span style="font-size:11px;font-weight:400;color:var(--tx3)">('+filled+' of '+TEVAL_CRITERIA.length+' criteria scored)</span>';
+}
+
+function saveTeval(id){
+  const name=document.getElementById('tv-name').value.trim();
+  if(!name){toast('Enter the teacher name','danger');return;}
+  const scores={};let got=0;
+  TEVAL_CRITERIA.forEach(function(c){
+    const el=document.getElementById('tv-'+c.n);
+    const v=parseFloat(el?el.value:'');
+    if(!isNaN(v)){scores[c.n]=v;got+=v;}
+  });
+  const list=getTevals();
+  const rec={
+    id:id||nid('tv'),teacher:name,
+    specialization:document.getElementById('tv-spec').value.trim(),
+    stage:document.getElementById('tv-stage').value.trim(),
+    academicYear:document.getElementById('tv-year').value.trim(),
+    date:document.getElementById('tv-date').value,
+    notes:document.getElementById('tv-notes').value.trim(),
+    scores:scores,total:got,max:TEVAL_MAX,
+    evaluatedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),evaluatedById:CU.id,
+    updated:new Date().toISOString()
+  };
+  const i=list.findIndex(function(x){return x.id===rec.id;});
+  if(i>=0){rec.created=list[i].created||rec.updated;list[i]=rec;}
+  else{rec.created=rec.updated;list.push(rec);}
+  DB.set('teacher_evaluations',list);
+  logA((id?'Updated':'Recorded')+' teacher evaluation for '+name+' ('+got+'/'+TEVAL_MAX+')');
+  closeM();toast('Evaluation saved — '+got+'/'+TEVAL_MAX,'success');
+  rClassVisits();
+}
+
+function delTeval(id){
+  const r=getTevals().find(function(x){return x.id===id;});
+  if(!r)return;
+  if(!confirm('Delete the evaluation for '+(r.teacher||'this teacher')+'?'))return;
+  DB.set('teacher_evaluations',getTevals().filter(function(x){return x.id!==id;}));
+  logA('Deleted teacher evaluation for '+(r.teacher||''));
+  toast('Evaluation deleted','danger');rClassVisits();
+}
+
+// The printable form, laid out as the original document
+function expTevalPDF(id){
+  const r=getTevals().find(function(x){return x.id===id;});
+  if(!r){toast('Evaluation not found','danger');return;}
+  const s=DB.get('settings')||{};
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to generate the form','danger');return;}
+  let rowsHtml='';
+  TEVAL_DOMAINS.forEach(function(dom){
+    const rows=TEVAL_CRITERIA.filter(function(c){return c.d===dom;});
+    rows.forEach(function(c,i){
+      rowsHtml+='<tr>'
+       +'<td class="c">'+c.n+'</td>'
+       +(i===0?'<td class="c dom" rowspan="'+rows.length+'">'+esc(dom)+'</td>':'')
+       +'<td>'+esc(c.t)+'</td>'
+       +'<td class="c">'+c.m+'</td>'
+       +'<td class="c"><strong>'+(r.scores&&r.scores[c.n]!==undefined?r.scores[c.n]:'')+'</strong></td>'
+       +'</tr>';
+    });
+  });
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Teacher Evaluation — '+esc(r.teacher||'')+'</title>'
+  +'<style>@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;color:#111;font-size:11px}'
+  +'h1{text-align:center;font-size:16px;margin:10px 0 14px}'
+  +'table{width:100%;border-collapse:collapse;margin-bottom:10px}'
+  +'th,td{border:1px solid #000;padding:5px 7px;vertical-align:middle}'
+  +'th{background:#D9EAF7;font-size:11px;text-align:center}'
+  +'td.c{text-align:center}td.dom{font-weight:600;background:#fafafa}'
+  +'.hdr{display:flex;align-items:center;gap:12px;margin-bottom:8px}.hdr img{height:56px}'
+  +'.tot{background:#D9EAF7;font-weight:bold;text-align:center}'
+  +'.notes{border:1px solid #000;padding:8px;min-height:44px;margin-bottom:10px}'
+  +'.eq{font-size:10px;line-height:1.7;margin:10px 0}'
+  +'.sign{margin-top:22px;font-size:11px}'
+  +'@media print{button{display:none}}</style></head><body>'
+  +'<button onclick="window.print()" style="margin-bottom:10px;padding:7px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">🖨️ Print / Save as PDF</button>'
+  +'<div class="hdr"><img src="'+TEVAL_LOGO+'" alt=""><div><strong>'+esc(s.schoolName||'')+'</strong>'
+    +(s.schoolNameAr?'<br>'+esc(s.schoolNameAr):'')+'</div></div>'
+  +'<h1>Administrative Performance Evaluation Report for Teachers</h1>'
+  +'<table><tr><th style="width:22%">Employee / Teacher Name</th><td>'+esc(r.teacher||'')+'</td>'
+    +'<th style="width:16%">Specialization</th><td>'+esc(r.specialization||'')+'</td></tr>'
+  +'<tr><th>Stage</th><td>'+esc(r.stage||'')+'</td><th>Academic Year</th><td>'+esc(r.academicYear||'')+'</td></tr></table>'
+  +'<table><thead><tr><th style="width:34px">No.</th><th style="width:130px">Domain</th><th>Evaluation Criteria</th><th style="width:46px">Mark</th><th style="width:70px">Mark Obtained</th></tr></thead>'
+  +'<tbody>'+rowsHtml
+  +'<tr><td colspan="3" class="tot">Total</td><td class="tot">'+TEVAL_MAX+'</td><td class="tot">'+(r.total||0)+'</td></tr>'
+  +'</tbody></table>'
+  +(r.notes?'<div><strong>Notes</strong><div class="notes">'+esc(r.notes)+'</div></div>':'')
+  +'<div class="eq">Through these three forms, the teacher\'s scores are collected according to the following equation:<br>'
+  +'Score S = the average of the teacher\'s scores from the teacher evaluation form in a classroom lesson + the teacher\'s score from applying the teaching strategy = 100 marks.<br>'
+  +'Score Ṣ = the portfolio evaluation score = 10 marks.<br>'
+  +'Score ʿ = the teacher\'s score in the administrative evaluation.</div>'
+  +'<table><tr><td class="c" style="font-weight:bold;padding:8px">Final Teacher Score = (S / 2) + ((ʿ / 100) × 40) + Ṣ</td></tr></table>'
+  +'<div class="sign">Evaluated by: <strong>'+esc(r.evaluatedBy||'')+'</strong> &nbsp;·&nbsp; Date: '+esc(r.date||'')
+  +'<br><br>Head of Education Group: ______________________</div>'
+  +'</body></html>');
+  w.document.close();
+  toast('Evaluation form ready — use Print / Save as PDF','success');
+}
+
 function rClassVisits(){
   const visits=DB.get('class_visits')||[];const isP=['superadmin','principal','quality_incharge'].includes(CU.role),isAc=CU.role==='academic_supervisor';const myV=isP||isAc?visits:visits.filter(v=>v.supervisorId===CU.id);const canC=['superadmin','academic_supervisor','quality_supervisor'].includes(CU.role);
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('class_visits')+' ('+myV.length+')</h3>'+(canC?'<button class="btn bp bsm" onclick="addVisitM()">+ New Evaluation</button>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Teacher Performance Evaluation Card — Total: '+EVAL_TOTAL+' points across 4 categories</div></div><div class="card"><div class="tw"><table><thead><tr><th>'+T('teacher')+'</th><th>'+T('subject')+'</th><th>'+T('grade')+'</th><th>'+T('date')+'</th><th>Score</th><th>'+T('rating')+'</th><th>Supervisor</th><th>Academic Ack</th><th>Principal Ack</th><th>Actions</th></tr></thead><tbody>'+myV.map(v=>{const total=v.scores?evalGetTotal(v.scores):0;const pct=Math.round(total/EVAL_TOTAL*100);const g=evalGetGrade(pct);return'<tr><td><strong>'+v.teacher+'</strong></td><td>'+v.subject+'</td><td>Gr '+v.grade+(v.section?'-'+v.section:'')+'</td><td style="font-size:10px;color:var(--tx3)">'+v.date+'</td><td><strong style="color:var(--ac)">'+total+'/'+EVAL_TOTAL+'</strong> <span style="font-size:10px;color:var(--tx3)">('+pct+'%)</span></td><td><span class="badge '+g.c+'">'+g.l+'</span></td><td style="font-size:11px;color:var(--tx3)">'+v.supervisorName+'</td><td>'+(v.academicAck?'<span class="badge btl">✓ '+(v.academicAckDate||'')+'</span>':'<span class="badge bgo">Pending</span>')+'</td><td>'+(v.principalAck?'<span class="badge bgn">✓ '+(v.principalAckDate||'')+'</span>':v.academicAck?'<span class="badge bbl">Ready</span>':'<span class="badge bgr">Waiting</span>')+'</td><td><button class="btn bg2 bxs" onclick="vVisit(\''+v.id+'\')">View</button></td></tr>';}).join('')+'</tbody></table></div>'+(myV.length===0?'<div class="emp"><div class="ei">📝</div><p>'+T('no_records')+'</p></div>':'')+'</div>';
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('class_visits')+' ('+myV.length+')</h3>'+(canC?'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="tevalM()">📋 Teacher Evaluation</button><button class="btn bp bsm" onclick="addVisitM()">+ New Evaluation</button></div>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Teacher Performance Evaluation Card — Total: '+EVAL_TOTAL+' points across 4 categories</div></div><div class="card"><div class="tw"><table><thead><tr><th>'+T('teacher')+'</th><th>'+T('subject')+'</th><th>'+T('grade')+'</th><th>'+T('date')+'</th><th>Score</th><th>'+T('rating')+'</th><th>Supervisor</th><th>Academic Ack</th><th>Principal Ack</th><th>Actions</th></tr></thead><tbody>'+myV.map(v=>{const total=v.scores?evalGetTotal(v.scores):0;const pct=Math.round(total/EVAL_TOTAL*100);const g=evalGetGrade(pct);return'<tr><td><strong>'+v.teacher+'</strong></td><td>'+v.subject+'</td><td>Gr '+v.grade+(v.section?'-'+v.section:'')+'</td><td style="font-size:10px;color:var(--tx3)">'+v.date+'</td><td><strong style="color:var(--ac)">'+total+'/'+EVAL_TOTAL+'</strong> <span style="font-size:10px;color:var(--tx3)">('+pct+'%)</span></td><td><span class="badge '+g.c+'">'+g.l+'</span></td><td style="font-size:11px;color:var(--tx3)">'+v.supervisorName+'</td><td>'+(v.academicAck?'<span class="badge btl">✓ '+(v.academicAckDate||'')+'</span>':'<span class="badge bgo">Pending</span>')+'</td><td>'+(v.principalAck?'<span class="badge bgn">✓ '+(v.principalAckDate||'')+'</span>':v.academicAck?'<span class="badge bbl">Ready</span>':'<span class="badge bgr">Waiting</span>')+'</td><td><button class="btn bg2 bxs" onclick="vVisit(\''+v.id+'\')">View</button></td></tr>';}).join('')+'</tbody></table></div>'+(myV.length===0?'<div class="emp"><div class="ei">📝</div><p>'+T('no_records')+'</p></div>':'')+'</div>'+buildTevalCard();
+}
+
+// Saved administrative evaluations, listed under the class visits
+function buildTevalCard(){
+  const canDo=['superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
+  const list=getTevals().slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+  return '<div class="card" style="margin-top:13px"><div class="sh2"><h3>📋 Administrative Performance Evaluations ('+list.length+')</h3>'
+   +(canDo?'<button class="btn bs bsm" onclick="tevalM()">+ New Evaluation Form</button>':'')+'</div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Administrative Performance Evaluation Report for Teachers — '+TEVAL_CRITERIA.length+' criteria, '+TEVAL_MAX+' marks.</div>'
+   +(list.length?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Teacher</th><th>Specialization</th><th>Stage</th><th>Year</th><th>Date</th><th>Score</th><th>Evaluated By</th><th></th></tr></thead><tbody>'
+     +list.map(function(r){
+       const pct=r.max?Math.round((r.total||0)/r.max*100):0;
+       return '<tr><td><strong>'+esc(r.teacher||'—')+'</strong></td><td>'+esc(r.specialization||'—')+'</td><td>'+esc(r.stage||'—')+'</td>'
+        +'<td>'+esc(r.academicYear||'—')+'</td><td class="mono">'+esc(r.date||'')+'</td>'
+        +'<td><span class="badge '+(pct>=80?'bgn':pct>=60?'bgo':'brd')+'">'+(r.total||0)+' / '+(r.max||TEVAL_MAX)+' · '+pct+'%</span></td>'
+        +'<td style="font-size:10px;color:var(--tx3)">'+esc(r.evaluatedBy||'')+'</td>'
+        +'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="expTevalPDF(\''+escJs(r.id)+'\')">📄 PDF</button>'
+        +(canDo?'<button class="btn bg2 bxs" onclick="tevalM(\''+escJs(r.id)+'\')">✏️</button><button class="btn bd3 bxs" onclick="delTeval(\''+escJs(r.id)+'\')">🗑️</button>':'')+'</td></tr>';
+     }).join('')+'</tbody></table></div>'
+     :'<div class="emp" style="padding:14px"><div class="ei">📋</div><p style="font-size:11px">No administrative evaluations recorded yet</p></div>')
+   +'</div>';
 }
 
 function buildEvalForm(scores,readonly){
@@ -6651,7 +6866,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
-  'duty_places','duty_remarks','classroom_discipline','todos','deleted_ids','excused',
+  'duty_places','duty_remarks','classroom_discipline','todos','deleted_ids','excused','teacher_evaluations',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -6669,7 +6884,7 @@ function shouldSyncKey(k){return SYNC_KEYS.includes(k)||isSessionScopedKey(k);}
 const AUTO_REFRESH_MAP = {
   students:['rStudents'],teachers:['rTeachers','rTeacherReports','rTeacherAchievements'],
   accounts:['rAccounts'],complaints:['rComplaints','rDash'],tasks:['rTasks','rDash'],
-  infractions:['rInfractions'],referrals:['rReferrals'],class_visits:['rClassVisits','rTeacherReports'],
+  infractions:['rInfractions'],referrals:['rReferrals'],teacher_evaluations:['rClassVisits'],class_visits:['rClassVisits','rTeacherReports'],
   notebook_checks:['rNbChecks'],activities:['rActivities'],activity_reports:['rActivityReports'],
   early_pickups:['rPickup'],announcements:['rAnnouncements','rDash'],
   discipline_reports:['rDiscipline'],activity_log:['rActLog','rDash'],
