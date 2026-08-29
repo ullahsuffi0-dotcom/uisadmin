@@ -2994,7 +2994,7 @@ function vTchReports(tchId){
 function buildTchCategoryAvg(visits){
   const validVisits=visits.filter(v=>v.scores);
   if(!validVisits.length)return'<div class="emp"><p style="font-size:12px">No scored visits available</p></div>';
-  return EVAL_RUBRIC.map(cat=>{
+  return evalRubric().map(cat=>{
     let catSum=0,catMax=0;
     cat.items.forEach(it=>{catMax+=it.max;});
     const catTotalMax=catMax*validVisits.length;
@@ -3046,7 +3046,7 @@ const EVAL_RUBRIC=[
 ];
 const EVAL_TOTAL=106; // sum of all max scores
 
-function evalGetTotal(scores){let t=0;EVAL_RUBRIC.forEach(c=>c.items.forEach(it=>{t+=parseInt(scores?.[it.k])||0;}));return t;}
+function evalGetTotal(scores){let t=0;evalRubric().forEach(c=>c.items.forEach(it=>{t+=parseInt(scores?.[it.k])||0;}));return t;}
 function evalGetGrade(pct){if(pct>=90)return{l:'Excellent',c:'bgn'};if(pct>=75)return{l:'Good',c:'btl'};if(pct>=60)return{l:'Satisfactory',c:'bgo'};return{l:'Needs Improvement',c:'brd'};}
 
 // ═══════════════════════════════════════════════════════════
@@ -3084,6 +3084,125 @@ const TEVAL_DOMAINS=TEVAL_CRITERIA.reduce(function(a,c){if(a.indexOf(c.d)<0)a.pu
 
 function getTevals(){const v=DB.get('teacher_evaluations');return Array.isArray(v)?v:[];}
 
+// ── Editable rubrics ────────────────────────────────────────
+// The mark allotted to each criterion can be changed by the superadmin.
+// Saved evaluations keep the maximum that applied when they were recorded,
+// so re-weighting the form never rewrites past scores.
+function tevalCriteria(){
+  const c=DB.get('teval_criteria');
+  if(Array.isArray(c)&&c.length)return c;
+  return TEVAL_CRITERIA;
+}
+function tevalMax(){return tevalCriteria().reduce(function(a,c){return a+(parseFloat(c.m)||0);},0);}
+function tevalDomains(){
+  return tevalCriteria().reduce(function(a,c){if(a.indexOf(c.d)<0)a.push(c.d);return a;},[]);
+}
+function evalRubric(){
+  const r=DB.get('eval_rubric');
+  if(Array.isArray(r)&&r.length)return r;
+  return EVAL_RUBRIC;
+}
+
+// Superadmin editor for the administrative evaluation marks
+function editTevalMarksM(){
+  if(CU.role!=='superadmin'){toast('Only the Super Admin can change the marks','danger');return;}
+  const crit=JSON.parse(JSON.stringify(tevalCriteria()));
+  window._tevalEdit=crit;
+  let body='';
+  tevalDomains().forEach(function(dom){
+    const rows=crit.filter(function(c){return c.d===dom;});
+    body+='<div style="margin-bottom:10px;border:1px solid var(--bd);border-radius:var(--rs);overflow:hidden">'
+     +'<div style="background:var(--ac3);padding:7px 11px;font-size:12px;font-weight:700;color:var(--ac)">'+esc(dom)+'</div>'
+     +'<table style="width:100%;border-collapse:collapse;font-size:11px">'
+     +rows.map(function(c){
+       const i=crit.indexOf(c);
+       return '<tr style="border-bottom:1px solid var(--bd)">'
+        +'<td style="padding:5px 8px;width:26px;color:var(--tx3)">'+c.n+'</td>'
+        +'<td style="padding:4px 8px"><input value="'+esc(c.t)+'" oninput="window._tevalEdit['+i+'].t=this.value" style="width:100%;padding:4px 6px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:11px"></td>'
+        +'<td style="padding:4px 8px;width:80px"><input type="number" min="0" step="0.5" value="'+esc(String(c.m))+'" oninput="window._tevalEdit['+i+'].m=parseFloat(this.value)||0;tevalMarksTotal()" style="width:100%;padding:4px 6px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;text-align:center"></td>'
+        +'</tr>';
+     }).join('')+'</table></div>';
+  });
+  openM('<div class="mh"><h3>⚙️ Edit Evaluation Marks</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al aw">Changing a mark affects <strong>new</strong> evaluations only. Evaluations already recorded keep the marks that applied at the time.</div>'
+  +body
+  +'<div id="tvm-total" class="al ag" style="font-size:14px;font-weight:700"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bd3 bsm" onclick="resetTevalMarks()">↺ Reset to Form Default</button>'
+  +'<button class="btn bp" onclick="saveTevalMarks()">'+T('save')+' →</button></div>',true);
+  tevalMarksTotal();
+}
+function tevalMarksTotal(){
+  const el=document.getElementById('tvm-total');
+  if(!el)return;
+  const t=(window._tevalEdit||[]).reduce(function(a,c){return a+(parseFloat(c.m)||0);},0);
+  el.innerHTML='Total marks: <strong>'+t+'</strong>'
+   +(t===100?' <span style="font-size:11px;font-weight:400">— matches the form\'s stated total</span>'
+    :' <span style="font-size:11px;font-weight:400;color:var(--dg)">— the form states a total of 100</span>');
+}
+function saveTevalMarks(){
+  const crit=window._tevalEdit||[];
+  if(!crit.length){toast('Nothing to save','danger');return;}
+  DB.set('teval_criteria',crit);
+  logA('Updated administrative evaluation marks (total '+crit.reduce(function(a,c){return a+(parseFloat(c.m)||0);},0)+')');
+  closeM();toast('Marks updated','success');rClassVisits();
+}
+function resetTevalMarks(){
+  if(!confirm('Restore every mark and criterion to the original form?'))return;
+  DB.del('teval_criteria');
+  closeM();toast('Reset to the form default','info');rClassVisits();
+}
+
+// Superadmin editor for the class-visit evaluation card
+function editVisitMarksM(){
+  if(CU.role!=='superadmin'){toast('Only the Super Admin can change the marks','danger');return;}
+  const rub=JSON.parse(JSON.stringify(evalRubric()));
+  window._rubEdit=rub;
+  let body='';
+  rub.forEach(function(cat,ci){
+    body+='<div style="margin-bottom:10px;border:1px solid var(--bd);border-radius:var(--rs);overflow:hidden">'
+     +'<div style="background:var(--ac3);padding:6px 10px"><input value="'+esc(cat.cat)+'" oninput="window._rubEdit['+ci+'].cat=this.value" style="width:100%;padding:4px 6px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);color:var(--ac);font-size:12px;font-weight:700"></div>'
+     +'<table style="width:100%;border-collapse:collapse;font-size:11px">'
+     +(cat.items||[]).map(function(it,ii){
+       return '<tr style="border-bottom:1px solid var(--bd)">'
+        +'<td style="padding:4px 8px"><input value="'+esc(it.l)+'" oninput="window._rubEdit['+ci+'].items['+ii+'].l=this.value" style="width:100%;padding:4px 6px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:11px"></td>'
+        +'<td style="padding:4px 8px;width:80px"><input type="number" min="0" step="0.5" value="'+esc(String(it.max))+'" oninput="window._rubEdit['+ci+'].items['+ii+'].max=parseFloat(this.value)||0;rubMarksTotal()" style="width:100%;padding:4px 6px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px;text-align:center"></td>'
+        +'</tr>';
+     }).join('')+'</table></div>';
+  });
+  openM('<div class="mh"><h3>⚙️ Edit Class Visit Marks</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al aw">Changing a mark affects <strong>new</strong> class visits only. Visits already recorded keep their original scoring.</div>'
+  +body
+  +'<div id="rub-total" class="al ag" style="font-size:14px;font-weight:700"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bd3 bsm" onclick="resetVisitMarks()">↺ Reset to Default</button>'
+  +'<button class="btn bp" onclick="saveVisitMarks()">'+T('save')+' →</button></div>',true);
+  rubMarksTotal();
+}
+function rubMarksTotal(){
+  const el=document.getElementById('rub-total');
+  if(!el)return;
+  let t=0;
+  (window._rubEdit||[]).forEach(function(c){(c.items||[]).forEach(function(i){t+=parseFloat(i.max)||0;});});
+  el.innerHTML='Total marks: <strong>'+t+'</strong>';
+}
+function saveVisitMarks(){
+  const rub=window._rubEdit||[];
+  if(!rub.length){toast('Nothing to save','danger');return;}
+  DB.set('eval_rubric',rub);
+  logA('Updated class visit evaluation marks');
+  closeM();toast('Marks updated','success');rClassVisits();
+}
+function resetVisitMarks(){
+  if(!confirm('Restore the class visit card to its original marks?'))return;
+  DB.del('eval_rubric');
+  closeM();toast('Reset to default','info');rClassVisits();
+}
+
 function tevalM(id){
   const canDo=['superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
   if(!canDo){toast('Only the principal, vice principal or academic supervisor can evaluate','danger');return;}
@@ -3092,8 +3211,8 @@ function tevalM(id){
   const s=DB.get('settings')||{};
   const staff=getAssignableStaff();
   let body='';
-  TEVAL_DOMAINS.forEach(function(dom){
-    const rows=TEVAL_CRITERIA.filter(function(c){return c.d===dom;});
+  tevalDomains().forEach(function(dom){
+    const rows=tevalCriteria().filter(function(c){return c.d===dom;});
     const domMax=rows.reduce(function(a,c){return a+c.m;},0);
     body+='<div style="margin-bottom:10px;border:1px solid var(--bd);border-radius:var(--rs);overflow:hidden">'
      +'<div style="background:var(--ac3);padding:7px 11px;font-size:12px;font-weight:700;color:var(--ac);display:flex;justify-content:space-between">'
@@ -3131,7 +3250,7 @@ function tevalM(id){
 
 function tevalTotal(){
   let got=0,filled=0;
-  TEVAL_CRITERIA.forEach(function(c){
+  tevalCriteria().forEach(function(c){
     const el=document.getElementById('tv-'+c.n);
     if(!el)return;
     let v=parseFloat(el.value);
@@ -3142,16 +3261,16 @@ function tevalTotal(){
   });
   const el=document.getElementById('tv-total');
   if(!el)return;
-  const pct=TEVAL_MAX?Math.round(got/TEVAL_MAX*1000)/10:0;
-  el.innerHTML='Total: <strong>'+got+'</strong> / '+TEVAL_MAX+' &nbsp;·&nbsp; '+pct+'%'
-    +' <span style="font-size:11px;font-weight:400;color:var(--tx3)">('+filled+' of '+TEVAL_CRITERIA.length+' criteria scored)</span>';
+  const MX=tevalMax();const pct=MX?Math.round(got/MX*1000)/10:0;
+  el.innerHTML='Total: <strong>'+got+'</strong> / '+MX+' &nbsp;·&nbsp; '+pct+'%'
+    +' <span style="font-size:11px;font-weight:400;color:var(--tx3)">('+filled+' of '+tevalCriteria().length+' criteria scored)</span>';
 }
 
 function saveTeval(id){
   const name=document.getElementById('tv-name').value.trim();
   if(!name){toast('Enter the teacher name','danger');return;}
   const scores={};let got=0;
-  TEVAL_CRITERIA.forEach(function(c){
+  tevalCriteria().forEach(function(c){
     const el=document.getElementById('tv-'+c.n);
     const v=parseFloat(el?el.value:'');
     if(!isNaN(v)){scores[c.n]=v;got+=v;}
@@ -3164,7 +3283,7 @@ function saveTeval(id){
     academicYear:document.getElementById('tv-year').value.trim(),
     date:document.getElementById('tv-date').value,
     notes:document.getElementById('tv-notes').value.trim(),
-    scores:scores,total:got,max:TEVAL_MAX,
+    scores:scores,total:got,max:tevalMax(),
     evaluatedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),evaluatedById:CU.id,
     updated:new Date().toISOString()
   };
@@ -3172,8 +3291,8 @@ function saveTeval(id){
   if(i>=0){rec.created=list[i].created||rec.updated;list[i]=rec;}
   else{rec.created=rec.updated;list.push(rec);}
   DB.set('teacher_evaluations',list);
-  logA((id?'Updated':'Recorded')+' teacher evaluation for '+name+' ('+got+'/'+TEVAL_MAX+')');
-  closeM();toast('Evaluation saved — '+got+'/'+TEVAL_MAX,'success');
+  logA((id?'Updated':'Recorded')+' teacher evaluation for '+name+' ('+got+'/'+tevalMax()+')');
+  closeM();toast('Evaluation saved — '+got+'/'+tevalMax(),'success');
   rClassVisits();
 }
 
@@ -3194,8 +3313,8 @@ function expTevalPDF(id){
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to generate the form','danger');return;}
   let rowsHtml='';
-  TEVAL_DOMAINS.forEach(function(dom){
-    const rows=TEVAL_CRITERIA.filter(function(c){return c.d===dom;});
+  tevalDomains().forEach(function(dom){
+    const rows=tevalCriteria().filter(function(c){return c.d===dom;});
     rows.forEach(function(c,i){
       rowsHtml+='<tr>'
        +'<td class="c">'+c.n+'</td>'
@@ -3228,7 +3347,7 @@ function expTevalPDF(id){
   +'<tr><th>Stage</th><td>'+esc(r.stage||'')+'</td><th>Academic Year</th><td>'+esc(r.academicYear||'')+'</td></tr></table>'
   +'<table><thead><tr><th style="width:34px">No.</th><th style="width:130px">Domain</th><th>Evaluation Criteria</th><th style="width:46px">Mark</th><th style="width:70px">Mark Obtained</th></tr></thead>'
   +'<tbody>'+rowsHtml
-  +'<tr><td colspan="3" class="tot">Total</td><td class="tot">'+TEVAL_MAX+'</td><td class="tot">'+(r.total||0)+'</td></tr>'
+  +'<tr><td colspan="3" class="tot">Total</td><td class="tot">'+(r.max||tevalMax())+'</td><td class="tot">'+(r.total||0)+'</td></tr>'
   +'</tbody></table>'
   +(r.notes?'<div><strong>Notes</strong><div class="notes">'+esc(r.notes)+'</div></div>':'')
   +'<div class="eq">Through these three forms, the teacher\'s scores are collected according to the following equation:<br>'
@@ -3245,7 +3364,7 @@ function expTevalPDF(id){
 
 function rClassVisits(){
   const visits=DB.get('class_visits')||[];const isP=['superadmin','principal','quality_incharge'].includes(CU.role),isAc=CU.role==='academic_supervisor';const myV=isP||isAc?visits:visits.filter(v=>v.supervisorId===CU.id);const canC=['superadmin','academic_supervisor','quality_supervisor'].includes(CU.role);
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('class_visits')+' ('+myV.length+')</h3>'+(canC?'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="tevalM()">📋 Teacher Evaluation</button><button class="btn bp bsm" onclick="addVisitM()">+ New Evaluation</button></div>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Teacher Performance Evaluation Card — Total: '+EVAL_TOTAL+' points across 4 categories</div></div><div class="card"><div class="tw"><table><thead><tr><th>'+T('teacher')+'</th><th>'+T('subject')+'</th><th>'+T('grade')+'</th><th>'+T('date')+'</th><th>Score</th><th>'+T('rating')+'</th><th>Supervisor</th><th>Academic Ack</th><th>Principal Ack</th><th>Actions</th></tr></thead><tbody>'+myV.map(v=>{const total=v.scores?evalGetTotal(v.scores):0;const pct=Math.round(total/EVAL_TOTAL*100);const g=evalGetGrade(pct);return'<tr><td><strong>'+v.teacher+'</strong></td><td>'+v.subject+'</td><td>Gr '+v.grade+(v.section?'-'+v.section:'')+'</td><td style="font-size:10px;color:var(--tx3)">'+v.date+'</td><td><strong style="color:var(--ac)">'+total+'/'+EVAL_TOTAL+'</strong> <span style="font-size:10px;color:var(--tx3)">('+pct+'%)</span></td><td><span class="badge '+g.c+'">'+g.l+'</span></td><td style="font-size:11px;color:var(--tx3)">'+v.supervisorName+'</td><td>'+(v.academicAck?'<span class="badge btl">✓ '+(v.academicAckDate||'')+'</span>':'<span class="badge bgo">Pending</span>')+'</td><td>'+(v.principalAck?'<span class="badge bgn">✓ '+(v.principalAckDate||'')+'</span>':v.academicAck?'<span class="badge bbl">Ready</span>':'<span class="badge bgr">Waiting</span>')+'</td><td><button class="btn bg2 bxs" onclick="vVisit(\''+v.id+'\')">View</button></td></tr>';}).join('')+'</tbody></table></div>'+(myV.length===0?'<div class="emp"><div class="ei">📝</div><p>'+T('no_records')+'</p></div>':'')+'</div>'+buildTevalCard();
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('class_visits')+' ('+myV.length+')</h3>'+(canC?'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="tevalM()">📋 Teacher Evaluation</button>'+(CU.role==='superadmin'?'<button class="btn bg2 bsm" onclick="editVisitMarksM()" title="Edit the class visit marks">⚙️ Visit Marks</button>':'')+'<button class="btn bp bsm" onclick="addVisitM()">+ New Evaluation</button></div>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Teacher Performance Evaluation Card — Total: '+EVAL_TOTAL+' points across 4 categories</div></div><div class="card"><div class="tw"><table><thead><tr><th>'+T('teacher')+'</th><th>'+T('subject')+'</th><th>'+T('grade')+'</th><th>'+T('date')+'</th><th>Score</th><th>'+T('rating')+'</th><th>Supervisor</th><th>Academic Ack</th><th>Principal Ack</th><th>Actions</th></tr></thead><tbody>'+myV.map(v=>{const total=v.scores?evalGetTotal(v.scores):0;const pct=Math.round(total/EVAL_TOTAL*100);const g=evalGetGrade(pct);return'<tr><td><strong>'+v.teacher+'</strong></td><td>'+v.subject+'</td><td>Gr '+v.grade+(v.section?'-'+v.section:'')+'</td><td style="font-size:10px;color:var(--tx3)">'+v.date+'</td><td><strong style="color:var(--ac)">'+total+'/'+EVAL_TOTAL+'</strong> <span style="font-size:10px;color:var(--tx3)">('+pct+'%)</span></td><td><span class="badge '+g.c+'">'+g.l+'</span></td><td style="font-size:11px;color:var(--tx3)">'+v.supervisorName+'</td><td>'+(v.academicAck?'<span class="badge btl">✓ '+(v.academicAckDate||'')+'</span>':'<span class="badge bgo">Pending</span>')+'</td><td>'+(v.principalAck?'<span class="badge bgn">✓ '+(v.principalAckDate||'')+'</span>':v.academicAck?'<span class="badge bbl">Ready</span>':'<span class="badge bgr">Waiting</span>')+'</td><td><button class="btn bg2 bxs" onclick="vVisit(\''+v.id+'\')">View</button></td></tr>';}).join('')+'</tbody></table></div>'+(myV.length===0?'<div class="emp"><div class="ei">📝</div><p>'+T('no_records')+'</p></div>':'')+'</div>'+buildTevalCard();
 }
 
 // Saved administrative evaluations, listed under the class visits
@@ -3253,14 +3372,14 @@ function buildTevalCard(){
   const canDo=['superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
   const list=getTevals().slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
   return '<div class="card" style="margin-top:13px"><div class="sh2"><h3>📋 Administrative Performance Evaluations ('+list.length+')</h3>'
-   +(canDo?'<button class="btn bs bsm" onclick="tevalM()">+ New Evaluation Form</button>':'')+'</div>'
-   +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Administrative Performance Evaluation Report for Teachers — '+TEVAL_CRITERIA.length+' criteria, '+TEVAL_MAX+' marks.</div>'
+   +(canDo?'<button class="btn bs bsm" onclick="tevalM()">+ New Evaluation Form</button>':'')+(CU.role==='superadmin'?'<button class="btn bg2 bsm" onclick="editTevalMarksM()">⚙️ Edit Marks</button>':'')+'</div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Administrative Performance Evaluation Report for Teachers — '+tevalCriteria().length+' criteria, '+tevalMax()+' marks.</div>'
    +(list.length?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Teacher</th><th>Specialization</th><th>Stage</th><th>Year</th><th>Date</th><th>Score</th><th>Evaluated By</th><th></th></tr></thead><tbody>'
      +list.map(function(r){
        const pct=r.max?Math.round((r.total||0)/r.max*100):0;
        return '<tr><td><strong>'+esc(r.teacher||'—')+'</strong></td><td>'+esc(r.specialization||'—')+'</td><td>'+esc(r.stage||'—')+'</td>'
         +'<td>'+esc(r.academicYear||'—')+'</td><td class="mono">'+esc(r.date||'')+'</td>'
-        +'<td><span class="badge '+(pct>=80?'bgn':pct>=60?'bgo':'brd')+'">'+(r.total||0)+' / '+(r.max||TEVAL_MAX)+' · '+pct+'%</span></td>'
+        +'<td><span class="badge '+(pct>=80?'bgn':pct>=60?'bgo':'brd')+'">'+(r.total||0)+' / '+(r.max||tevalMax())+' · '+pct+'%</span></td>'
         +'<td style="font-size:10px;color:var(--tx3)">'+esc(r.evaluatedBy||'')+'</td>'
         +'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="expTevalPDF(\''+escJs(r.id)+'\')">📄 PDF</button>'
         +(canDo?'<button class="btn bg2 bxs" onclick="tevalM(\''+escJs(r.id)+'\')">✏️</button><button class="btn bd3 bxs" onclick="delTeval(\''+escJs(r.id)+'\')">🗑️</button>':'')+'</td></tr>';
@@ -3271,7 +3390,7 @@ function buildTevalCard(){
 
 function buildEvalForm(scores,readonly){
   let html='<div style="background:var(--sf2);padding:10px;border-radius:var(--rs);margin-bottom:13px;font-size:11px;color:var(--tx2)">📋 <strong>Teacher Performance Evaluation Card</strong> — Enter score for each criterion (max shown in brackets)</div>';
-  EVAL_RUBRIC.forEach((cat,ci)=>{
+  evalRubric().forEach((cat,ci)=>{
     let catTotal=0,catMax=0;
     cat.items.forEach(it=>{catMax+=it.max;catTotal+=parseInt(scores?.[it.k])||0;});
     html+='<div style="background:var(--sf2);border-radius:var(--rs);padding:10px;margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between"><span>'+(ci+1)+'. '+cat.cat+'</span><span style="color:var(--gd)">'+catTotal+'/'+catMax+'</span></div>';
@@ -3287,14 +3406,14 @@ function buildEvalForm(scores,readonly){
 }
 
 function updEvalTotal(){
-  let total=0;EVAL_RUBRIC.forEach(c=>c.items.forEach(it=>{const el=document.getElementById('ev-'+it.k);if(el){let val=parseInt(el.value)||0;if(val>it.max){val=it.max;el.value=val;}if(val<0){val=0;el.value=val;}total+=val;}}));
+  let total=0;evalRubric().forEach(c=>c.items.forEach(it=>{const el=document.getElementById('ev-'+it.k);if(el){let val=parseInt(el.value)||0;if(val>it.max){val=it.max;el.value=val;}if(val<0){val=0;el.value=val;}total+=val;}}));
   const pct=Math.round(total/EVAL_TOTAL*100);const g=evalGetGrade(pct);
   const tn=document.getElementById('eval-total-num');if(tn)tn.textContent=total;
   const pe=document.getElementById('eval-pct');if(pe)pe.textContent=pct+'%';
   const ge=document.getElementById('eval-grade');if(ge){ge.textContent=g.l;ge.className='badge '+g.c;}
 }
 
-function gatherEvalScores(){const s={};EVAL_RUBRIC.forEach(c=>c.items.forEach(it=>{const el=document.getElementById('ev-'+it.k);s[it.k]=el?parseInt(el.value)||0:0;}));return s;}
+function gatherEvalScores(){const s={};evalRubric().forEach(c=>c.items.forEach(it=>{const el=document.getElementById('ev-'+it.k);s[it.k]=el?parseInt(el.value)||0:0;}));return s;}
 
 function addVisitM(){
   openM('<div class="mh"><h3>📝 Teacher Performance Evaluation</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>'+T('teacher')+' *</label>'+tchSearchWidget('cv-tch-i','cv-tch-d','pickCvTch')+'</div><div id="cv-tch-info" style="display:none" class="al ai"></div><input type="hidden" id="cvt"><div class="fg"><label>'+T('subject')+' *</label><input id="cvs"></div><div class="fr f3"><div class="fg"><label>'+T('grade')+'</label><input id="cvg"></div><div class="fg"><label>'+T('section')+'</label><input id="cvsc"></div><div class="fg"><label>'+T('period')+'</label><input id="cvp"></div></div><div class="fr f2"><div class="fg"><label>'+T('date')+'</label><input type="date" id="cvd" value="'+new Date().toISOString().split('T')[0]+'"></div><div class="fg"><label>Visit Type</label><select id="cvty"><option>Scheduled</option><option>Unannounced</option><option>Follow-up</option></select></div></div>'+buildEvalForm({},false)+'<div class="fg" style="margin-top:13px"><label>'+T('strengths')+'</label><textarea id="cvst" placeholder="What the teacher did well..."></textarea></div><div class="fg"><label>'+T('improvements')+'</label><textarea id="cvi" placeholder="Areas for improvement..."></textarea></div><div class="fg"><label>'+T('follow_up')+'</label><textarea id="cvf" placeholder="Recommended follow-up actions..."></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveVisit()">Submit Evaluation →</button></div>',true);
@@ -6866,7 +6985,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
-  'duty_places','duty_remarks','classroom_discipline','todos','deleted_ids','excused','teacher_evaluations',
+  'duty_places','duty_remarks','classroom_discipline','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -6884,7 +7003,7 @@ function shouldSyncKey(k){return SYNC_KEYS.includes(k)||isSessionScopedKey(k);}
 const AUTO_REFRESH_MAP = {
   students:['rStudents'],teachers:['rTeachers','rTeacherReports','rTeacherAchievements'],
   accounts:['rAccounts'],complaints:['rComplaints','rDash'],tasks:['rTasks','rDash'],
-  infractions:['rInfractions'],referrals:['rReferrals'],teacher_evaluations:['rClassVisits'],class_visits:['rClassVisits','rTeacherReports'],
+  infractions:['rInfractions'],referrals:['rReferrals'],teacher_evaluations:['rClassVisits'],teval_criteria:['rClassVisits'],eval_rubric:['rClassVisits'],class_visits:['rClassVisits','rTeacherReports'],
   notebook_checks:['rNbChecks'],activities:['rActivities'],activity_reports:['rActivityReports'],
   early_pickups:['rPickup'],announcements:['rAnnouncements','rDash'],
   discipline_reports:['rDiscipline'],activity_log:['rActLog','rDash'],
@@ -8323,7 +8442,7 @@ function expMyVisitPDF(id){
   const s=DB.get('settings')||{};
   const w=window.open('','_blank');
   let catRows='';
-  EVAL_RUBRIC.forEach((cat,ci)=>{
+  evalRubric().forEach((cat,ci)=>{
     let catTotal=0,catMax=0;
     cat.items.forEach(it=>{catMax+=it.max;catTotal+=parseInt(v.scores?.[it.k])||0;});
     catRows+='<tr style="background:#e0f2fe"><td colspan="3" style="font-weight:700;color:#1a5f7a;padding:8px">'+(ci+1)+'. '+cat.cat+' ('+catTotal+'/'+catMax+')</td></tr>';
