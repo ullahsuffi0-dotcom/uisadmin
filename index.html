@@ -1017,7 +1017,17 @@ function seed(){
   DB.set('sv7',true);
 }
 // Lightweight migration: ensure new collections exist for existing users
-async function migrate(){if(!DB.get('activity_reports'))DB.set('activity_reports',[]);if(!DB.get('attendance'))DB.set('attendance',[]);if(!DB.get('student_health'))DB.set('student_health',[]);if(!DB.get('remedial_plans'))DB.set('remedial_plans',[]);if(!DB.get('vp_reports'))DB.set('vp_reports',[]);if(!DB.get('warning_letters'))DB.set('warning_letters',[]);if(!DB.get('teacher_achievements'))DB.set('teacher_achievements',[]);if(!DB.get('reexam_schedules'))DB.set('reexam_schedules',[]);
+async function migrate(){
+  // Never seed defaults into a school bucket before the cloud has been read.
+  // On a device that has not synced yet, DB.get returns nothing for every key,
+  // so the initialisers below would create empty collections and default
+  // teachers/accounts — which then sync UP and destroy the real data.
+  if(CURRENT_SCHOOL_ID&&window.__FB&&window.__FB.db&&!window.__cloudChecked){
+    console.warn('[Migrate] Deferred until the cloud pull completes for school '+CURRENT_SCHOOL_ID);
+    window.__migrateDeferred=true;
+    return;
+  }
+  if(!DB.get('activity_reports'))DB.set('activity_reports',[]);if(!DB.get('attendance'))DB.set('attendance',[]);if(!DB.get('student_health'))DB.set('student_health',[]);if(!DB.get('remedial_plans'))DB.set('remedial_plans',[]);if(!DB.get('vp_reports'))DB.set('vp_reports',[]);if(!DB.get('warning_letters'))DB.set('warning_letters',[]);if(!DB.get('teacher_achievements'))DB.set('teacher_achievements',[]);if(!DB.get('reexam_schedules'))DB.set('reexam_schedules',[]);
   if(!DB.get('academic_terms'))DB.set('academic_terms',[]);
   if(!DB.get('duty_places'))DB.set('duty_places',[]);
   if(!DB.get('duty_remarks'))DB.set('duty_remarks',[]);
@@ -7340,6 +7350,10 @@ async function resyncForSchool(){
   if(window.__seedDeferred){
     window.__seedDeferred=false;
     seed();
+  }
+  if(window.__sessionsDeferred){window.__sessionsDeferred=false;if(typeof initSessions==='function')initSessions();}
+  if(window.__migrateDeferred){
+    window.__migrateDeferred=false;
     if(typeof migrate==='function')await migrate();
   }
   ensureSuperadminAccess();
@@ -7421,9 +7435,11 @@ async function bootFirebaseSync(){
   // initSessions() runs before this pull, so the cached active session can be a
   // stale 'default'. Refresh it or session-scoped writes land in the wrong bucket.
   if(typeof getActiveSessionId==='function')window.__activeSessionId=getActiveSessionId();
-  if(window.__seedDeferred){
-    window.__seedDeferred=false;
-    seed();
+  if(window.__sessionsDeferred){window.__sessionsDeferred=false;if(typeof initSessions==='function')initSessions();}
+  const wasSeedDeferred=!!window.__seedDeferred;
+  if(wasSeedDeferred){window.__seedDeferred=false;seed();}
+  if(wasSeedDeferred||window.__migrateDeferred){
+    window.__migrateDeferred=false;
     await migrate();
   }
   if(CURRENT_SCHOOL_ID)ensureSuperadminAccess();
@@ -8732,6 +8748,14 @@ function getAllSessions(){
 // Initialize sessions on first run
 function initSessions(){
   const sessions=getAllSessions();
+  // Creating the default session on a device that has not pulled yet would
+  // overwrite the school's real session list and reset the active session,
+  // stranding every session-scoped collection in the wrong bucket.
+  if(!sessions.length&&CURRENT_SCHOOL_ID&&window.__FB&&window.__FB.db&&!window.__cloudChecked){
+    console.warn('[Sessions] Deferred until the cloud pull completes');
+    window.__sessionsDeferred=true;
+    return;
+  }
   if(!sessions.length){
     // Create a default session and migrate existing data
     const today=new Date().toISOString().split('T')[0];
