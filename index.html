@@ -4696,17 +4696,46 @@ function showWaQueue(queue,absentCount,date,target,skipped){
   +'<div class="al aw"><strong>How it works:</strong><br>• Click <strong>"Open All Chats"</strong> to launch all WhatsApp chats at once (browser may ask permission for popups — please allow).<br>• Or click each student\'s 📱 button below to open one chat at a time.<br>• In each WhatsApp tab, the message is pre-filled — just press <strong>Send</strong>.</div>'
   +((skipped&&skipped.length)?'<div class="al ag" style="margin-bottom:12px"><strong>📝 '+skipped.length+' excused student(s) skipped — already excused, no message needed:</strong><div style="margin-top:5px;font-size:11px">'+skipped.map(x=>'• <strong>'+esc(x.name)+'</strong>'+(x.exc?' — excused '+esc(x.exc.from)+' → '+esc(x.exc.to)+(x.exc.reason?' ('+esc(x.exc.reason)+')':''):'')).join('<br>')+'</div></div>':'')
   +'<div style="background:var(--sf2);border-radius:var(--rs);padding:11px;margin-bottom:12px;max-height:280px;overflow-y:auto"><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;margin-bottom:7px">Send Queue</div>'
-  +queue.map((q,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12px"><div style="flex:1"><strong>'+q.student+'</strong> — '+q.parent+'<br><span class="mono" style="font-size:10px;color:var(--tx3)">'+q.phone+'</span></div><button class="btn bs bxs" onclick="waOpenOne(\''+q.url+'\',\''+(q.sid||'')+'\')">📱 Open</button></div>').join('')
-  +'</div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="openAllWa()">📱 Open All '+queue.length+' Chats →</button></div>');
+  +queue.map((q,i)=>'<div id="waq-row-'+i+'" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12px"><div style="flex:1"><strong>'+q.student+'</strong> — '+q.parent+'<br><span class="mono" style="font-size:10px;color:var(--tx3)">'+q.phone+'</span></div><button class="btn bs bxs" id="waq-btn-'+i+'" onclick="waOpenOne(\''+q.url+'\',\''+(q.sid||'')+'\','+i+')">📱 Open</button></div>').join('')
+  +'</div></div><div class="mf"><button class="btn bg2" onclick="closeWaQueue()">Close</button><button class="btn bp" onclick="openAllWa()">📱 Open All '+queue.length+' Chats →</button></div>');
   // Store queue globally so openAllWa can use it
   window._waQueue=queue;
   window._waMeta={absentCount,date,target};
+  window._waTouched=false;
 }
 
-// Opening one chat also records that this parent has been notified
-function waOpenOne(url,sid){
+// Opening one chat records the notification and marks that row straight away,
+// so the queue shows what has been sent without closing and reopening it.
+function waOpenOne(url,sid,idx){
   window.open(url,'_blank');
   if(sid&&window._waMeta)markNotified(window._waKind||'absent',[sid],window._waMeta.date);
+  waMarkRowNotified(idx);
+  window._waTouched=true;
+}
+
+function waMarkRowNotified(idx){
+  if(idx===undefined||idx===null)return;
+  const btn=document.getElementById('waq-btn-'+idx);
+  const row=document.getElementById('waq-row-'+idx);
+  if(btn){
+    const span=document.createElement('span');
+    span.className='badge bgn';
+    span.style.cssText='font-size:11px';
+    span.textContent='✓ Notified';
+    btn.parentNode.replaceChild(span,btn);
+  }
+  if(row)row.style.opacity='.6';
+}
+
+// When the queue is closed, refresh the page underneath so the counts and the
+// Already Notified panel reflect whatever was just sent.
+function closeWaQueue(){
+  const touched=window._waTouched;
+  window._waTouched=false;
+  closeM();
+  if(!touched)return;
+  if(window._waKind==='late'&&typeof rLateComers==='function'&&_page==='late_comers')rLateComers();
+  else if(typeof rAttendance==='function'&&_page==='daily_attendance')rAttendance();
 }
 
 function openAllWa(){
@@ -4717,7 +4746,7 @@ function openAllWa(){
   +'<div style="text-align:center;padding:18px"><div id="wa-counter" style="font-size:42px;font-weight:700;color:var(--ac);letter-spacing:-1px"><span id="wa-cur">0</span> <span style="color:var(--tx3);font-size:24px">/ '+total+'</span></div><div id="wa-status" style="font-size:13px;color:var(--tx2);margin-top:6px;min-height:20px">Preparing…</div></div>'
   +'<div style="background:var(--sf2);border-radius:var(--rs);padding:4px;margin-bottom:14px"><div id="wa-bar" style="height:10px;background:linear-gradient(90deg,var(--ac),var(--pu));border-radius:var(--rs);width:0%;transition:width .3s"></div></div>'
   +'<div id="wa-loglist" style="background:var(--sf2);border-radius:var(--rs);padding:9px;max-height:180px;overflow-y:auto;font-size:11px;font-family:\'JetBrains Mono\',monospace"></div>'
-  +'</div><div class="mf"><button class="btn bd3" id="wa-stopbtn" onclick="stopWaQueue()">⏹ Stop</button><button class="btn bp hidden" id="wa-donebtn" onclick="closeM()">✓ Done</button></div></div></div>';
+  +'</div><div class="mf"><button class="btn bd3" id="wa-stopbtn" onclick="stopWaQueue()">⏹ Stop</button><button class="btn bp hidden" id="wa-donebtn" onclick="closeWaQueue()">✓ Done</button></div></div></div>';
   
   window._waCancel=false;
   let opened=0,blocked=0,processed=0;
