@@ -3958,6 +3958,144 @@ function runExcusedExport(){
   closeM();
 }
 
+// ── Matching a parent's spelling to the student roll ────────
+// Parents type the name their own way. Before an excuse is accepted, staff
+// can compare what was submitted against the roll and link it to the real
+// student — the submitted spelling is kept for reference.
+function nameScore(a,b){
+  const norm=x=>String(x||'').toLowerCase().replace(/[^a-z0-9؀-ۿ ]/g,' ').replace(/\s+/g,' ').trim();
+  const A=norm(a),B=norm(b);
+  if(!A||!B)return 0;
+  if(A===B)return 1;
+  const ta=A.split(' ').filter(Boolean),tb=B.split(' ').filter(Boolean);
+  let shared=0;
+  const used={};
+  ta.forEach(function(w){
+    for(let i=0;i<tb.length;i++){
+      if(used[i])continue;
+      if(tb[i]===w){shared+=1;used[i]=1;return;}
+    }
+    // near match on a word: same first letters and similar length
+    for(let i=0;i<tb.length;i++){
+      if(used[i])continue;
+      const o=tb[i];
+      if(w.length>2&&o.length>2&&w.slice(0,3)===o.slice(0,3)&&Math.abs(w.length-o.length)<=2){shared+=0.7;used[i]=1;return;}
+    }
+  });
+  const denom=Math.max(ta.length,tb.length)||1;
+  let sc=shared/denom;
+  if(A.indexOf(B)>=0||B.indexOf(A)>=0)sc=Math.max(sc,0.85);
+  // Spelling variants often differ only in spacing and a letter or two —
+  // "Abdulla Alharbi" vs "ABDULLAH AL-HARBI". Compare the letters alone.
+  const ca=A.replace(/ /g,''),cb=B.replace(/ /g,'');
+  if(ca&&cb){
+    const d=_editDistance(ca,cb);
+    const ratio=1-(d/Math.max(ca.length,cb.length));
+    sc=Math.max(sc,ratio);
+  }
+  return Math.round(Math.max(0,Math.min(1,sc))*100)/100;
+}
+
+function _editDistance(a,b){
+  if(a===b)return 0;
+  if(!a.length)return b.length;
+  if(!b.length)return a.length;
+  if(Math.abs(a.length-b.length)>12)return Math.max(a.length,b.length);
+  let prev=new Array(b.length+1);
+  for(let j=0;j<=b.length;j++)prev[j]=j;
+  for(let i=1;i<=a.length;i++){
+    const cur=[i];
+    for(let j=1;j<=b.length;j++){
+      cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    }
+    prev=cur;
+  }
+  return prev[b.length];
+}
+
+function excuseMatchM(id){
+  const e=getExcused().find(x=>x.id===id);
+  if(!e){toast('Request not found','danger');return;}
+  const students=vpFilter(DB.get('students')||[]);
+  const ranked=students.map(function(s){return {s:s,score:nameScore(e.studentName,fN(s))};})
+    .filter(function(x){return x.score>0.25;})
+    .sort(function(a,b){return b.score-a.score;}).slice(0,12);
+  const linked=e.studentId?students.find(s=>s.id===e.studentId):null;
+  openM('<div class="mh"><h3>🔎 Check Student Name</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">The parent typed the name below. Compare it with the roll and confirm which student this is — the submitted spelling is kept on the record.</div>'
+  +'<div class="cg g2" style="margin-bottom:12px">'
+  +'<div class="stat go"><div class="sl2">Parent typed</div><div style="font-size:15px;font-weight:700;margin-top:6px">'+esc(e.studentName||'—')+'</div>'
+    +'<div class="sb3">'+esc(e.parentName||'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div><div class="sic">✍️</div></div>'
+  +'<div class="stat '+(linked?'gn':'rd')+'"><div class="sl2">System name</div><div style="font-size:15px;font-weight:700;margin-top:6px">'+esc(linked?fN(linked):'Not linked yet')+'</div>'
+    +'<div class="sb3">'+esc(linked?('Gr '+grSec(linked.grade,linked.section)):'Pick a student below')+'</div><div class="sic">'+(linked?'✅':'❓')+'</div></div>'
+  +'</div>'
+  +'<div class="fg"><label>Search the roll</label><input id="xm-q" placeholder="Type any part of the name…" oninput="excuseMatchSearch(\''+escJs(id)+'\')"></div>'
+  +'<div id="xm-list">'+excuseMatchRows(id,ranked)+'</div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +(linked?'<button class="btn bd3 bsm" onclick="excuseUnlink(\''+escJs(id)+'\')">✕ Unlink</button>':'')+'</div>',true);
+}
+
+function excuseMatchRows(id,ranked){
+  if(!ranked.length)return '<div class="al aw">No similar names on the roll — search above, or the student may not be enrolled.</div>';
+  return '<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:5px">Closest matches</div>'
+   +'<div style="max-height:260px;overflow:auto;border:1px solid var(--bd);border-radius:var(--rs)">'
+   +ranked.map(function(x){
+     const pct=Math.round(x.score*100);
+     return '<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid var(--bd)">'
+      +'<span class="badge '+(pct>=85?'bgn':pct>=55?'bgo':'bgr')+'" style="min-width:46px;justify-content:center">'+pct+'%</span>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+esc(fN(x.s))+'</div>'
+      +'<div style="font-size:10px;color:var(--tx3)">Gr '+esc(grSec(x.s.grade,x.s.section))+' · SN '+esc(String(x.s.sn||''))+'</div></div>'
+      +'<button class="btn bp bxs" onclick="excuseLink(\''+escJs(id)+'\',\''+escJs(x.s.id)+'\')">Use this</button>'
+      +'</div>';
+   }).join('')+'</div>';
+}
+
+function excuseMatchSearch(id){
+  const q=((document.getElementById('xm-q')||{}).value||'').toLowerCase().trim();
+  const e=getExcused().find(x=>x.id===id);
+  const students=vpFilter(DB.get('students')||[]);
+  let ranked;
+  if(q){
+    ranked=students.filter(function(s){return fN(s).toLowerCase().includes(q);})
+      .map(function(s){return {s:s,score:nameScore(e?e.studentName:'',fN(s))};}).slice(0,12);
+  }else{
+    ranked=students.map(function(s){return {s:s,score:nameScore(e?e.studentName:'',fN(s))};})
+      .filter(function(x){return x.score>0.25;}).sort(function(a,b){return b.score-a.score;}).slice(0,12);
+  }
+  document.getElementById('xm-list').innerHTML=excuseMatchRows(id,ranked);
+}
+
+function excuseLink(id,sid){
+  const list=getExcused();
+  const i=list.findIndex(x=>x.id===id);
+  if(i<0)return;
+  const s=gS(sid);
+  if(!s){toast('Student not found','danger');return;}
+  // keep what the parent wrote, alongside the confirmed system name
+  if(!list[i].submittedName)list[i].submittedName=list[i].studentName||'';
+  list[i].studentId=sid;
+  list[i].studentName=fN(s);
+  list[i].nameVerified=true;
+  list[i].verifiedBy=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  list[i].verifiedAt=new Date().toISOString();
+  DB.set('excused',list);
+  logA('Matched excuse request "'+(list[i].submittedName||'')+'" to '+fN(s));
+  closeM();toast('Linked to '+fN(s),'success');rAttendance();
+}
+
+function excuseUnlink(id){
+  const list=getExcused();
+  const i=list.findIndex(x=>x.id===id);
+  if(i<0)return;
+  if(list[i].submittedName)list[i].studentName=list[i].submittedName;
+  list[i].studentId='';
+  list[i].nameVerified=false;
+  DB.set('excused',list);
+  closeM();toast('Unlinked — the parent\'s spelling restored','info');rAttendance();
+}
+
 function buildExcusedCard(sel,canM){
   const list=getExcused().slice().sort((a,b)=>(b.from||'').localeCompare(a.from||''));
   const activeNow=list.filter(e=>e.from<=sel&&sel<=e.to);
@@ -3972,7 +4110,7 @@ function buildExcusedCard(sel,canM){
       const active=e.from<=sel&&sel<=e.to;
       const pending=e.source==='parent'&&e.status==='pending';
       return '<tr'+(pending?' style="background:var(--gdbg,#fff8e1)"':active?' style="background:var(--ac2)"':'')+'><td><strong>'+esc(e.studentName||'—')+'</strong>'
-      +(e.source==='parent'?'<div style="font-size:9px;color:var(--tx3)">📩 Parent request'+(e.parentName?' — '+esc(e.parentName):'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div>':'')+'</td>'
+      +(e.source==='parent'?'<div style="font-size:9px;color:var(--tx3)">📩 Parent request'+(e.parentName?' — '+esc(e.parentName):'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div>':'')+(e.source==='parent'?(e.nameVerified?'<div style="font-size:9px;color:var(--su)">✅ name checked'+(e.submittedName&&e.submittedName!==e.studentName?' · parent wrote "'+esc(e.submittedName)+'"':'')+'</div>':'<div style="font-size:9px;color:var(--dg)">⚠️ name not checked'+(e.studentId?'':' · not linked to a student')+'</div>'):'')+'</td>'
       +'<td class="mono">'+esc(e.from)+'</td><td class="mono">'+esc(e.to)+'</td>'
       +'<td style="color:var(--tx2)">'+esc(e.reason||'—')+'</td>'
       +'<td>'+(pending?'<span class="badge bgo">⏳ Pending review</span> ':'')
@@ -3980,6 +4118,7 @@ function buildExcusedCard(sel,canM){
       +'<td style="font-size:10px;color:var(--tx3)">'+esc(e.addedBy||'—')+'</td>'
       +(canM?'<td style="display:flex;gap:4px;flex-wrap:wrap">'
         +(pending?'<button class="btn bs bxs" onclick="approveExcused(\''+e.id+'\')">✓ Approve</button>':'')
+        +(e.source==='parent'?'<button class="btn bg2 bxs" onclick="excuseMatchM(\''+e.id+'\')" title="Compare the parent\'s spelling with the student roll">🔎 Check Name</button>':'')
         +'<button class="btn bd3 bxs" onclick="delExcused(\''+e.id+'\')">'+(pending?'✕ Reject':'Del')+'</button></td>':'')+'</tr>';
     }).join('')+'</tbody></table></div>'
     :'<div class="emp" style="padding:14px"><div class="ei">📝</div><p style="font-size:11px">No excused students recorded.</p></div>')
@@ -4006,13 +4145,15 @@ function rAttendance(){
   // Absent students whose absence is already excused for this date
   const excusedAbsent=[...absentSet].filter(id=>isExcusedOn(id,sel));
   const excusedCount=excusedAbsent.length;
-  const toNotify=absentCount-excusedCount;
+  const alreadyNotified=[...absentSet].filter(id=>isNotified('absent',id,sel)).length;
+  const toNotify=[...absentSet].filter(id=>!isExcusedOn(id,sel)&&!isNotified('absent',id,sel)).length;
   
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📅 '+T('daily_attendance')+'</h3><div style="display:flex;gap:6px;align-items:center"><label style="font-size:11px;color:var(--tx3)">Date:</label><input type="date" id="att-date" value="'+sel+'" max="'+today+'" onchange="window._attDate=this.value;rAttendance()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'+(canM?'<button class="btn bg2 bsm" onclick="msgTplM()">⚙️ Message Template</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canM?'Mark students absent below. All others will be automatically marked as present. Then click "📱 Send WhatsApp" to notify parents of absent students.':'View attendance records.')+'</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Students</div><div class="sv">'+students.length+'</div><div class="sic">👨‍🎓</div></div><div class="stat gn"><div class="sl2">Present</div><div class="sv">'+presentCount+'</div><div class="sb3">'+(students.length?Math.round(presentCount/students.length*100):0)+'%</div><div class="sic">✅</div></div><div class="stat rd"><div class="sl2">Absent</div><div class="sv">'+absentCount+'</div><div class="sb3">'+(excusedCount?excusedCount+' excused · '+toNotify+' to notify':(students.length?Math.round(absentCount/students.length*100):0)+'%')+'</div><div class="sic">❌</div></div><div class="stat go"><div class="sl2">Late</div><div class="sv">'+lateCount+'</div><div class="sb3">'+(lateToNotify!==lateCount?(lateCount-lateToNotify)+' excused':'arrived late')+'</div><div class="sic">⏰</div></div><div class="stat go"><div class="sl2">Status</div><div style="font-size:14px;font-weight:700;margin-top:8px">'+(dayRec.marked?'<span style="color:var(--su)">✓ Submitted</span>':'<span style="color:var(--gd)">⏳ Draft</span>')+'</div>'+(dayRec.markedAt?'<div class="sb3">'+new Date(dayRec.markedAt).toLocaleString()+'</div>':'')+'<div class="sic">📋</div></div></div>'
-  +(canM&&absentCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--ac2),var(--pubg));border-color:var(--ac3)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--ac);margin-bottom:3px">📱 Notify Parents via WhatsApp</div><div style="font-size:11px;color:var(--tx2)">Click below to open WhatsApp chats for each absent student\'s father and mother. You can review the message before sending.'+(excusedCount?'<br><strong style="color:var(--su)">'+excusedCount+' excused student(s) will be skipped — no message needed.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendWaAll(\'both\')">📱 Both Parents ('+(toNotify*2)+')</button></div></div></div>':'')
+  +(canM&&absentCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--ac2),var(--pubg));border-color:var(--ac3)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--ac);margin-bottom:3px">📱 Notify Parents via WhatsApp</div><div style="font-size:11px;color:var(--tx2)">Click below to open WhatsApp chats for each absent student\'s father and mother. You can review the message before sending.'+(excusedCount?'<br><strong style="color:var(--su)">'+excusedCount+' excused student(s) will be skipped.</strong>':'')+(alreadyNotified?'<br><strong style="color:var(--su)">'+alreadyNotified+' already notified — they are not in the list.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendWaAll(\'both\')">📱 Both Parents ('+(toNotify*2)+')</button></div></div></div>':'')
+  +buildNotifiedCard('absent',sel,canM)
   +buildExcusedCard(sel,canM)
-  +'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🔍 Mark Absent Students</h3><div style="display:flex;gap:6px">'+(canM?'<button class="btn bg2 bsm" onclick="markAllPresent()">↺ Reset All Present</button><button class="btn bp bsm" onclick="submitAtt()">'+(dayRec.marked?'Update':'Submit')+' Attendance →</button>':'')+'</div></div>'
+  +'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🔍 Mark Absent Students</h3><div style="display:flex;gap:6px">'+(canM?'<button class="btn bs bsm" onclick="bulkMarkM(\'absent\')">➕ Mark Several Absent</button><button class="btn bg2 bsm" onclick="markAllPresent()">↺ Reset All Present</button><button class="btn bp bsm" onclick="submitAtt()">'+(dayRec.marked?'Update':'Submit')+' Attendance →</button>':'')+'</div></div>'
   +'<div style="display:flex;gap:8px;margin-bottom:12px"><input id="attq" placeholder="🔍 Search by name or grade…" oninput="fltAtt()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="attgf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+g+'">Gr '+g+'</option>').join('')+'</select><select id="attsf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Status</option><option value="absent">Absent only</option><option value="present">Present only</option><option value="late">Late only</option></select></div>'
   +'<div id="attlist">'+buildAttList(students,absentSet,canM,sel,lateSet,lateTimes)+'</div></div>'
   +'<div class="card"><div class="sh2"><h3>📊 Attendance History</h3><button class="btn bg2 bsm" onclick="expAttHist()">📥 Export History</button></div>'+buildAttHistory(allAtt,students)+'</div>';
@@ -4069,7 +4210,7 @@ function rLateComers(){
   const lateSet=new Set(dayRec.lateIds||[]);
   const absentSet=new Set(dayRec.absentIds||[]);
   const lateCount=lateSet.size;
-  const toNotify=[...lateSet].filter(id=>!isExcusedOn(id,sel)).length;
+  const toNotify=[...lateSet].filter(id=>!isExcusedOn(id,sel)&&!isNotified('late',id,sel)).length;
   const excusedLate=lateCount-toNotify;
   // recent history for context
   const history=allAtt.filter(a=>(a.lateIds||[]).length).sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,10);
@@ -4094,8 +4235,9 @@ function rLateComers(){
 
    +(canM&&lateCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--gdbg,#fff8e1),var(--sf));border-color:var(--gd)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--gd);margin-bottom:3px">📲 Notify Parents</div><div style="font-size:11px;color:var(--tx2)">Opens WhatsApp for each late student\'s parents.'+(excusedLate?'<br><strong style="color:var(--su)">'+excusedLate+' excused student(s) will be skipped.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendLateWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendLateWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendLateWaAll(\'both\')">📱 Both ('+(toNotify*2)+')</button></div></div></div>':'')
 
+   +buildNotifiedCard('late',sel,canM)
    +'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🔍 Mark Late Students</h3>'
-   +(canM&&lateCount?'<button class="btn bg2 bsm" onclick="clearAllLate()">↺ Clear All</button>':'')+'</div>'
+   +(canM?'<button class="btn bs bsm" onclick="bulkMarkM(\'late\')">➕ Mark Several Late</button>':'')+(canM&&lateCount?'<button class="btn bg2 bsm" onclick="clearAllLate()">↺ Clear All</button>':'')+'</div>'
    +'<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"><input id="lateq" placeholder="🔍 Search by name or grade…" oninput="fltLate()" style="flex:1;min-width:200px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
    +'<select id="lategf" onchange="fltLate()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+esc(String(g))+'">Gr '+esc(String(g))+'</option>').join('')+'</select>'
    +'<select id="latesf" onchange="fltLate()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Students</option><option value="late">Late only</option></select></div>'
@@ -4154,6 +4296,153 @@ function clearAllLate(){
   r.all[r.i].lateIds=[];r.all[r.i].lateTimes={};
   DB.set('attendance',r.all);
   toast('Late marks cleared','info');rLateComers();
+}
+
+// ── Mark several students at once ───────────────────────────
+// Ticking one row at a time is slow across a roll of hundreds. This picks
+// any number of students, then applies them in a single write.
+function bulkMarkM(kind){
+  const sel=(kind==='late'?window._lateDate:window._attDate)||new Date().toISOString().split('T')[0];
+  window._bulkPick=[];window._bulkKind=kind;window._bulkDate=sel;
+  const label=kind==='late'?'Late':'Absent';
+  openM('<div class="mh"><h3>'+(kind==='late'?'⏰':'❌')+' Mark Several Students '+label+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Search and tick as many students as you need, then apply them all at once for <strong>'+esc(sel)+'</strong>.</div>'
+  +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
+  +'<input id="bk-q" placeholder="🔍 Type a name, grade or section…" oninput="bulkRender()" style="flex:1;min-width:200px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
+  +'<select id="bk-gr" onchange="bulkRender()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'
+  +[...new Set((DB.get('students')||[]).map(x=>String(x.grade)))].sort().map(g=>'<option value="'+esc(g)+'">Gr '+esc(g)+'</option>').join('')+'</select></div>'
+  +'<div id="bk-chips" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px"></div>'
+  +'<div id="bk-list" style="max-height:320px;overflow:auto;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bp" id="bk-go" onclick="bulkApply()" disabled>Mark 0 '+label+' →</button></div>',true);
+  bulkRender();
+}
+
+function bulkRender(){
+  const kind=window._bulkKind,sel=window._bulkDate;
+  const q=((document.getElementById('bk-q')||{}).value||'').toLowerCase().trim();
+  const gr=(document.getElementById('bk-gr')||{}).value||'';
+  const rec=(DB.get('attendance')||[]).find(a=>a.date===sel)||{absentIds:[],lateIds:[]};
+  const already=new Set(kind==='late'?(rec.lateIds||[]):(rec.absentIds||[]));
+  let list=vpFilter(DB.get('students')||[]);
+  if(gr)list=list.filter(s=>String(s.grade)===gr);
+  if(q)list=list.filter(s=>fN(s).toLowerCase().includes(q)||String(s.grade).includes(q)||(s.section||'').toLowerCase().includes(q));
+  list=list.slice(0,300);
+  const picked=window._bulkPick||[];
+  document.getElementById('bk-list').innerHTML=list.length?list.map(function(s){
+    const on=picked.indexOf(s.id)>=0;
+    const has=already.has(s.id);
+    return '<label style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-bottom:1px solid var(--bd);cursor:'+(has?'default':'pointer')+';background:'+(on?'var(--ac2)':'transparent')+';opacity:'+(has?'.55':'1')+'">'
+    +'<input type="checkbox" '+(on?'checked':'')+' '+(has?'disabled':'')+' onchange="bulkToggle(\''+escJs(s.id)+'\')" style="width:16px;height:16px;cursor:pointer">'
+    +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+esc(fN(s))+'</div>'
+    +'<div style="font-size:10px;color:var(--tx3)">Gr '+esc(grSec(s.grade,s.section))+' · SN '+esc(String(s.sn||''))+'</div></div>'
+    +(has?'<span class="badge bgr" style="font-size:10px">already marked</span>':'')
+    +'</label>';
+  }).join(''):'<div class="emp" style="padding:16px"><div class="ei">🔍</div><p style="font-size:11px">No students match</p></div>';
+  const chips=document.getElementById('bk-chips');
+  const all=DB.get('students')||[];
+  chips.innerHTML=picked.length?picked.map(function(id){
+    const s=all.find(x=>x.id===id);
+    return '<span class="badge bbl" style="font-size:11px">'+esc(s?fN(s):id)+' <button onclick="bulkToggle(\''+escJs(id)+'\')" style="background:none;border:none;color:inherit;cursor:pointer;font-size:13px;padding:0 0 0 3px">×</button></span>';
+  }).join(''):'<span style="font-size:11px;color:var(--tx3)">Nobody selected yet</span>';
+  const go=document.getElementById('bk-go');
+  if(go){go.disabled=!picked.length;go.textContent='Mark '+picked.length+' '+(kind==='late'?'Late':'Absent')+' →';}
+}
+
+function bulkToggle(sid){
+  const p=window._bulkPick||(window._bulkPick=[]);
+  const i=p.indexOf(sid);
+  if(i>=0)p.splice(i,1);else p.push(sid);
+  bulkRender();
+}
+
+function bulkApply(){
+  const kind=window._bulkKind,sel=window._bulkDate;
+  const picked=window._bulkPick||[];
+  if(!picked.length)return;
+  const all=DB.get('attendance')||[];
+  let i=all.findIndex(a=>a.date===sel);
+  if(i<0){all.push({date:sel,absentIds:[],lateIds:[],lateTimes:{},marked:false,markedBy:'',markedAt:''});i=all.length-1;}
+  const rec=all[i];
+  if(!Array.isArray(rec.absentIds))rec.absentIds=[];
+  if(!Array.isArray(rec.lateIds))rec.lateIds=[];
+  if(!rec.lateTimes||typeof rec.lateTimes!=='object')rec.lateTimes={};
+  const target=kind==='late'?'lateIds':'absentIds';
+  const other=kind==='late'?'absentIds':'lateIds';
+  const set=new Set(rec[target]);
+  picked.forEach(function(sid){
+    set.add(sid);
+    rec[other]=rec[other].filter(x=>x!==sid);   // the two are mutually exclusive
+    if(kind==='absent')delete rec.lateTimes[sid];
+  });
+  rec[target]=[...set];
+  DB.set('attendance',all);
+  logA('Marked '+picked.length+' student(s) '+(kind==='late'?'late':'absent')+' on '+sel);
+  closeM();
+  toast(picked.length+' student(s) marked '+(kind==='late'?'late':'absent'),'success');
+  if(kind==='late')rLateComers();else rAttendance();
+}
+
+// ── Notified tracking ───────────────────────────────────────
+// Once a parent has been messaged the student drops out of the pending
+// queue and appears in the notified list, so nobody is contacted twice.
+// Stored as new fields on the existing day record — nothing is rewritten.
+function notifiedMap(dayRec,kind){
+  const key=kind==='late'?'notifiedLate':'notifiedAbsent';
+  if(!dayRec[key]||typeof dayRec[key]!=='object')dayRec[key]={};
+  return dayRec[key];
+}
+function isNotified(kind,sid,date){
+  const rec=(DB.get('attendance')||[]).find(a=>a.date===date);
+  if(!rec)return false;
+  const m=rec[kind==='late'?'notifiedLate':'notifiedAbsent'];
+  return !!(m&&m[sid]);
+}
+function markNotified(kind,sids,date){
+  if(!sids||!sids.length)return;
+  const all=DB.get('attendance')||[];
+  let i=all.findIndex(a=>a.date===date);
+  if(i<0){all.push({date:date,absentIds:[],lateIds:[],lateTimes:{}});i=all.length-1;}
+  const m=notifiedMap(all[i],kind);
+  const now=new Date().toISOString();
+  sids.forEach(function(sid){if(sid&&!m[sid])m[sid]=now;});
+  all[i][kind==='late'?'notifiedLate':'notifiedAbsent']=m;
+  DB.set('attendance',all);
+}
+function clearNotified(kind,date){
+  const all=DB.get('attendance')||[];
+  const i=all.findIndex(a=>a.date===date);
+  if(i<0)return;
+  all[i][kind==='late'?'notifiedLate':'notifiedAbsent']={};
+  DB.set('attendance',all);
+  toast('Notified list cleared — those parents can be messaged again','info');
+  if(kind==='late')rLateComers();else rAttendance();
+}
+// Everyone messaged for this date, for the notified panel
+function notifiedList(kind,date){
+  const rec=(DB.get('attendance')||[]).find(a=>a.date===date);
+  if(!rec)return [];
+  const m=rec[kind==='late'?'notifiedLate':'notifiedAbsent']||{};
+  const students=DB.get('students')||[];
+  return Object.keys(m).map(function(sid){
+    const s=students.find(x=>x.id===sid);
+    return {id:sid,name:s?fN(s):'(removed student)',cls:s?grSec(s.grade,s.section):'',at:m[sid]};
+  }).sort((a,b)=>(b.at||'').localeCompare(a.at||''));
+}
+function buildNotifiedCard(kind,date,canM){
+  const list=notifiedList(kind,date);
+  if(!list.length)return '';
+  return '<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>📲 Already Notified ('+list.length+')</h3>'
+   +(canM?'<button class="btn bg2 bsm" onclick="clearNotified(\''+kind+'\',\''+escJs(date)+'\')">↺ Clear</button>':'')+'</div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Their parents have been messaged for '+esc(date)+', so they are no longer in the send list.</div>'
+   +'<div style="display:flex;flex-wrap:wrap;gap:5px">'
+   +list.map(function(x){
+     const t=(x.at||'').split('T')[1]||'';
+     return '<span class="badge bgn" style="font-size:11px" title="Notified '+esc((x.at||'').replace('T',' ').slice(0,16))+'">✓ '+esc(x.name)+(x.cls?' · '+esc(x.cls):'')+(t?' <span style="opacity:.7">'+esc(t.slice(0,5))+'</span>':'')+'</span>';
+   }).join('')
+   +'</div></div>';
 }
 
 function _attDayRec(){
@@ -4313,20 +4602,21 @@ function sendLateWaAll(target){
   const times=dayRec.lateTimes||{};
   const all=(dayRec.lateIds||[]).map(id=>students.find(s=>s.id===id)).filter(Boolean);
   const skipped=all.filter(s=>isExcusedOn(s.id,sel)).map(s=>({name:fN(s),exc:excusedFor(s.id,sel)}));
-  const late=all.filter(s=>!isExcusedOn(s.id,sel));
-  if(!late.length){toast('All late students are excused — no messages needed','info');return;}
+  all.filter(s=>!isExcusedOn(s.id,sel)&&isNotified('late',s.id,sel)).forEach(function(s){skipped.push({name:fN(s),already:true});});
+  const late=all.filter(s=>!isExcusedOn(s.id,sel)&&!isNotified('late',s.id,sel));
+  if(!late.length){const nA=all.filter(x=>isNotified('late',x.id,sel)).length;toast(nA?('All late students have already been notified for '+sel):'All late students are excused — no messages needed','info');return;}
   const queue=[];
   late.forEach(s=>{
     const msg=fmtLateMsg(s,sel,times[s.id]||'');
     if(target==='father'||target==='both'){
-      if(s.fatherPhone){const u=buildWaUrl(s.fatherPhone,msg);if(u)queue.push({url:u,student:fN(s),parent:'Father',phone:s.fatherPhone});}
+      if(s.fatherPhone){const u=buildWaUrl(s.fatherPhone,msg);if(u)queue.push({url:u,sid:s.id,student:fN(s),parent:'Father',phone:s.fatherPhone});}
     }
     if(target==='mother'||target==='both'){
-      if(s.motherPhone){const u=buildWaUrl(s.motherPhone,msg);if(u)queue.push({url:u,student:fN(s),parent:'Mother',phone:s.motherPhone});}
+      if(s.motherPhone){const u=buildWaUrl(s.motherPhone,msg);if(u)queue.push({url:u,sid:s.id,student:fN(s),parent:'Mother',phone:s.motherPhone});}
     }
   });
   if(!queue.length){toast('No phone numbers found for late students','danger');return;}
-  showWaQueue(queue,late.length,sel,target,skipped);
+  window._waKind='late';showWaQueue(queue,late.length,sel,target,skipped);
 }
 
 function getMsgTpl(){
@@ -4375,9 +4665,11 @@ function sendWaAll(target){
   if(!allAbsent.length){toast('No students found','danger');return;}
   // Excused students already have an approved absence — skip messaging them
   const skipped=allAbsent.filter(s=>isExcusedOn(s.id,sel)).map(s=>({name:fN(s),exc:excusedFor(s.id,sel)}));
-  const absent=allAbsent.filter(s=>!isExcusedOn(s.id,sel));
+  allAbsent.filter(s=>!isExcusedOn(s.id,sel)&&isNotified('absent',s.id,sel)).forEach(function(s){skipped.push({name:fN(s),already:true});});
+  const absent=allAbsent.filter(s=>!isExcusedOn(s.id,sel)&&!isNotified('absent',s.id,sel));
   if(!absent.length){
-    toast('All '+allAbsent.length+' absent student(s) are excused — no messages needed','info');
+    const nAlready=allAbsent.filter(x=>isNotified('absent',x.id,sel)).length;
+    toast(nAlready?('All absent students have already been notified for '+sel):('All '+allAbsent.length+' absent student(s) are excused — no messages needed'),'info');
     return;
   }
 
@@ -4386,16 +4678,16 @@ function sendWaAll(target){
   absent.forEach(s=>{
     const msg=fmtMsg(s,sel);
     if(target==='father'||target==='both'){
-      if(s.fatherPhone){const u=buildWaUrl(s.fatherPhone,msg);if(u)queue.push({url:u,student:fN(s),parent:'Father',phone:s.fatherPhone});}
+      if(s.fatherPhone){const u=buildWaUrl(s.fatherPhone,msg);if(u)queue.push({url:u,sid:s.id,student:fN(s),parent:'Father',phone:s.fatherPhone});}
     }
     if(target==='mother'||target==='both'){
-      if(s.motherPhone){const u=buildWaUrl(s.motherPhone,msg);if(u)queue.push({url:u,student:fN(s),parent:'Mother',phone:s.motherPhone});}
+      if(s.motherPhone){const u=buildWaUrl(s.motherPhone,msg);if(u)queue.push({url:u,sid:s.id,student:fN(s),parent:'Mother',phone:s.motherPhone});}
     }
   });
   if(!queue.length){toast('No phone numbers found for absent students','danger');return;}
   
   // Show confirmation modal with the queue and a "Open All" or one-by-one option
-  showWaQueue(queue,absent.length,sel,target,skipped);
+  window._waKind='absent';showWaQueue(queue,absent.length,sel,target,skipped);
 }
 
 function showWaQueue(queue,absentCount,date,target,skipped){
@@ -4404,11 +4696,17 @@ function showWaQueue(queue,absentCount,date,target,skipped){
   +'<div class="al aw"><strong>How it works:</strong><br>• Click <strong>"Open All Chats"</strong> to launch all WhatsApp chats at once (browser may ask permission for popups — please allow).<br>• Or click each student\'s 📱 button below to open one chat at a time.<br>• In each WhatsApp tab, the message is pre-filled — just press <strong>Send</strong>.</div>'
   +((skipped&&skipped.length)?'<div class="al ag" style="margin-bottom:12px"><strong>📝 '+skipped.length+' excused student(s) skipped — already excused, no message needed:</strong><div style="margin-top:5px;font-size:11px">'+skipped.map(x=>'• <strong>'+esc(x.name)+'</strong>'+(x.exc?' — excused '+esc(x.exc.from)+' → '+esc(x.exc.to)+(x.exc.reason?' ('+esc(x.exc.reason)+')':''):'')).join('<br>')+'</div></div>':'')
   +'<div style="background:var(--sf2);border-radius:var(--rs);padding:11px;margin-bottom:12px;max-height:280px;overflow-y:auto"><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;margin-bottom:7px">Send Queue</div>'
-  +queue.map((q,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12px"><div style="flex:1"><strong>'+q.student+'</strong> — '+q.parent+'<br><span class="mono" style="font-size:10px;color:var(--tx3)">'+q.phone+'</span></div><button class="btn bs bxs" onclick="window.open(\''+q.url+'\',\'_blank\')">📱 Open</button></div>').join('')
+  +queue.map((q,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12px"><div style="flex:1"><strong>'+q.student+'</strong> — '+q.parent+'<br><span class="mono" style="font-size:10px;color:var(--tx3)">'+q.phone+'</span></div><button class="btn bs bxs" onclick="waOpenOne(\''+q.url+'\',\''+(q.sid||'')+'\')">📱 Open</button></div>').join('')
   +'</div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="openAllWa()">📱 Open All '+queue.length+' Chats →</button></div>');
   // Store queue globally so openAllWa can use it
   window._waQueue=queue;
   window._waMeta={absentCount,date,target};
+}
+
+// Opening one chat also records that this parent has been notified
+function waOpenOne(url,sid){
+  window.open(url,'_blank');
+  if(sid&&window._waMeta)markNotified(window._waKind||'absent',[sid],window._waMeta.date);
 }
 
 function openAllWa(){
@@ -4434,7 +4732,8 @@ function openAllWa(){
     
     const w=window.open(q.url,'_blank');
     let mark='';
-    if(w){opened++;mark='<span style="color:var(--su)">✓</span>';}
+    if(w){opened++;mark='<span style="color:var(--su)">✓</span>';
+      if(q.sid&&window._waMeta)markNotified(window._waKind||'absent',[q.sid],window._waMeta.date);}
     else{blocked++;mark='<span style="color:var(--dn)">✗ blocked</span>';}
     processed++;
     
