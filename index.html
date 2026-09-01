@@ -4148,7 +4148,7 @@ function rAttendance(){
   const alreadyNotified=[...absentSet].filter(id=>isNotified('absent',id,sel)).length;
   const toNotify=[...absentSet].filter(id=>!isExcusedOn(id,sel)&&!isNotified('absent',id,sel)).length;
   
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📅 '+T('daily_attendance')+'</h3><div style="display:flex;gap:6px;align-items:center"><label style="font-size:11px;color:var(--tx3)">Date:</label><input type="date" id="att-date" value="'+sel+'" max="'+today+'" onchange="window._attDate=this.value;rAttendance()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'+(canM?'<button class="btn bg2 bsm" onclick="msgTplM()">⚙️ Message Template</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canM?'Mark students absent below. All others will be automatically marked as present. Then click "📱 Send WhatsApp" to notify parents of absent students.':'View attendance records.')+'</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📅 '+T('daily_attendance')+'</h3><div style="display:flex;gap:6px;align-items:center"><label style="font-size:11px;color:var(--tx3)">Date:</label><input type="date" id="att-date" value="'+sel+'" max="'+today+'" onchange="window._attDate=this.value;rAttendance()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'+(canM?'<button class="btn bs bsm" onclick="expAttClassSummaryPDF()" title="Absent students per class for this date">📄 Class Summary</button><button class="btn bg2 bsm" onclick="expAttClassSummaryCSV()" title="Same summary as a spreadsheet">📊 CSV</button><button class="btn bg2 bsm" onclick="msgTplM()">⚙️ Message Template</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canM?'Mark students absent below. All others will be automatically marked as present. Then click "📱 Send WhatsApp" to notify parents of absent students.':'View attendance records.')+'</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Students</div><div class="sv">'+students.length+'</div><div class="sic">👨‍🎓</div></div><div class="stat gn"><div class="sl2">Present</div><div class="sv">'+presentCount+'</div><div class="sb3">'+(students.length?Math.round(presentCount/students.length*100):0)+'%</div><div class="sic">✅</div></div><div class="stat rd"><div class="sl2">Absent</div><div class="sv">'+absentCount+'</div><div class="sb3">'+(excusedCount?excusedCount+' excused · '+toNotify+' to notify':(students.length?Math.round(absentCount/students.length*100):0)+'%')+'</div><div class="sic">❌</div></div><div class="stat go"><div class="sl2">Late</div><div class="sv">'+lateCount+'</div><div class="sb3">'+(lateToNotify!==lateCount?(lateCount-lateToNotify)+' excused':'arrived late')+'</div><div class="sic">⏰</div></div><div class="stat go"><div class="sl2">Status</div><div style="font-size:14px;font-weight:700;margin-top:8px">'+(dayRec.marked?'<span style="color:var(--su)">✓ Submitted</span>':'<span style="color:var(--gd)">⏳ Draft</span>')+'</div>'+(dayRec.markedAt?'<div class="sb3">'+new Date(dayRec.markedAt).toLocaleString()+'</div>':'')+'<div class="sic">📋</div></div></div>'
   +(canM&&absentCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--ac2),var(--pubg));border-color:var(--ac3)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--ac);margin-bottom:3px">📱 Notify Parents via WhatsApp</div><div style="font-size:11px;color:var(--tx2)">Click below to open WhatsApp chats for each absent student\'s father and mother. You can review the message before sending.'+(excusedCount?'<br><strong style="color:var(--su)">'+excusedCount+' excused student(s) will be skipped.</strong>':'')+(alreadyNotified?'<br><strong style="color:var(--su)">'+alreadyNotified+' already notified — they are not in the list.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendWaAll(\'both\')">📱 Both Parents ('+(toNotify*2)+')</button></div></div></div>':'')
   +buildNotifiedCard('absent',sel,canM)
@@ -4296,6 +4296,100 @@ function clearAllLate(){
   r.all[r.i].lateIds=[];r.all[r.i].lateTimes={};
   DB.set('attendance',r.all);
   toast('Late marks cleared','info');rLateComers();
+}
+
+// ── Class-by-class absence summary ──────────────────────────
+// Read-only: builds a printable sheet from the attendance already recorded.
+function attClassBreakdown(date){
+  const students=vpFilter(DB.get('students')||[]);
+  const rec=(DB.get('attendance')||[]).find(a=>a.date===date)||{absentIds:[],lateIds:[]};
+  const absent=new Set(rec.absentIds||[]);
+  const late=new Set(rec.lateIds||[]);
+  const groups={};
+  students.forEach(function(s){
+    const k=grSec(s.grade,s.section)||'—';
+    if(!groups[k])groups[k]={cls:k,grade:s.grade,total:0,absent:[],late:[]};
+    groups[k].total++;
+    if(absent.has(s.id))groups[k].absent.push(s);
+    else if(late.has(s.id))groups[k].late.push(s);
+  });
+  return Object.keys(groups).sort(function(a,b){
+    const ga=parseInt(groups[a].grade)||0,gb=parseInt(groups[b].grade)||0;
+    return ga-gb||a.localeCompare(b);
+  }).map(function(k){return groups[k];});
+}
+
+function expAttClassSummaryPDF(){
+  const date=window._attDate||new Date().toISOString().split('T')[0];
+  const rows=attClassBreakdown(date);
+  if(!rows.length){toast('No students to summarise','danger');return;}
+  const s=DB.get('settings')||{};
+  const day=getDayOfWeek(date)||'';
+  const tot={students:0,absent:0,late:0};
+  rows.forEach(function(r){tot.students+=r.total;tot.absent+=r.absent.length;tot.late+=r.late.length;});
+  const pct=function(n,d){return d?Math.round(n/d*1000)/10:0;};
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to generate the summary','danger');return;}
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Absence Summary — '+esc(date)+'</title>'
+  +'<style>@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:11px}'
+  +'.title-bar{background:#1a5f7a;color:#fff;text-align:center;padding:9px;border-radius:5px;margin:10px 0;font-size:14px;font-weight:bold}'
+  +'table{width:100%;border-collapse:collapse;margin-bottom:10px}'
+  +'th{background:#1a5f7a;color:#fff;padding:6px 8px;text-align:left;font-size:10px}'
+  +'td{padding:5px 8px;border:1px solid #d6e3ec;vertical-align:top}'
+  +'td.c{text-align:center}tr:nth-child(even) td{background:#f7fafc}'
+  +'.tot td{background:#D9EAF7;font-weight:bold}'
+  +'.names{font-size:10px;color:#444}'
+  +'.cards{display:flex;gap:10px;margin-bottom:12px}'
+  +'.card{flex:1;border:1px solid #d6e3ec;border-radius:5px;padding:9px;text-align:center}'
+  +'.card .n{font-size:20px;font-weight:bold}.card .l{font-size:10px;color:#666;text-transform:uppercase}'
+  +'@media print{button{display:none}}</style></head><body>'
+  +'<button onclick="window.print()" style="margin-bottom:10px;padding:7px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">🖨️ Print / Save as PDF</button>'
+  +pdfHeaderHTML({subtitle:'Daily Absence Summary by Class'})
+  +'<div class="title-bar">ABSENCE SUMMARY · '+esc(day.toUpperCase())+' · '+esc(date)+'</div>'
+  +'<div class="cards">'
+  +'<div class="card"><div class="l">Students</div><div class="n">'+tot.students+'</div></div>'
+  +'<div class="card"><div class="l">Present</div><div class="n">'+(tot.students-tot.absent)+'</div></div>'
+  +'<div class="card"><div class="l">Absent</div><div class="n">'+tot.absent+'</div></div>'
+  +'<div class="card"><div class="l">Late</div><div class="n">'+tot.late+'</div></div>'
+  +'<div class="card"><div class="l">Absent %</div><div class="n">'+pct(tot.absent,tot.students)+'%</div></div>'
+  +'</div>'
+  +'<table><thead><tr><th style="width:70px">Class</th><th style="width:52px">Total</th><th style="width:60px">Present</th>'
+  +'<th style="width:56px">Absent</th><th style="width:48px">Late</th><th style="width:60px">Absent %</th><th>Absent Students</th></tr></thead><tbody>'
+  +rows.map(function(r){
+    const names=r.absent.map(function(st){
+      const exc=excusedFor(st.id,date);
+      return esc(fN(st))+(exc?' <em>(excused)</em>':'');
+    }).join(', ');
+    return '<tr><td><strong>'+esc(r.cls)+'</strong></td>'
+     +'<td class="c">'+r.total+'</td>'
+     +'<td class="c">'+(r.total-r.absent.length)+'</td>'
+     +'<td class="c"><strong>'+r.absent.length+'</strong></td>'
+     +'<td class="c">'+r.late.length+'</td>'
+     +'<td class="c">'+pct(r.absent.length,r.total)+'%</td>'
+     +'<td class="names">'+(names||'—')+'</td></tr>';
+  }).join('')
+  +'<tr class="tot"><td>TOTAL</td><td class="c">'+tot.students+'</td><td class="c">'+(tot.students-tot.absent)+'</td>'
+  +'<td class="c">'+tot.absent+'</td><td class="c">'+tot.late+'</td><td class="c">'+pct(tot.absent,tot.students)+'%</td><td></td></tr>'
+  +'</tbody></table>'
+  +'<div style="margin-top:18px;font-size:10px;color:#555">Prepared by: '+esc(CU?((CU.firstName||'')+' '+(CU.lastName||'')).trim():'')
+  +' &nbsp;·&nbsp; Generated: '+new Date().toLocaleString()+'</div>'
+  +'</body></html>');
+  w.document.close();
+  toast('Class summary ready — use Print / Save as PDF','success');
+}
+
+function expAttClassSummaryCSV(){
+  const date=window._attDate||new Date().toISOString().split('T')[0];
+  const rows=attClassBreakdown(date);
+  if(!rows.length){toast('No students to summarise','danger');return;}
+  const out=rows.map(function(r){
+    return [r.cls,r.total,r.total-r.absent.length,r.absent.length,r.late.length,
+      (r.total?Math.round(r.absent.length/r.total*1000)/10:0)+'%',
+      r.absent.map(function(st){return fN(st);}).join('; ')];
+  });
+  const tot=rows.reduce(function(a,r){a.s+=r.total;a.a+=r.absent.length;a.l+=r.late.length;return a;},{s:0,a:0,l:0});
+  out.push(['TOTAL',tot.s,tot.s-tot.a,tot.a,tot.l,(tot.s?Math.round(tot.a/tot.s*1000)/10:0)+'%','']);
+  expCSV(['Class','Total Students','Present','Absent','Late','Absent %','Absent Students'],out,'absence_summary_'+date);
 }
 
 // ── Mark several students at once ───────────────────────────
