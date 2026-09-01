@@ -10389,7 +10389,7 @@ function renderClassDutySection(roster,slot,canEdit){
   html+='<div class="tw"><table style="font-size:12px"><thead><tr><th>Class Group</th><th>Classroom</th><th>Duty Teacher</th>'+(canEdit?'<th style="width:48px"></th>':'')+'</tr></thead><tbody id="class-duty-rows">';
   if(classes.length){
     classes.forEach((c,i)=>{
-      html+='<tr><td>'+(canEdit?'<input value="'+esc(c.classes||'')+'" oninput="updClassDuty('+i+',\'classes\',this.value)" placeholder="e.g. 1A/1B/1C" style="width:100%;padding:5px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px">':'<strong>'+esc(c.classes||'—')+'</strong>')+'</td><td>'+(canEdit?'<input value="'+esc(c.room||'')+'" oninput="updClassDuty('+i+',\'room\',this.value)" placeholder="e.g. 1A" style="width:100%;padding:5px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px">':esc(c.room||'—'))+'</td><td>'+(canEdit?'<div style="position:relative"><input value="'+esc(c.teacher||'')+'" placeholder="Teacher name" oninput="updClassDuty('+i+',\'teacher\',this.value);classDutyTchSearch(this,'+i+')" style="width:100%;padding:5px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px"><div class="cdsd" id="cdsd-'+i+'" style="display:none;position:absolute;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);max-height:160px;overflow-y:auto;z-index:5;width:100%;box-shadow:var(--sh)"></div></div>':'<strong>'+esc(c.teacher||'—')+'</strong>')+'</td>'+(canEdit?'<td><button class="btn bd3 bxs" onclick="rmClassDuty('+i+')">×</button></td>':'')+'</tr>';
+      html+='<tr><td>'+(canEdit?'<input value="'+esc(c.classes||'')+'" oninput="updClassDuty('+i+',\'classes\',this.value)" placeholder="e.g. 1A/1B/1C" style="width:100%;padding:5px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px">':'<strong>'+esc(c.classes||'—')+'</strong>')+'</td><td>'+(canEdit?'<input value="'+esc(c.room||'')+'" oninput="updClassDuty('+i+',\'room\',this.value)" placeholder="e.g. 1A" style="width:100%;padding:5px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px">':esc(c.room||'—'))+'</td><td>'+(canEdit?'<div style="position:relative"><input value="'+esc(c.teacher||'')+'" placeholder="Teacher name" oninput="updClassDuty('+i+',\'teacher\',this.value);classDutyTchSearch(this,'+i+')" onchange="classDutyTchCommit('+i+',this.value)" style="width:100%;padding:5px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px"><div class="cdsd" id="cdsd-'+i+'" style="display:none;position:absolute;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);max-height:160px;overflow-y:auto;z-index:5;width:100%;box-shadow:var(--sh)"></div>'+(c.teacher?'<div style="font-size:10px;color:var(--tx3);margin-top:3px">⏱️ '+esc(dutyWeekLabel(c.teacher))+' this week</div>':'')+'</div>':'<strong>'+esc(c.teacher||'—')+'</strong>'+(c.teacher?' <span style="opacity:.75;font-size:10px">('+esc(dutyWeekLabel(c.teacher))+')</span>':''))+'</td>'+(canEdit?'<td><button class="btn bd3 bxs" onclick="rmClassDuty('+i+')">×</button></td>':'')+'</tr>';
     });
   }else if(!canEdit){
     html+='<tr><td colspan="3" style="text-align:center;color:var(--tx3);font-size:11px;font-style:italic;padding:10px">No special class duties assigned</td></tr>';
@@ -10604,6 +10604,34 @@ function classDutyTchSearch(el,idx){
 function pickClassDutyTch(idx,name){
   updClassDuty(idx,'teacher',name);
   rdRender();
+  reportClassDutyLoad(name);
+}
+
+// Same weekly report as a normal duty spot, for the Special Class Duty row.
+// The class-duty slot is found on the roster being edited so a custom slot id
+// or a renamed label is respected.
+function reportClassDutyLoad(name){
+  if(!name||!String(name).trim())return;
+  try{
+    const r=window._workingRoster||getRosterForDate(window._rosterDate);
+    const slot=getDutySlots(r).find(function(s){return s.isClassDuty;});
+    if(!slot)return;
+    if(showSlotClashM(name,slot.id,slot.label))return;
+    const wk=rosterWeekRange(window._rosterDate);
+    const duties=wk?teacherWeekDuties(name,wk.from,wk.to):[];
+    const total=duties.reduce(function(s,d){return s+d.minutes;},0);
+    toast(name+' — '+fmtHM(total)+' of duty this week ('+duties.length+' dut'+(duties.length===1?'y':'ies')+')','info');
+  }catch(e){console.warn('[Duty] class duty summary failed',e);}
+}
+
+// Fired when a class-duty teacher name is typed rather than picked
+function classDutyTchCommit(idx,value){
+  updClassDuty(idx,'teacher',value);
+  const v=String(value||'').trim();
+  if(!v)return;
+  if(window._cdLastReported===v)return;   // don't repeat on refocus
+  window._cdLastReported=v;
+  reportClassDutyLoad(v);
 }
 
 function saveRoster(){
