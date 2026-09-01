@@ -4695,6 +4695,7 @@ function showWaQueue(queue,absentCount,date,target,skipped){
   openM('<div class="mh"><h3>📱 Send WhatsApp to Parents</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="al ag" style="margin-bottom:12px">📲 <strong>'+queue.length+' WhatsApp messages</strong> ready to send for <strong>'+absentCount+'</strong> absent student(s) on <strong>'+date+'</strong>.</div>'
   +'<div class="al aw"><strong>How it works:</strong><br>• Click <strong>"Open All Chats"</strong> to launch all WhatsApp chats at once (browser may ask permission for popups — please allow).<br>• Or click each student\'s 📱 button below to open one chat at a time.<br>• In each WhatsApp tab, the message is pre-filled — just press <strong>Send</strong>.</div>'
   +((skipped&&skipped.length)?'<div class="al ag" style="margin-bottom:12px"><strong>📝 '+skipped.length+' excused student(s) skipped — already excused, no message needed:</strong><div style="margin-top:5px;font-size:11px">'+skipped.map(x=>'• <strong>'+esc(x.name)+'</strong>'+(x.exc?' — excused '+esc(x.exc.from)+' → '+esc(x.exc.to)+(x.exc.reason?' ('+esc(x.exc.reason)+')':''):'')).join('<br>')+'</div></div>':'')
+  +'<div id="waq-notified"></div>'
   +'<div style="background:var(--sf2);border-radius:var(--rs);padding:11px;margin-bottom:12px;max-height:280px;overflow-y:auto"><div style="font-size:10px;color:var(--tx3);font-weight:700;text-transform:uppercase;margin-bottom:7px">Send Queue</div>'
   +queue.map((q,i)=>'<div id="waq-row-'+i+'" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12px"><div style="flex:1"><strong>'+q.student+'</strong> — '+q.parent+'<br><span class="mono" style="font-size:10px;color:var(--tx3)">'+q.phone+'</span></div><button class="btn bs bxs" id="waq-btn-'+i+'" onclick="waOpenOne(\''+q.url+'\',\''+(q.sid||'')+'\','+i+')">📱 Open</button></div>').join('')
   +'</div></div><div class="mf"><button class="btn bg2" onclick="closeWaQueue()">Close</button><button class="btn bp" onclick="openAllWa()">📱 Open All '+queue.length+' Chats →</button></div>');
@@ -4702,6 +4703,7 @@ function showWaQueue(queue,absentCount,date,target,skipped){
   window._waQueue=queue;
   window._waMeta={absentCount,date,target};
   window._waTouched=false;
+  waRenderNotified();
 }
 
 // Opening one chat records the notification and marks that row straight away,
@@ -4710,7 +4712,26 @@ function waOpenOne(url,sid,idx){
   window.open(url,'_blank');
   if(sid&&window._waMeta)markNotified(window._waKind||'absent',[sid],window._waMeta.date);
   waMarkRowNotified(idx);
+  waRenderNotified();
   window._waTouched=true;
+}
+
+// Live "Notified" list inside the send queue, so a student appears there the
+// moment their chat is opened — no need to close the queue to see it.
+function waRenderNotified(){
+  const box=document.getElementById('waq-notified');
+  if(!box||!window._waMeta)return;
+  const kind=window._waKind||'absent';
+  const list=notifiedList(kind,window._waMeta.date);
+  if(!list.length){box.innerHTML='';return;}
+  box.innerHTML='<div class="al ag" style="margin-bottom:12px">'
+   +'<strong>📲 Notified ('+list.length+')</strong>'
+   +'<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px">'
+   +list.map(function(x){
+     const t=((x.at||'').split('T')[1]||'').slice(0,5);
+     return '<span class="badge bgn" style="font-size:11px">✓ '+esc(x.name)+(t?' <span style="opacity:.7">'+esc(t)+'</span>':'')+'</span>';
+   }).join('')
+   +'</div></div>';
 }
 
 function waMarkRowNotified(idx){
@@ -4762,7 +4783,7 @@ function openAllWa(){
     const w=window.open(q.url,'_blank');
     let mark='';
     if(w){opened++;mark='<span style="color:var(--su)">✓</span>';
-      if(q.sid&&window._waMeta)markNotified(window._waKind||'absent',[q.sid],window._waMeta.date);}
+      if(q.sid&&window._waMeta){markNotified(window._waKind||'absent',[q.sid],window._waMeta.date);window._waTouched=true;}}
     else{blocked++;mark='<span style="color:var(--dn)">✗ blocked</span>';}
     processed++;
     
