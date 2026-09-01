@@ -4148,7 +4148,7 @@ function rAttendance(){
   const alreadyNotified=[...absentSet].filter(id=>isNotified('absent',id,sel)).length;
   const toNotify=[...absentSet].filter(id=>!isExcusedOn(id,sel)&&!isNotified('absent',id,sel)).length;
   
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📅 '+T('daily_attendance')+'</h3><div style="display:flex;gap:6px;align-items:center"><label style="font-size:11px;color:var(--tx3)">Date:</label><input type="date" id="att-date" value="'+sel+'" max="'+today+'" onchange="window._attDate=this.value;rAttendance()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'+(canM?'<button class="btn bs bsm" onclick="expAttClassSummaryPDF()" title="Absent students per class for this date">📄 Class Summary</button><button class="btn bg2 bsm" onclick="expAttClassSummaryCSV()" title="Same summary as a spreadsheet">📊 CSV</button><button class="btn bg2 bsm" onclick="msgTplM()">⚙️ Message Template</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canM?'Mark students absent below. All others will be automatically marked as present. Then click "📱 Send WhatsApp" to notify parents of absent students.':'View attendance records.')+'</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📅 '+T('daily_attendance')+'</h3><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label style="font-size:11px;color:var(--tx3)">Date:</label><input type="date" id="att-date" value="'+sel+'" max="'+today+'" onchange="window._attDate=this.value;rAttendance()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'+(canM?'<button class="btn bs bsm" onclick="expAttClassSummaryPDF()" title="Absent students per class for this date">📄 Class Summary</button><button class="btn bg2 bsm" onclick="expAttClassSummaryCSV()" title="Same summary as a spreadsheet">📊 CSV</button><button class="btn bg2 bsm" onclick="msgTplM()">⚙️ Message Template</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canM?'Mark students absent below. All others will be automatically marked as present. Then click "📱 Send WhatsApp" to notify parents of absent students.':'View attendance records.')+'</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Students</div><div class="sv">'+students.length+'</div><div class="sic">👨‍🎓</div></div><div class="stat gn"><div class="sl2">Present</div><div class="sv">'+presentCount+'</div><div class="sb3">'+(students.length?Math.round(presentCount/students.length*100):0)+'%</div><div class="sic">✅</div></div><div class="stat rd"><div class="sl2">Absent</div><div class="sv">'+absentCount+'</div><div class="sb3">'+(excusedCount?excusedCount+' excused · '+toNotify+' to notify':(students.length?Math.round(absentCount/students.length*100):0)+'%')+'</div><div class="sic">❌</div></div><div class="stat go"><div class="sl2">Late</div><div class="sv">'+lateCount+'</div><div class="sb3">'+(lateToNotify!==lateCount?(lateCount-lateToNotify)+' excused':'arrived late')+'</div><div class="sic">⏰</div></div><div class="stat go"><div class="sl2">Status</div><div style="font-size:14px;font-weight:700;margin-top:8px">'+(dayRec.marked?'<span style="color:var(--su)">✓ Submitted</span>':'<span style="color:var(--gd)">⏳ Draft</span>')+'</div>'+(dayRec.markedAt?'<div class="sb3">'+new Date(dayRec.markedAt).toLocaleString()+'</div>':'')+'<div class="sic">📋</div></div></div>'
   +(canM&&absentCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--ac2),var(--pubg));border-color:var(--ac3)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--ac);margin-bottom:3px">📱 Notify Parents via WhatsApp</div><div style="font-size:11px;color:var(--tx2)">Click below to open WhatsApp chats for each absent student\'s father and mother. You can review the message before sending.'+(excusedCount?'<br><strong style="color:var(--su)">'+excusedCount+' excused student(s) will be skipped.</strong>':'')+(alreadyNotified?'<br><strong style="color:var(--su)">'+alreadyNotified+' already notified — they are not in the list.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendWaAll(\'both\')">📱 Both Parents ('+(toNotify*2)+')</button></div></div></div>':'')
   +buildNotifiedCard('absent',sel,canM)
@@ -4321,12 +4321,17 @@ function attClassBreakdown(date){
 
 function expAttClassSummaryPDF(){
   const date=window._attDate||new Date().toISOString().split('T')[0];
-  const rows=attClassBreakdown(date);
-  if(!rows.length){toast('No students to summarise','danger');return;}
+  const all=attClassBreakdown(date);
+  if(!all.length){toast('No students to summarise','danger');return;}
+  // Only classes with someone absent — the point of the sheet
+  const rows=all.filter(function(r){return r.absent.length>0;});
+  if(!rows.length){toast('No absences recorded for '+date,'info');return;}
   const s=DB.get('settings')||{};
   const day=getDayOfWeek(date)||'';
   const tot={students:0,absent:0,late:0};
-  rows.forEach(function(r){tot.students+=r.total;tot.absent+=r.absent.length;tot.late+=r.late.length;});
+  all.forEach(function(r){tot.students+=r.total;tot.absent+=r.absent.length;tot.late+=r.late.length;});
+  const shown={students:0,absent:0,late:0};
+  rows.forEach(function(r){shown.students+=r.total;shown.absent+=r.absent.length;shown.late+=r.late.length;});
   const pct=function(n,d){return d?Math.round(n/d*1000)/10:0;};
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to generate the summary','danger');return;}
@@ -4353,6 +4358,7 @@ function expAttClassSummaryPDF(){
   +'<div class="card"><div class="l">Late</div><div class="n">'+tot.late+'</div></div>'
   +'<div class="card"><div class="l">Absent %</div><div class="n">'+pct(tot.absent,tot.students)+'%</div></div>'
   +'</div>'
+  +'<div style="font-size:11px;color:#555;margin-bottom:6px">Showing the '+rows.length+' class(es) with absences'+(all.length>rows.length?' — '+(all.length-rows.length)+' class(es) had full attendance':'')+'.</div>'
   +'<table><thead><tr><th style="width:70px">Class</th><th style="width:52px">Total</th><th style="width:60px">Present</th>'
   +'<th style="width:56px">Absent</th><th style="width:48px">Late</th><th style="width:60px">Absent %</th><th>Absent Students</th></tr></thead><tbody>'
   +rows.map(function(r){
@@ -4368,8 +4374,8 @@ function expAttClassSummaryPDF(){
      +'<td class="c">'+pct(r.absent.length,r.total)+'%</td>'
      +'<td class="names">'+(names||'—')+'</td></tr>';
   }).join('')
-  +'<tr class="tot"><td>TOTAL</td><td class="c">'+tot.students+'</td><td class="c">'+(tot.students-tot.absent)+'</td>'
-  +'<td class="c">'+tot.absent+'</td><td class="c">'+tot.late+'</td><td class="c">'+pct(tot.absent,tot.students)+'%</td><td></td></tr>'
+  +'<tr class="tot"><td>TOTAL</td><td class="c">'+shown.students+'</td><td class="c">'+(shown.students-shown.absent)+'</td>'
+  +'<td class="c">'+shown.absent+'</td><td class="c">'+shown.late+'</td><td class="c">'+pct(shown.absent,shown.students)+'%</td><td></td></tr>'
   +'</tbody></table>'
   +'<div style="margin-top:18px;font-size:10px;color:#555">Prepared by: '+esc(CU?((CU.firstName||'')+' '+(CU.lastName||'')).trim():'')
   +' &nbsp;·&nbsp; Generated: '+new Date().toLocaleString()+'</div>'
@@ -4380,8 +4386,10 @@ function expAttClassSummaryPDF(){
 
 function expAttClassSummaryCSV(){
   const date=window._attDate||new Date().toISOString().split('T')[0];
-  const rows=attClassBreakdown(date);
-  if(!rows.length){toast('No students to summarise','danger');return;}
+  const all=attClassBreakdown(date);
+  if(!all.length){toast('No students to summarise','danger');return;}
+  const rows=all.filter(function(r){return r.absent.length>0;});
+  if(!rows.length){toast('No absences recorded for '+date,'info');return;}
   const out=rows.map(function(r){
     return [r.cls,r.total,r.total-r.absent.length,r.absent.length,r.late.length,
       (r.total?Math.round(r.absent.length/r.total*1000)/10:0)+'%',
