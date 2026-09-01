@@ -10273,6 +10273,7 @@ function onRosterDateChange(){
 }
 
 function rdRender(){
+  window._dutyWeekCache={};   // recompute weekly totals for this draw
   const date=window._rosterDate;
   const day=getDayOfWeek(date);
   const isWork=isWorkDay(date);
@@ -10369,8 +10370,8 @@ function renderDutySlot(roster,slot,canEdit){
     // Find remarks for each teacher at this spot/slot/date
     const spotRemarks=allRemarks.filter(rm=>rm.date===dateStr&&rm.slotId===slot.id&&rm.spot===spot);
     html+='<tr><td><strong>'+esc(spot)+'</strong></td><td>'+(canEdit
-      ?'<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center" id="dt-'+slot.id+'-'+escId(spot)+'">'+assigned.map((t,i)=>'<span class="badge bbl" style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;font-size:11px">'+esc(t)+' <button onclick="rmTeacherFromSpot(\''+slot.id+'\',\''+escJs(spot)+'\','+i+')" style="background:none;border:none;color:var(--tx2);cursor:pointer;font-size:14px;padding:0">×</button></span>').join('')+'<input type="text" placeholder="+ Add teacher" autocomplete="off" oninput="dutyTchSearch(this,\''+slot.id+'\',\''+escJs(spot)+'\')" style="flex:1;min-width:150px;padding:5px 9px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px"></div>'
-      :(assigned.length?assigned.map(t=>'<span class="badge bbl" style="font-size:11px;margin-right:4px">'+esc(t)+'</span>').join(''):'<span style="color:var(--tx3);font-size:11px;font-style:italic">— Unassigned —</span>'))
+      ?'<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center" id="dt-'+slot.id+'-'+escId(spot)+'">'+assigned.map((t,i)=>'<span class="badge bbl" style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;font-size:11px" title="'+esc(t)+' — '+esc(dutyWeekLabel(t))+' this week">'+esc(t)+'<span style="opacity:.75;font-size:10px">('+esc(dutyWeekLabel(t))+')</span> <button onclick="rmTeacherFromSpot(\''+slot.id+'\',\''+escJs(spot)+'\','+i+')" style="background:none;border:none;color:var(--tx2);cursor:pointer;font-size:14px;padding:0">×</button></span>').join('')+'<input type="text" placeholder="+ Add teacher" autocomplete="off" oninput="dutyTchSearch(this,\''+slot.id+'\',\''+escJs(spot)+'\')" style="flex:1;min-width:150px;padding:5px 9px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px"></div>'
+      :(assigned.length?assigned.map(t=>'<span class="badge bbl" style="font-size:11px;margin-right:4px" title="'+esc(dutyWeekLabel(t))+' this week">'+esc(t)+' <span style="opacity:.75;font-size:10px">('+esc(dutyWeekLabel(t))+')</span></span>').join(''):'<span style="color:var(--tx3);font-size:11px;font-style:italic">— Unassigned —</span>'))
     +'</td><td>'
     // VP Remarks column
     +(spotRemarks.length?spotRemarks.map(rm=>'<div style="font-size:10px;padding:3px 6px;background:'+(rm.rating==='good'?'#d4edda':rm.rating==='poor'?'#f8d7da':'#fff3cd')+';border-radius:4px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:flex-start;gap:4px"><div><strong>'+esc(rm.teacher)+'</strong>: '+esc(rm.remark)+(rm.rating?' <span class="badge '+(rm.rating==='good'?'bgn':rm.rating==='poor'?'brd':'bgo')+'" style="font-size:9px">'+esc(rm.rating)+'</span>':'')+'</div>'+(canRemark?'<div style="display:flex;gap:2px;flex-shrink:0"><button onclick="editDutyRemarkM(\''+escJs(rm.id)+'\')" style="background:none;border:none;cursor:pointer;font-size:11px;padding:0" title="Edit">✏️</button><button onclick="delDutyRemark(\''+escJs(rm.id)+'\')" style="background:none;border:none;cursor:pointer;font-size:11px;padding:0" title="Delete">🗑️</button></div>':'')+'</div>').join(''):'')
@@ -10436,6 +10437,104 @@ function dutyTchSearch(el,slotId,spot){
   };
 }
 
+// ── Weekly duty load while building the roster ──────────────
+// All read-only: nothing here writes to a record.
+
+// The week a roster date belongs to. Uses the defined term weeks when they
+// exist, otherwise the Sunday–Saturday week around that date.
+function rosterWeekRange(date){
+  if(!date)return null;
+  const tw=(typeof getTermWeekForDate==='function')?getTermWeekForDate(date):null;
+  if(tw)return {from:tw.from,to:tw.to,label:tw.termName+' · Week '+tw.weekNo};
+  const d=new Date(date+'T00:00:00');
+  const start=new Date(d);start.setDate(d.getDate()-d.getDay());
+  const end=new Date(start);end.setDate(start.getDate()+6);
+  return {from:ymd(start),to:ymd(end),label:'week of '+ymd(start)};
+}
+
+// Every duty a teacher holds in a date range. The roster being edited is used
+// in place of its saved copy, so unsaved changes are counted too.
+function teacherWeekDuties(name,from,to){
+  if(!name||!from||!to)return [];
+  const aliases=getDutyNameAliases(name);
+  if(!aliases.size)return [];
+  let list=(DB.get('duty_rosters')||[]).filter(r=>r&&r.date&&r.date>=from&&r.date<=to);
+  const wr=window._workingRoster;
+  if(wr&&wr.date&&wr.date>=from&&wr.date<=to){
+    list=list.filter(r=>r.date!==wr.date).concat([wr]);
+  }
+  const out=[];
+  list.forEach(function(r){
+    getDutySlots(r).forEach(function(slot){
+      const mins=parseDutyMinutes(slot.time);
+      if(slot.isClassDuty){
+        (r.classDuties||[]).forEach(function(c){
+          if(c&&aliases.has(normDutyName(c.teacher)))
+            out.push({date:r.date,day:r.day||getDayOfWeek(r.date),slotId:slot.id,slotLabel:slot.label,
+              time:slot.time,spot:'Class '+(c.classes||'—'),minutes:mins});
+        });
+      }else{
+        const sd=(r.slots||{})[slot.id]||{};
+        (slot.spots||[]).forEach(function(sp){
+          (sd[sp]||[]).forEach(function(n){
+            if(aliases.has(normDutyName(n)))
+              out.push({date:r.date,day:r.day||getDayOfWeek(r.date),slotId:slot.id,slotLabel:slot.label,
+                time:slot.time,spot:sp,minutes:mins});
+          });
+        });
+      }
+    });
+  });
+  return out.sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
+}
+
+// Short label for a teacher chip, cached per render so a roster with many
+// names does not recompute the same totals repeatedly.
+function dutyWeekLabel(name){
+  if(!name)return '';
+  const wk=rosterWeekRange(window._rosterDate);
+  if(!wk)return '';
+  const key=wk.from+'|'+normDutyName(name);
+  if(!window._dutyWeekCache)window._dutyWeekCache={};
+  if(window._dutyWeekCache[key]!==undefined)return window._dutyWeekCache[key];
+  const total=teacherWeekDuties(name,wk.from,wk.to).reduce(function(s,d){return s+d.minutes;},0);
+  const label=fmtHM(total);
+  window._dutyWeekCache[key]=label;
+  return label;
+}
+
+function teacherWeekMinutes(name){
+  const wk=rosterWeekRange(window._rosterDate);
+  if(!wk)return 0;
+  return teacherWeekDuties(name,wk.from,wk.to).reduce(function(s,d){return s+d.minutes;},0);
+}
+
+// Warn when the same teacher already has this slot on another day of the week
+function showSlotClashM(name,slotId,slotLabel){
+  const wk=rosterWeekRange(window._rosterDate);
+  if(!wk)return false;
+  const duties=teacherWeekDuties(name,wk.from,wk.to);
+  const total=duties.reduce(function(s,d){return s+d.minutes;},0);
+  const same=duties.filter(function(d){return d.slotId===slotId&&d.date!==window._rosterDate;});
+  if(!same.length)return false;
+  openM('<div class="mh"><h3>⚠️ Already on this duty slot</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al aw"><strong>'+esc(name)+'</strong> already has <strong>'+esc(slotLabel)+'</strong> on '
+  +(same.length===1?'another day':'other days')+' of '+esc(wk.label)+'.</div>'
+  +'<div class="tw"><table style="font-size:12px"><thead><tr><th>Day</th><th>Date</th><th>Place</th><th>Time</th></tr></thead><tbody>'
+  +same.map(function(d){
+    return '<tr><td><strong>'+esc(d.day||'')+'</strong></td><td class="mono">'+esc(d.date)+'</td>'
+     +'<td>'+esc(d.spot)+'</td><td>'+esc(d.time)+'</td></tr>';
+  }).join('')
+  +'</tbody></table></div>'
+  +'<div class="al ag" style="margin-top:10px;font-size:13px"><strong>'+esc(name)+'</strong> now has '
+  +'<strong>'+fmtHM(total)+'</strong> of duty this week across '+duties.length+' duty'+(duties.length===1?'':'ies')+'.</div>'
+  +'<div style="font-size:11px;color:var(--tx3);margin-top:6px">The assignment has been made — remove it from this spot if that was not intended.</div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bp" onclick="closeM()">OK</button></div>');
+  return true;
+}
+
 function addTeacherToSpot(slotId,spot,name){
   if(!window._workingRoster)window._workingRoster={date:window._rosterDate,day:getDayOfWeek(window._rosterDate),slots:{},classDuties:[]};
   const r=window._workingRoster;
@@ -10449,6 +10548,17 @@ function addTeacherToSpot(slotId,spot,name){
   }
   r.slots[slotId][spot].push(name);
   rdRender(); // Re-render UI
+  // Report this teacher's load for the week, and flag a repeat of the same slot
+  try{
+    const slot=getDutySlots(r).find(function(s){return s.id===slotId;});
+    const label=slot?slot.label:slotId;
+    if(!showSlotClashM(name,slotId,label)){
+      const wk=rosterWeekRange(window._rosterDate);
+      const duties=wk?teacherWeekDuties(name,wk.from,wk.to):[];
+      const total=duties.reduce(function(s,d){return s+d.minutes;},0);
+      toast(name+' — '+fmtHM(total)+' of duty this week ('+duties.length+' dut'+(duties.length===1?'y':'ies')+')','info');
+    }
+  }catch(e){console.warn('[Duty] week summary failed',e);}
 }
 
 function rmTeacherFromSpot(slotId,spot,index){
