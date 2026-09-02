@@ -3544,11 +3544,17 @@ function renderExcusePortal(){
   +'<div class="al ai" style="margin-bottom:14px">📝 Please complete this form to submit an excuse for your son\'s absence. The school will review it.<br><span style="font-size:11px">يرجى تعبئة هذا النموذج لتقديم عذر غياب ابنكم.</span></div>'
   +(stu?'<div class="al ag" style="margin-bottom:12px">👨‍🎓 <strong>'+esc(fN(stu))+'</strong> — Grade '+esc(grSec(stu.grade,stu.section))+'</div><input type="hidden" id="ep-sid" value="'+esc(stu.id)+'"><input type="hidden" id="ep-sname" value="'+esc(fN(stu))+'">'
     :'<input type="hidden" id="ep-sid" value="'+esc(sid)+'"><div class="fg"><label>Student Full Name * / اسم الطالب</label><input id="ep-sname" placeholder="Your son\'s full name"></div>')
+  +'<div class="fg"><label>Class / Section * / الصف والشعبة</label>'
+  +'<input id="ep-class" placeholder="e.g. 5-A" value="'+esc(stu?grSec(stu.grade,stu.section):'')+'">'
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:3px">Write the grade and section, e.g. 5-A · اكتبوا الصف والشعبة</div></div>'
   +'<div class="fr f2"><div class="fg"><label>Parent Name * / اسم ولي الأمر</label><input id="ep-pname" placeholder="Your full name"></div>'
   +'<div class="fg"><label>Parent Phone * / الجوال</label><input id="ep-pphone" type="tel" placeholder="05XXXXXXXX"></div></div>'
   +'<div class="fr f2"><div class="fg"><label>Absent From * / من تاريخ</label><input type="date" id="ep-from" value="'+esc(d)+'"></div>'
   +'<div class="fg"><label>Absent To * / إلى تاريخ</label><input type="date" id="ep-to" value="'+esc(d)+'"></div></div>'
-  +'<div class="fg"><label>Reason * / سبب الغياب</label><textarea id="ep-reason" placeholder="e.g. Medical appointment, illness, family travel" style="min-height:90px"></textarea></div>'
+  +'<div class="fg"><label>Reason for absence * / سبب الغياب</label>'
+  +'<select id="ep-rcat" onchange="epReasonChange()"><option value="">— Please choose — / اختر السبب —</option>'
+  +EXCUSE_REASONS.map(function(r){return '<option value="'+esc(r)+'">'+esc(r)+'</option>';}).join('')+'</select></div>'
+  +'<div class="fg"><label id="ep-rdlab">More details (optional) / تفاصيل إضافية</label><textarea id="ep-reason" placeholder="Anything the school should know" style="min-height:80px"></textarea></div>'
   +'<button class="btn bp" style="width:100%;justify-content:center;padding:13px;font-size:14px" onclick="epSubmit()">📤 Submit Excuse Request →</button>'
   +'</div>'
   +'<div style="text-align:center;margin-top:18px;font-size:11px;color:var(--tx3)"><a href="?" style="color:var(--ac);text-decoration:none">Staff Login →</a></div></div>';
@@ -3563,14 +3569,21 @@ function epSubmit(){
   const pphone=document.getElementById('ep-pphone').value.trim();
   const from=document.getElementById('ep-from').value;
   const to=document.getElementById('ep-to').value;
-  const reason=document.getElementById('ep-reason').value.trim();
+  const sclass=((document.getElementById('ep-class')||{}).value||'').trim();
+  const rcat=((document.getElementById('ep-rcat')||{}).value||'').trim();
+  const detail=document.getElementById('ep-reason').value.trim();
+  // Keep .reason a plain sentence so every existing list and export reads it unchanged
+  const reason=(rcat===EXCUSE_REASON_OTHER)?detail:(rcat+(detail?' — '+detail:''));
   if(!sname){toast('Enter the student name','danger');return;}
+  if(!sclass){toast('Enter the class and section','danger');return;}
   if(!pname||!pphone){toast('Enter your name and phone','danger');return;}
   if(!from||!to){toast('Select both dates','danger');return;}
   if(to<from){toast('End date cannot be before start date','danger');return;}
-  if(!reason){toast('Please give a reason','danger');return;}
+  if(!rcat){toast('Please choose a reason','danger');return;}
+  if(rcat===EXCUSE_REASON_OTHER&&!detail){toast('Please describe the reason','danger');return;}
   const list=(function(){const e=DB.get('excused');return Array.isArray(e)?e:[];})();
-  list.push({id:nid('exc'),studentId:sid,studentName:sname,from:from,to:to,reason:reason,
+  list.push({id:nid('exc'),studentId:sid,studentName:sname,submittedClass:sclass,from:from,to:to,reason:reason,
+    reasonCategory:rcat,reasonDetail:detail,
     source:'parent',status:'pending',parentName:pname,parentPhone:pphone,
     addedBy:'Parent request',created:new Date().toISOString()});
   DB.set('excused',list);
@@ -3580,6 +3593,16 @@ function epSubmit(){
   +'<div style="font-size:13px;color:var(--tx2);line-height:1.7">Thank you. Your excuse for <strong>'+esc(sname)+'</strong><br>('+esc(from)+' → '+esc(to)+') has been sent to the school.<br>You do not need to reply to the absence message.</div>'
   +'<div style="font-size:12px;color:var(--tx3);margin-top:14px;direction:rtl">تم إرسال طلب العذر إلى المدرسة. شكراً لكم.</div>'
   +'</div>';
+}
+
+// "Other" is the one choice that needs the parent to write something.
+function epReasonChange(){
+  const cat=((document.getElementById('ep-rcat')||{}).value||'');
+  const lab=document.getElementById('ep-rdlab');
+  if(!lab)return;
+  lab.textContent=(cat===EXCUSE_REASON_OTHER)
+    ?'Please describe the reason * / \u0627\u0643\u062a\u0628\u0648\u0627 \u0627\u0644\u0633\u0628\u0628'
+    :'More details (optional) / \u062a\u0641\u0627\u0635\u064a\u0644 \u0625\u0636\u0627\u0641\u064a\u0629';
 }
 
 function checkParentMode(){
@@ -3790,6 +3813,20 @@ function doExportAr(fmt){
 // Excused students are still recorded absent, but their parents are not
 // messaged: the absence is already accounted for.
 // ═══════════════════════════════════════════════════════════
+// Reasons a parent can pick from on the excuse form. Bilingual so the parent
+// reads it in either language and staff exports stay in one vocabulary.
+const EXCUSE_REASONS=[
+  'Illness / مرض',
+  'Medical appointment / موعد طبي',
+  'Hospital admission / تنويم بالمستشفى',
+  'Family emergency / ظرف عائلي طارئ',
+  'Bereavement in the family / وفاة أحد الأقارب',
+  'Family travel / سفر مع العائلة',
+  'Official appointment / مراجعة جهة رسمية',
+  'Weather or transport problem / ظروف جوية أو مواصلات',
+  'Other / أخرى'
+];
+const EXCUSE_REASON_OTHER='Other / أخرى';
 function getExcused(){const e=DB.get('excused');return Array.isArray(e)?e:[];}
 function excusedFor(studentId,date){
   if(!studentId||!date)return null;
@@ -3806,7 +3843,8 @@ function addExcusedM(){
   +'<div id="exc-sinfo" style="display:none" class="al ag"></div><input type="hidden" id="exc-sid">'
   +'<div class="fr f2"><div class="fg"><label>Excused From *</label><input type="date" id="exc-from" value="'+today+'"></div>'
   +'<div class="fg"><label>Excused To *</label><input type="date" id="exc-to" value="'+today+'"></div></div>'
-  +'<div class="fg"><label>Reason</label><input id="exc-reason" placeholder="e.g. Medical leave, family travel"></div>'
+  +'<div class="fg"><label>Reason</label><input id="exc-reason" list="exc-rlist" placeholder="e.g. Medical leave, family travel">'
+  +'<datalist id="exc-rlist">'+EXCUSE_REASONS.map(function(r){return '<option value="'+esc(r)+'">';}).join('')+'</datalist></div>'
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveExcused()">'+T('save')+' →</button></div>');
   window.pickExcStu=function(sid){
@@ -4013,20 +4051,42 @@ function _editDistance(a,b){
   return prev[b.length];
 }
 
+// The class the parent wrote is a strong signal: two boys can share a name,
+// but rarely in the same section.
+function excuseClassMatch(written,s){
+  const w=String(written||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(!w)return 0;
+  const c=String(grSec(s.grade,s.section)||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(!c)return 0;
+  if(w===c)return 1;
+  return (String(s.grade||'')&&w.indexOf(String(s.grade).toLowerCase())===0)?0.5:0;
+}
+function excuseRank(e,students,q){
+  const written=e?e.submittedClass:'';
+  let base=students;
+  if(q)base=students.filter(function(s){return fN(s).toLowerCase().includes(q)||String(grSec(s.grade,s.section)).toLowerCase().includes(q);});
+  const scored=base.map(function(s){
+    const ns=nameScore(e?e.studentName:'',fN(s));
+    const cm=excuseClassMatch(written,s);
+    return {s:s,score:ns,cls:cm,rank:ns+cm*0.25};
+  });
+  if(!q)return scored.filter(function(x){return x.score>0.25||x.cls===1;})
+    .sort(function(a,b){return b.rank-a.rank;}).slice(0,12);
+  return scored.sort(function(a,b){return b.rank-a.rank;}).slice(0,12);
+}
+
 function excuseMatchM(id){
   const e=getExcused().find(x=>x.id===id);
   if(!e){toast('Request not found','danger');return;}
   const students=vpFilter(DB.get('students')||[]);
-  const ranked=students.map(function(s){return {s:s,score:nameScore(e.studentName,fN(s))};})
-    .filter(function(x){return x.score>0.25;})
-    .sort(function(a,b){return b.score-a.score;}).slice(0,12);
+  const ranked=excuseRank(e,students,'');
   const linked=e.studentId?students.find(s=>s.id===e.studentId):null;
   openM('<div class="mh"><h3>🔎 Check Student Name</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
   +'<div class="al ai">The parent typed the name below. Compare it with the roll and confirm which student this is — the submitted spelling is kept on the record.</div>'
   +'<div class="cg g2" style="margin-bottom:12px">'
   +'<div class="stat go"><div class="sl2">Parent typed</div><div style="font-size:15px;font-weight:700;margin-top:6px">'+esc(e.studentName||'—')+'</div>'
-    +'<div class="sb3">'+esc(e.parentName||'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div><div class="sic">✍️</div></div>'
+    +'<div class="sb3">'+(e.submittedClass?'Class: '+esc(e.submittedClass)+' · ':'')+esc(e.parentName||'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div><div class="sic">✍️</div></div>'
   +'<div class="stat '+(linked?'gn':'rd')+'"><div class="sl2">System name</div><div style="font-size:15px;font-weight:700;margin-top:6px">'+esc(linked?fN(linked):'Not linked yet')+'</div>'
     +'<div class="sb3">'+esc(linked?('Gr '+grSec(linked.grade,linked.section)):'Pick a student below')+'</div><div class="sic">'+(linked?'✅':'❓')+'</div></div>'
   +'</div>'
@@ -4046,7 +4106,8 @@ function excuseMatchRows(id,ranked){
      return '<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid var(--bd)">'
       +'<span class="badge '+(pct>=85?'bgn':pct>=55?'bgo':'bgr')+'" style="min-width:46px;justify-content:center">'+pct+'%</span>'
       +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+esc(fN(x.s))+'</div>'
-      +'<div style="font-size:10px;color:var(--tx3)">Gr '+esc(grSec(x.s.grade,x.s.section))+' · SN '+esc(String(x.s.sn||''))+'</div></div>'
+      +'<div style="font-size:10px;color:var(--tx3)">Gr '+esc(grSec(x.s.grade,x.s.section))+' · SN '+esc(String(x.s.sn||''))
+        +(x.cls===1?' · <span style="color:var(--su)">class matches</span>':'')+'</div></div>'
       +'<button class="btn bp bxs" onclick="excuseLink(\''+escJs(id)+'\',\''+escJs(x.s.id)+'\')">Use this</button>'
       +'</div>';
    }).join('')+'</div>';
@@ -4056,14 +4117,7 @@ function excuseMatchSearch(id){
   const q=((document.getElementById('xm-q')||{}).value||'').toLowerCase().trim();
   const e=getExcused().find(x=>x.id===id);
   const students=vpFilter(DB.get('students')||[]);
-  let ranked;
-  if(q){
-    ranked=students.filter(function(s){return fN(s).toLowerCase().includes(q);})
-      .map(function(s){return {s:s,score:nameScore(e?e.studentName:'',fN(s))};}).slice(0,12);
-  }else{
-    ranked=students.map(function(s){return {s:s,score:nameScore(e?e.studentName:'',fN(s))};})
-      .filter(function(x){return x.score>0.25;}).sort(function(a,b){return b.score-a.score;}).slice(0,12);
-  }
+  const ranked=excuseRank(e,students,q);
   document.getElementById('xm-list').innerHTML=excuseMatchRows(id,ranked);
 }
 
@@ -4110,6 +4164,7 @@ function buildExcusedCard(sel,canM){
       const active=e.from<=sel&&sel<=e.to;
       const pending=e.source==='parent'&&e.status==='pending';
       return '<tr'+(pending?' style="background:var(--gdbg,#fff8e1)"':active?' style="background:var(--ac2)"':'')+'><td><strong>'+esc(e.studentName||'—')+'</strong>'
+      +(e.submittedClass?'<div style="font-size:9px;color:var(--tx3)">🏫 Class written by parent: <strong>'+esc(e.submittedClass)+'</strong></div>':'')
       +(e.source==='parent'?'<div style="font-size:9px;color:var(--tx3)">📩 Parent request'+(e.parentName?' — '+esc(e.parentName):'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div>':'')+(e.source==='parent'?(e.nameVerified?'<div style="font-size:9px;color:var(--su)">✅ name checked'+(e.submittedName&&e.submittedName!==e.studentName?' · parent wrote "'+esc(e.submittedName)+'"':'')+'</div>':'<div style="font-size:9px;color:var(--dg)">⚠️ name not checked'+(e.studentId?'':' · not linked to a student')+'</div>'):'')+'</td>'
       +'<td class="mono">'+esc(e.from)+'</td><td class="mono">'+esc(e.to)+'</td>'
       +'<td style="color:var(--tx2)">'+esc(e.reason||'—')+'</td>'
@@ -4154,7 +4209,7 @@ function rAttendance(){
   +buildNotifiedCard('absent',sel,canM)
   +buildExcusedCard(sel,canM)
   +'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🔍 Mark Absent Students</h3><div style="display:flex;gap:6px">'+(canM?'<button class="btn bs bsm" onclick="bulkMarkM(\'absent\')">➕ Mark Several Absent</button><button class="btn bg2 bsm" onclick="markAllPresent()">↺ Reset All Present</button><button class="btn bp bsm" onclick="submitAtt()">'+(dayRec.marked?'Update':'Submit')+' Attendance →</button>':'')+'</div></div>'
-  +'<div style="display:flex;gap:8px;margin-bottom:12px"><input id="attq" placeholder="🔍 Search by name or grade…" oninput="fltAtt()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="attgf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+g+'">Gr '+g+'</option>').join('')+'</select><select id="attsf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Status</option><option value="absent">Absent only</option><option value="present">Present only</option><option value="late">Late only</option></select></div>'
+  +'<div style="display:flex;gap:8px;margin-bottom:12px"><input id="attq" placeholder="🔍 Search by name or grade…" oninput="fltAtt()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="attgf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+g+'">Gr '+g+'</option>').join('')+'</select><select id="attsf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Status</option><option value="absent">Absent only</option><option value="present">Present only</option><option value="late">Late only</option><option value="excused">Excused only</option><option value="tonotify">Absent — to notify</option></select></div>'
   +'<div id="attlist">'+buildAttList(students,absentSet,canM,sel,lateSet,lateTimes)+'</div></div>'
   +'<div class="card"><div class="sh2"><h3>📊 Attendance History</h3><button class="btn bg2 bsm" onclick="expAttHist()">📥 Export History</button></div>'+buildAttHistory(allAtt,students)+'</div>';
   
@@ -4166,6 +4221,8 @@ function rAttendance(){
     if(sf==='absent')list=list.filter(s=>absentSet.has(s.id));
     if(sf==='present')list=list.filter(s=>!absentSet.has(s.id));
     if(sf==='late')list=list.filter(s=>lateSet.has(s.id));
+    if(sf==='excused')list=list.filter(s=>isExcusedOn(s.id,sel));
+    if(sf==='tonotify')list=list.filter(s=>absentSet.has(s.id)&&!isExcusedOn(s.id,sel));
     document.getElementById('attlist').innerHTML=buildAttList(list,absentSet,canM,sel,lateSet,lateTimes);
   };
 }
@@ -4188,7 +4245,7 @@ function buildAttList(students,absentSet,canM,attDate,lateSet,lateTimes){
       return'<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid var(--bd);background:'+(exc?'var(--ac2)':isAbs?'var(--dnbg)':isLate?'var(--gdbg,#fff8e1)':'transparent')+';border-radius:var(--rs);margin-bottom:2px">'
       +(canM?'<input type="checkbox" id="att-'+s.id+'" '+(isAbs?'checked':'')+' onchange="togAbs(\''+s.id+'\')" style="width:17px;height:17px;cursor:pointer;accent-color:var(--dn)">':'<div style="width:17px"></div>')
       +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+fN(s)+'</div><div style="font-size:10px;color:var(--tx3)">SN: '+s.sn+' · '+(s.fatherPhone||s.motherPhone||'No phone')+'</div></div>'
-      +(exc?'<span class="badge bbl" style="justify-content:center" title="Excused '+esc(exc.from)+' → '+esc(exc.to)+(exc.reason?' · '+esc(exc.reason):'')+'">📝 Excused</span>':'')
+      +(exc?'<span class="badge bbl" style="justify-content:center" title="Excused '+esc(exc.from)+' → '+esc(exc.to)+(exc.reason?' · '+esc(exc.reason):'')+' — parents are not messaged">📝 Excused'+(exc.from!==exc.to?' '+esc(exc.from)+'→'+esc(exc.to):'')+'</span>':'')
       +'<span class="badge '+(isAbs?'brd':isLate?'bgo':'bgn')+'" style="min-width:62px;justify-content:center">'+(isAbs?'❌ Absent':isLate?'⏰ Late':'✅ Present')+'</span>'
       +'</div>';
     }).join('')+'</div></div>';
@@ -4283,7 +4340,7 @@ function buildLateList(students,lateSet,canM,attDate){
       +(canM?'<input type="checkbox" id="late-'+s.id+'" '+(isLate?'checked':'')+' onchange="togLate(\''+s.id+'\')" style="width:17px;height:17px;cursor:pointer;accent-color:var(--gd)">':'<div style="width:17px"></div>')
       +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+esc(fN(s))+'</div>'
       +'<div style="font-size:10px;color:var(--tx3)">SN: '+esc(String(s.sn||''))+' · '+esc(String(s.fatherPhone||s.motherPhone||'No phone'))+'</div></div>'
-      +(exc?'<span class="badge bbl" title="Excused '+esc(exc.from)+' → '+esc(exc.to)+'">📝 Excused</span>':'')
+      +(exc?'<span class="badge bbl" title="Excused '+esc(exc.from)+' → '+esc(exc.to)+(exc.reason?' · '+esc(exc.reason):'')+' — parents are not messaged">📝 Excused'+(exc.from!==exc.to?' '+esc(exc.from)+'→'+esc(exc.to):'')+'</span>':'')
       +'<span class="badge '+(isLate?'bgo':'bgn')+'" style="min-width:62px;justify-content:center">'+(isLate?'⏰ Late':'✅ On Time')+'</span>'
       +'</div>';
     }).join('')+'</div></div>';
@@ -4409,7 +4466,8 @@ function bulkMarkM(kind){
   const label=kind==='late'?'Late':'Absent';
   openM('<div class="mh"><h3>'+(kind==='late'?'⏰':'❌')+' Mark Several Students '+label+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">Search and tick as many students as you need, then apply them all at once for <strong>'+esc(sel)+'</strong>.</div>'
+  +'<div class="al ai">Search and tick as many students as you need, then apply them all at once for <strong>'+esc(sel)+'</strong>.'
+  +'<br><span style="font-size:11px">Anyone already excused for this date is marked 📝 below — they are still recorded, but their parents are never messaged.</span></div>'
   +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
   +'<input id="bk-q" placeholder="🔍 Type a name, grade or section…" oninput="bulkRender()" style="flex:1;min-width:200px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
   +'<select id="bk-gr" onchange="bulkRender()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'
@@ -4436,10 +4494,12 @@ function bulkRender(){
   document.getElementById('bk-list').innerHTML=list.length?list.map(function(s){
     const on=picked.indexOf(s.id)>=0;
     const has=already.has(s.id);
+    const exc=excusedFor(s.id,sel);
     return '<label style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-bottom:1px solid var(--bd);cursor:'+(has?'default':'pointer')+';background:'+(on?'var(--ac2)':'transparent')+';opacity:'+(has?'.55':'1')+'">'
     +'<input type="checkbox" '+(on?'checked':'')+' '+(has?'disabled':'')+' onchange="bulkToggle(\''+escJs(s.id)+'\')" style="width:16px;height:16px;cursor:pointer">'
     +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+esc(fN(s))+'</div>'
     +'<div style="font-size:10px;color:var(--tx3)">Gr '+esc(grSec(s.grade,s.section))+' · SN '+esc(String(s.sn||''))+'</div></div>'
+    +(exc?'<span class="badge bbl" style="font-size:10px" title="Excused '+esc(exc.from)+' → '+esc(exc.to)+(exc.reason?' · '+esc(exc.reason):'')+'">📝 excused</span>':'')
     +(has?'<span class="badge bgr" style="font-size:10px">already marked</span>':'')
     +'</label>';
   }).join(''):'<div class="emp" style="padding:16px"><div class="ei">🔍</div><p style="font-size:11px">No students match</p></div>';
@@ -4559,10 +4619,18 @@ function _attDayRec(){
 
 function togAbs(sid){
   const r=_attDayRec();
+  const sel=r.all[r.i].date;
   const set=new Set(r.all[r.i].absentIds);
   if(set.has(sid))set.delete(sid);
   else{
     set.add(sid);
+    // Say it at the moment of marking, not only when the message queue opens
+    const exc=excusedFor(sid,sel);
+    if(exc){
+      const st=gS(sid);
+      toast('📝 '+(st?fN(st):'This student')+' is already excused '+exc.from+' → '+exc.to
+        +(exc.reason?' ('+exc.reason+')':'')+' — no message will be sent to the parents.','info');
+    }
     // absent and late are mutually exclusive
     r.all[r.i].lateIds=(r.all[r.i].lateIds||[]).filter(x=>x!==sid);
     delete r.all[r.i].lateTimes[sid];
