@@ -3539,22 +3539,22 @@ function renderExcusePortal(){
   +'<div style="text-align:center;margin-bottom:22px;padding-top:16px"><div style="width:72px;height:72px;background:linear-gradient(135deg,var(--ac),var(--pu));border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 12px;overflow:hidden">'+(s.logo&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'🎓'))+'</div>'
   +'<h1 style="font-size:22px;font-weight:700;color:var(--tx);margin-bottom:4px">'+esc(s.schoolName||'School')+'</h1>'
   +'<p style="font-size:13px;color:var(--tx2)">Absence Excuse Request</p>'
-  +'<p style="font-size:11px;color:var(--tx3);margin-top:2px">'+esc(s.schoolNameAr||'')+' · طلب عذر غياب</p></div>'
+  +'<p style="font-size:11px;color:var(--tx3);margin-top:2px">'+esc(s.schoolNameAr||'')+'</p></div>'
   +'<div class="card" id="ep-card" style="padding:20px">'
-  +'<div class="al ai" style="margin-bottom:14px">📝 Please complete this form to submit an excuse for your son\'s absence. The school will review it.<br><span style="font-size:11px">يرجى تعبئة هذا النموذج لتقديم عذر غياب ابنكم.</span></div>'
+  +'<div class="al ai" style="margin-bottom:14px">📝 Please complete this form to submit an excuse for your son\'s absence. The school will review it.</div>'
   +(stu?'<div class="al ag" style="margin-bottom:12px">👨‍🎓 <strong>'+esc(fN(stu))+'</strong> — Grade '+esc(grSec(stu.grade,stu.section))+'</div><input type="hidden" id="ep-sid" value="'+esc(stu.id)+'"><input type="hidden" id="ep-sname" value="'+esc(fN(stu))+'">'
-    :'<input type="hidden" id="ep-sid" value="'+esc(sid)+'"><div class="fg"><label>Student Full Name * / اسم الطالب</label><input id="ep-sname" placeholder="Your son\'s full name"></div>')
-  +'<div class="fg"><label>Class / Section * / الصف والشعبة</label>'
+    :'<input type="hidden" id="ep-sid" value="'+esc(sid)+'"><div class="fg"><label>Student Full Name *</label><input id="ep-sname" placeholder="Your son\'s full name"></div>')
+  +'<div class="fg"><label>Class / Section *</label>'
   +'<input id="ep-class" placeholder="e.g. 5-A" value="'+esc(stu?grSec(stu.grade,stu.section):'')+'">'
-  +'<div style="font-size:10px;color:var(--tx3);margin-top:3px">Write the grade and section, e.g. 5-A · اكتبوا الصف والشعبة</div></div>'
-  +'<div class="fr f2"><div class="fg"><label>Parent Name * / اسم ولي الأمر</label><input id="ep-pname" placeholder="Your full name"></div>'
-  +'<div class="fg"><label>Parent Phone * / الجوال</label><input id="ep-pphone" type="tel" placeholder="05XXXXXXXX"></div></div>'
-  +'<div class="fr f2"><div class="fg"><label>Absent From * / من تاريخ</label><input type="date" id="ep-from" value="'+esc(d)+'"></div>'
-  +'<div class="fg"><label>Absent To * / إلى تاريخ</label><input type="date" id="ep-to" value="'+esc(d)+'"></div></div>'
-  +'<div class="fg"><label>Reason for absence * / سبب الغياب</label>'
-  +'<select id="ep-rcat" onchange="epReasonChange()"><option value="">— Please choose — / اختر السبب —</option>'
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:3px">Write the grade and section, e.g. 5-A</div></div>'
+  +'<div class="fr f2"><div class="fg"><label>Parent Name *</label><input id="ep-pname" placeholder="Your full name"></div>'
+  +'<div class="fg"><label>Parent Phone *</label><input id="ep-pphone" type="tel" placeholder="05XXXXXXXX"></div></div>'
+  +'<div class="fr f2"><div class="fg"><label>Absent From *</label><input type="date" id="ep-from" value="'+esc(d)+'"></div>'
+  +'<div class="fg"><label>Absent To *</label><input type="date" id="ep-to" value="'+esc(d)+'"></div></div>'
+  +'<div class="fg"><label>Reason for absence *</label>'
+  +'<select id="ep-rcat" onchange="epReasonChange()"><option value="">— Please choose —</option>'
   +EXCUSE_REASONS.map(function(r){return '<option value="'+esc(r)+'">'+esc(r)+'</option>';}).join('')+'</select></div>'
-  +'<div class="fg"><label id="ep-rdlab">More details (optional) / تفاصيل إضافية</label><textarea id="ep-reason" placeholder="Anything the school should know" style="min-height:80px"></textarea></div>'
+  +'<div class="fg"><label id="ep-rdlab">More details (optional)</label><textarea id="ep-reason" placeholder="Anything the school should know" style="min-height:80px"></textarea></div>'
   +'<button class="btn bp" style="width:100%;justify-content:center;padding:13px;font-size:14px" onclick="epSubmit()">📤 Submit Excuse Request →</button>'
   +'</div>'
   +'<div style="text-align:center;margin-top:18px;font-size:11px;color:var(--tx3)"><a href="?" style="color:var(--ac);text-decoration:none">Staff Login →</a></div></div>';
@@ -3591,7 +3591,6 @@ function epSubmit(){
   +'<div style="font-size:46px;margin-bottom:10px">✅</div>'
   +'<div style="font-size:17px;font-weight:700;color:var(--su);margin-bottom:8px">Excuse Request Submitted</div>'
   +'<div style="font-size:13px;color:var(--tx2);line-height:1.7">Thank you. Your excuse for <strong>'+esc(sname)+'</strong><br>('+esc(from)+' → '+esc(to)+') has been sent to the school.<br>You do not need to reply to the absence message.</div>'
-  +'<div style="font-size:12px;color:var(--tx3);margin-top:14px;direction:rtl">تم إرسال طلب العذر إلى المدرسة. شكراً لكم.</div>'
   +'</div>';
 }
 
@@ -3600,9 +3599,7 @@ function epReasonChange(){
   const cat=((document.getElementById('ep-rcat')||{}).value||'');
   const lab=document.getElementById('ep-rdlab');
   if(!lab)return;
-  lab.textContent=(cat===EXCUSE_REASON_OTHER)
-    ?'Please describe the reason * / \u0627\u0643\u062a\u0628\u0648\u0627 \u0627\u0644\u0633\u0628\u0628'
-    :'More details (optional) / \u062a\u0641\u0627\u0635\u064a\u0644 \u0625\u0636\u0627\u0641\u064a\u0629';
+  lab.textContent=(cat===EXCUSE_REASON_OTHER)?'Please describe the reason *':'More details (optional)';
 }
 
 function checkParentMode(){
@@ -3816,17 +3813,17 @@ function doExportAr(fmt){
 // Reasons a parent can pick from on the excuse form. Bilingual so the parent
 // reads it in either language and staff exports stay in one vocabulary.
 const EXCUSE_REASONS=[
-  'Illness / مرض',
-  'Medical appointment / موعد طبي',
-  'Hospital admission / تنويم بالمستشفى',
-  'Family emergency / ظرف عائلي طارئ',
-  'Bereavement in the family / وفاة أحد الأقارب',
-  'Family travel / سفر مع العائلة',
-  'Official appointment / مراجعة جهة رسمية',
-  'Weather or transport problem / ظروف جوية أو مواصلات',
-  'Other / أخرى'
+  'Illness',
+  'Medical appointment',
+  'Hospital admission',
+  'Family emergency',
+  'Bereavement in the family',
+  'Family travel',
+  'Official appointment',
+  'Weather or transport problem',
+  'Other'
 ];
-const EXCUSE_REASON_OTHER='Other / أخرى';
+const EXCUSE_REASON_OTHER='Other';
 function getExcused(){const e=DB.get('excused');return Array.isArray(e)?e:[];}
 function excusedFor(studentId,date){
   if(!studentId||!date)return null;
@@ -3947,27 +3944,61 @@ function exportExcusedM(){
   const defFrom=dates[0]||new Date().toISOString().split('T')[0];
   const defTo=ends[ends.length-1]||defFrom;
   const names=Array.from(new Set(all.map(e=>e.studentName).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
-  openM('<div class="mh"><h3>📊 Export Excused Students</h3><button class="mc" onclick="closeM()">×</button></div>'
+  openM('<div class="mh"><h3>📋 Excused Students Report</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">Every excused period overlapping the dates you choose, with the reason, who recorded it and how many of those days fall inside the period.</div>'
+  +'<div class="al ai">Every excused period overlapping the dates you choose, with the reason, who recorded it and how many of those days fall inside the period. The list is shown below — export only if you need the file.</div>'
   +'<div class="fr f2"><div class="fg"><label>From Date *</label><input type="date" id="xx-from" value="'+esc(defFrom)+'"></div>'
   +'<div class="fg"><label>To Date *</label><input type="date" id="xx-to" value="'+esc(defTo)+'"></div></div>'
   +'<div class="fr f2"><div class="fg"><label>Student</label><select id="xx-stu"><option value="">— All students —</option>'+names.map(n=>'<option value="'+escJs(n)+'">'+esc(n)+'</option>').join('')+'</select></div>'
   +'<div class="fg"><label>Status</label><select id="xx-status"><option value="">— All —</option><option value="approved">Approved / staff-recorded</option><option value="pending">Pending parent requests</option></select></div></div>'
-  +'<div id="xx-prev" style="font-size:11px;color:var(--tx3);margin-top:6px"></div>'
+  +'<div id="xx-prev" style="font-size:11px;color:var(--tx3);margin:6px 0"></div>'
+  +'<div id="xx-rows"></div>'
   +'</div>'
-  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="runExcusedExport()">📊 Export Excel →</button></div>');
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bs" onclick="runExcusedExport()">📊 Export Excel →</button></div>',true);
   const f=document.getElementById('xx-from'),t=document.getElementById('xx-to');
   const upd=function(){
     const el=document.getElementById('xx-prev');
-    if(f.value&&t.value&&t.value<f.value){el.innerHTML='<span style="color:var(--dg)">⚠️ “To” date is before “From” date.</span>';return;}
+    const box=document.getElementById('xx-rows');
+    if(f.value&&t.value&&t.value<f.value){el.innerHTML='<span style="color:var(--dg)">⚠️ “To” date is before “From” date.</span>';box.innerHTML='';return;}
     const rows=buildExcusedExportRows(f.value,t.value,document.getElementById('xx-stu').value,document.getElementById('xx-status').value);
     const days=rows.reduce((s,r)=>s+r.daysInPeriod,0);
     el.innerHTML='📋 <strong>'+rows.length+'</strong> excused period(s) · <strong>'+new Set(rows.map(r=>normDutyName(r.student))).size+'</strong> student(s) · <strong>'+days+'</strong> excused day(s) in range';
+    box.innerHTML=excusedReportTable(rows,f.value,t.value);
   };
   f.onchange=upd;t.onchange=upd;
   document.getElementById('xx-stu').onchange=upd;document.getElementById('xx-status').onchange=upd;
   upd();
+}
+
+// The same rows the export would write, on screen — no download needed.
+function excusedReportTable(rows,from,to){
+  if(!rows.length)return '<div class="emp" style="padding:16px"><div class="ei">📝</div><p style="font-size:11px">No excused students in these dates.</p></div>';
+  const byStudent={};
+  rows.forEach(function(r){const k=normDutyName(r.student);
+    if(!byStudent[k])byStudent[k]={name:r.student,days:0,periods:0};
+    byStudent[k].days+=r.daysInPeriod;byStudent[k].periods++;});
+  const tot=rows.reduce(function(a,r){return a+r.daysInPeriod;},0);
+  return '<div class="tw" style="max-height:300px;overflow:auto"><table style="font-size:11px"><thead><tr>'
+   +'<th>Student</th><th>Class</th><th>From</th><th>To</th><th class="c">Days in range</th><th>Reason</th><th>Status</th><th>Recorded by</th></tr></thead><tbody>'
+   +rows.map(function(r){
+     const pending=String(r.status||'').toLowerCase().indexOf('pending')>=0;
+     return '<tr'+(pending?' style="background:var(--gdbg,#fff8e1)"':'')+'>'
+      +'<td><strong>'+esc(r.student||'—')+'</strong></td>'
+      +'<td>'+esc(String(r.grade||'—'))+'</td>'
+      +'<td class="mono">'+esc(r.from||'')+'</td><td class="mono">'+esc(r.to||'')+'</td>'
+      +'<td class="c"><strong>'+r.daysInPeriod+'</strong></td>'
+      +'<td style="color:var(--tx2)">'+esc(r.reason||'—')+'</td>'
+      +'<td>'+(pending?'<span class="badge bgo">⏳ Pending</span>':'<span class="badge bgn">✓ '+esc(String(r.status||'Recorded'))+'</span>')+'</td>'
+      +'<td style="font-size:10px;color:var(--tx3)">'+esc(String(r.addedBy||r.parentName||'—'))+'</td></tr>';
+   }).join('')+'</tbody></table></div>'
+   +'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 5px">Excused days per student</div>'
+   +'<div class="tw"><table style="font-size:11px"><tbody>'
+   +Object.keys(byStudent).sort().map(function(k){
+     return '<tr><td>'+esc(byStudent[k].name)+'</td><td style="color:var(--tx3)">'+byStudent[k].periods+' period(s)</td>'
+      +'<td class="c"><strong>'+byStudent[k].days+'</strong> day(s)</td></tr>';
+   }).join('')
+   +'<tr class="tot"><td>GRAND TOTAL</td><td>'+rows.length+' period(s)</td><td class="c"><strong>'+tot+'</strong> day(s)</td></tr>'
+   +'</tbody></table></div>';
 }
 
 function runExcusedExport(){
@@ -4156,7 +4187,7 @@ function buildExcusedCard(sel,canM){
   const pendingCount=list.filter(e=>e.source==='parent'&&e.status==='pending').length;
   return '<div class="card" style="margin-bottom:13px">'
   +'<div class="sh2"><h3>📝 Excused Students ('+activeNow.length+' on '+esc(sel)+')</h3>'
-  +'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportExcusedM()">📊 Export Excused</button>'+(canM?'<button class="btn bg2 bsm" onclick="copyExcuseLink()">🔗 Copy Parent Link</button><button class="btn bp bsm" onclick="addExcusedM()">+ Add Excused Student</button>':'')+'</div></div>'
+  +'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportExcusedM()">📋 Excused Report</button>'+(canM?'<button class="btn bg2 bsm" onclick="copyExcuseLink()">🔗 Copy Parent Link</button><button class="btn bp bsm" onclick="addExcusedM()">+ Add Excused Student</button>':'')+'</div></div>'
   +(pendingCount?'<div class="al aw" style="margin-bottom:8px">⏳ <strong>'+pendingCount+' parent request(s) awaiting review.</strong> They already count as excused, so no further messages are sent. Approve to confirm, or Reject to remove.</div>':'')
   +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Excused students are still recorded absent, but their parents are skipped when sending WhatsApp messages. Parents can submit their own excuse using the link included in the absence message.</div>'
   +(list.length?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Student</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><th>Added By</th>'+(canM?'<th></th>':'')+'</tr></thead><tbody>'
