@@ -3825,9 +3825,46 @@ const EXCUSE_REASONS=[
 ];
 const EXCUSE_REASON_OTHER='Other';
 function getExcused(){const e=DB.get('excused');return Array.isArray(e)?e:[];}
+// A parent submitting from a plain link leaves the record with no student id
+// until staff run the name check, and until then the roll knew nothing about
+// it — the student showed as not excused and their parents were still messaged.
+// Resolve those by exact name here, using the class the parent wrote to break a
+// tie. Only an unambiguous match counts; anything else stays for staff to
+// decide. Nothing stored is altered — this is worked out fresh on each render.
+let _excIdCache=null;
+function clearExcusedCache(){_excIdCache=null;}
+function excusedStudentId(e){
+  if(!e)return '';
+  if(e.studentId)return e.studentId;
+  const nm=normDutyName(e.studentName||'');
+  if(!nm)return '';
+  if(!_excIdCache){
+    _excIdCache={};
+    (DB.get('students')||[]).forEach(function(st){
+      const k=normDutyName(fN(st));
+      if(!k)return;
+      (_excIdCache[k]||(_excIdCache[k]=[])).push(st);
+    });
+  }
+  const hits=_excIdCache[nm]||[];
+  if(hits.length===1)return hits[0].id;
+  if(hits.length>1&&e.submittedClass){
+    const c=hits.filter(function(st){return excuseClassMatch(e.submittedClass,st)===1;});
+    if(c.length===1)return c[0].id;
+  }
+  return '';
+}
+// Excused requests covering this date that no student could be matched to.
+// They are invisible on the roll, so their parents would still be messaged.
+function unmatchedExcusedOn(date){
+  if(!date)return [];
+  return getExcused().filter(function(e){
+    return e.from&&e.to&&e.from<=date&&date<=e.to&&!excusedStudentId(e);
+  });
+}
 function excusedFor(studentId,date){
   if(!studentId||!date)return null;
-  return getExcused().find(e=>e.studentId===studentId&&e.from&&e.to&&e.from<=date&&date<=e.to)||null;
+  return getExcused().find(e=>e.from&&e.to&&e.from<=date&&date<=e.to&&excusedStudentId(e)===studentId)||null;
 }
 function isExcusedOn(studentId,date){return !!excusedFor(studentId,date);}
 
@@ -3867,7 +3904,7 @@ function saveExcused(){
   list.push({id:nid('exc'),studentId:sid,studentName:s?fN(s):'',from:from,to:to,
     reason:document.getElementById('exc-reason').value.trim(),
     addedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),created:new Date().toISOString()});
-  DB.set('excused',list);
+  DB.set('excused',list);clearExcusedCache();
   logA('Excused '+(s?fN(s):'student')+' from '+from+' to '+to);
   closeM();toast('Student excused','success');rAttendance();
 }
@@ -3876,7 +3913,7 @@ function delExcused(id){
   const e=getExcused().find(x=>x.id===id);
   if(!e)return;
   if(!confirm('Remove the excused period for '+(e.studentName||'this student')+' ('+e.from+' → '+e.to+')?'))return;
-  DB.set('excused',getExcused().filter(x=>x.id!==id));
+  DB.set('excused',getExcused().filter(x=>x.id!==id));clearExcusedCache();
   logA('Removed excused period for '+(e.studentName||'student'));
   toast('Excused period removed','danger');rAttendance();
 }
@@ -4165,7 +4202,7 @@ function excuseLink(id,sid){
   list[i].nameVerified=true;
   list[i].verifiedBy=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
   list[i].verifiedAt=new Date().toISOString();
-  DB.set('excused',list);
+  DB.set('excused',list);clearExcusedCache();
   logA('Matched excuse request "'+(list[i].submittedName||'')+'" to '+fN(s));
   closeM();toast('Linked to '+fN(s),'success');rAttendance();
 }
@@ -4189,6 +4226,7 @@ function buildExcusedCard(sel,canM){
   +'<div class="sh2"><h3>📝 Excused Students ('+activeNow.length+' on '+esc(sel)+')</h3>'
   +'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportExcusedM()">📋 Excused Report</button>'+(canM?'<button class="btn bg2 bsm" onclick="copyExcuseLink()">🔗 Copy Parent Link</button><button class="btn bp bsm" onclick="addExcusedM()">+ Add Excused Student</button>':'')+'</div></div>'
   +(pendingCount?'<div class="al aw" style="margin-bottom:8px">⏳ <strong>'+pendingCount+' parent request(s) awaiting review.</strong> They already count as excused, so no further messages are sent. Approve to confirm, or Reject to remove.</div>':'')
+  +(function(){const um=unmatchedExcusedOn(sel);return um.length?'<div class="al ad" style="margin-bottom:8px">⛔ <strong>'+um.length+' excused request(s) for '+esc(sel)+' could not be matched to a student</strong> — '+um.map(function(x){return esc(x.studentName||'(no name)')+(x.submittedClass?' ('+esc(x.submittedClass)+')':'');}).join(', ')+'. They do not show on the roll and their parents would still be messaged. Use 🔎 Check Name below to link them.</div>':'';})()
   +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Excused students are still recorded absent, but their parents are skipped when sending WhatsApp messages. Parents can submit their own excuse using the link included in the absence message.</div>'
   +(list.length?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Student</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><th>Added By</th>'+(canM?'<th></th>':'')+'</tr></thead><tbody>'
     +list.map(e=>{
@@ -4196,11 +4234,15 @@ function buildExcusedCard(sel,canM){
       const pending=e.source==='parent'&&e.status==='pending';
       return '<tr'+(pending?' style="background:var(--gdbg,#fff8e1)"':active?' style="background:var(--ac2)"':'')+'><td><strong>'+esc(e.studentName||'—')+'</strong>'
       +(e.submittedClass?'<div style="font-size:9px;color:var(--tx3)">🏫 Class written by parent: <strong>'+esc(e.submittedClass)+'</strong></div>':'')
-      +(e.source==='parent'?'<div style="font-size:9px;color:var(--tx3)">📩 Parent request'+(e.parentName?' — '+esc(e.parentName):'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div>':'')+(e.source==='parent'?(e.nameVerified?'<div style="font-size:9px;color:var(--su)">✅ name checked'+(e.submittedName&&e.submittedName!==e.studentName?' · parent wrote "'+esc(e.submittedName)+'"':'')+'</div>':'<div style="font-size:9px;color:var(--dg)">⚠️ name not checked'+(e.studentId?'':' · not linked to a student')+'</div>'):'')+'</td>'
+      +(e.source==='parent'?'<div style="font-size:9px;color:var(--tx3)">📩 Parent request'+(e.parentName?' — '+esc(e.parentName):'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div>':'')+(e.source==='parent'?(e.nameVerified?'<div style="font-size:9px;color:var(--su)">✅ name checked'+(e.submittedName&&e.submittedName!==e.studentName?' · parent wrote "'+esc(e.submittedName)+'"':'')+'</div>'
+        :(e.studentId?'<div style="font-size:9px;color:var(--dg)">⚠️ name not checked</div>'
+          :(function(){const rid=excusedStudentId(e);const rs=rid?gS(rid):null;
+            return rs?'<div style="font-size:9px;color:var(--gd)">🔗 matched by name to <strong>'+esc(fN(rs))+'</strong> (Gr '+esc(grSec(rs.grade,rs.section))+') — confirm with Check Name</div>'
+              :'<div style="font-size:9px;color:var(--dn)"><strong>⛔ no student matched</strong> — their parents will still be messaged. Use Check Name.</div>';})())):'')+'</td>'
       +'<td class="mono">'+esc(e.from)+'</td><td class="mono">'+esc(e.to)+'</td>'
       +'<td style="color:var(--tx2)">'+esc(e.reason||'—')+'</td>'
       +'<td>'+(pending?'<span class="badge bgo">⏳ Pending review</span> ':'')
-        +(active?'<span class="badge bgn">Excused on '+esc(sel)+'</span>':'<span class="badge bgr">Not this date</span>')+'</td>'
+        +(active?(excusedStudentId(e)?'<span class="badge bgn">Excused on '+esc(sel)+'</span>':'<span class="badge brd">Not on the roll</span>'):'<span class="badge bgr">Not this date</span>')+'</td>'
       +'<td style="font-size:10px;color:var(--tx3)">'+esc(e.addedBy||'—')+'</td>'
       +(canM?'<td style="display:flex;gap:4px;flex-wrap:wrap">'
         +(pending?'<button class="btn bs bxs" onclick="approveExcused(\''+e.id+'\')">✓ Approve</button>':'')
@@ -4212,6 +4254,7 @@ function buildExcusedCard(sel,canM){
 }
 
 function rAttendance(){
+  clearExcusedCache();
   const canM=['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role);
   const canV=canM||['academic_supervisor','student_advisor','quality_incharge'].includes(CU.role);
   if(!canV){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
@@ -4287,6 +4330,7 @@ function buildAttList(students,absentSet,canM,attDate,lateSet,lateTimes){
 // LATE COMERS — its own page, sharing the attendance day record
 // ═══════════════════════════════════════════════════════════
 function rLateComers(){
+  clearExcusedCache();
   const canM=['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role);
   const canV=canM||['academic_supervisor','student_advisor','quality_incharge'].includes(CU.role);
   if(!canV){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
