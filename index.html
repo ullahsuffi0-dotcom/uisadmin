@@ -3955,6 +3955,186 @@ function copyExcuseLink(){
   }else{prompt('Copy this link:',url);}
 }
 
+
+// ══════════════════════════════════════════════════════════
+// REPLYING TO A PARENT ABOUT THEIR EXCUSE
+// Accept it, decline it, or ask for the paperwork that backs it up.
+// The reply is sent over WhatsApp and recorded on the excuse itself.
+// ══════════════════════════════════════════════════════════
+const EXCUSE_DOCS=[
+  'Medical certificate from a licensed clinic or hospital',
+  'Hospital admission or discharge report',
+  'Travel ticket or booking confirmation',
+  'Official appointment letter',
+  'Proof of bereavement',
+  'A signed letter from the parent explaining the absence'
+];
+
+// Whoever we can reach: the number the parent typed, else the roll.
+function excuseReplyPhones(e){
+  const out=[];
+  const seen={};
+  const add=function(label,ph){
+    const c=cleanPhone(ph);
+    if(!c||seen[c])return;
+    seen[c]=1;out.push({label:label,phone:ph,clean:c});
+  };
+  if(e.parentPhone)add('Parent who submitted'+(e.parentName?' — '+e.parentName:''),e.parentPhone);
+  const sid=excusedStudentId(e);
+  const st=sid?gS(sid):null;
+  if(st){
+    add('Father',st.fatherPhone);
+    add('Mother',st.motherPhone);
+  }
+  return out;
+}
+
+function excuseReplyName(e){
+  const sid=excusedStudentId(e);
+  const st=sid?gS(sid):null;
+  return st?fN(st):(e.studentName||'your son');
+}
+
+function excuseReplyText(e,kind,docs,note){
+  const s=DB.get('settings')||{};
+  const school=s.schoolName||'the school';
+  const name=excuseReplyName(e);
+  const sid=excusedStudentId(e);
+  const st=sid?gS(sid):null;
+  const cls=st?(' (Grade '+grSec(st.grade,st.section)+')'):(e.submittedClass?' ('+e.submittedClass+')':'');
+  const range=(e.from===e.to)?e.from:(e.from+' to '+e.to);
+  let body='';
+  if(kind==='accepted'){
+    body='Your absence excuse for '+name+cls+' covering '+range+' has been reviewed and ACCEPTED. '
+      +'No further action is needed. Thank you for informing the school.';
+  }else if(kind==='declined'){
+    body='Your absence excuse for '+name+cls+' covering '+range+' has been reviewed and could NOT be accepted. '
+      +'The absence will be recorded as unexcused. Please contact the school office if you would like to discuss it.';
+  }else{
+    const listed=(docs&&docs.length)?docs.map(function(d,i){return (i+1)+'. '+d;}).join(String.fromCharCode(10)):'A supporting document';
+    body='We have received your absence excuse for '+name+cls+' covering '+range+'. '
+      +'To complete it, please send the following to the school office:'+String.fromCharCode(10)+String.fromCharCode(10)
+      +listed+String.fromCharCode(10)+String.fromCharCode(10)
+      +'You may send a clear photo on this number or hand it in at the office. '
+      +'The excuse stays pending until we receive it.';
+  }
+  const nl=String.fromCharCode(10);
+  return 'Respected Parent,'+nl+nl+body+(note?(nl+nl+note):'')+nl+nl+school;
+}
+
+function excuseReplyM(id,preset){
+  const e=getExcused().find(function(x){return x.id===id;});
+  if(!e){toast('Request not found','danger');return;}
+  const phones=excuseReplyPhones(e);
+  window._exReply={id:id,kind:preset||e.replyStatus||'accepted',docs:[],dirty:false};
+  openM('<div class="mh"><h3>💬 Reply to Parent</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Tell the parent whether the excuse is accepted, or ask for the document that supports it. '
+    +'The message opens in WhatsApp so you can read it before sending, and the reply is recorded on the excuse.</div>'
+  +'<div class="al ag" style="margin-bottom:12px">👨‍🎓 <strong>'+esc(excuseReplyName(e))+'</strong> · '+esc(e.from)+' → '+esc(e.to)
+    +(e.reason?'<div style="font-size:11px;margin-top:3px">Reason given: '+esc(e.reason)+'</div>':'')+'</div>'
+  +(phones.length?'<div class="fg"><label>Send to *</label><select id="xr-ph">'
+      +phones.map(function(p){return '<option value="'+esc(p.phone)+'">'+esc(p.label)+' — '+esc(p.phone)+'</option>';}).join('')
+      +'</select></div>'
+    :'<div class="al ad">⛔ No phone number on this excuse or on the student record — add one before replying.</div>')
+  +'<div class="fg"><label>Decision *</label><select id="xr-kind" onchange="excuseReplyKind()">'
+    +'<option value="accepted">✅ Excuse accepted</option>'
+    +'<option value="declined">❌ Excuse not accepted</option>'
+    +'<option value="document">📄 Document required before deciding</option>'
+  +'</select></div>'
+  +'<div id="xr-docs" style="display:none"><label style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase">Documents to ask for</label>'
+    +'<div style="border:1px solid var(--bd);border-radius:var(--rs);padding:6px;margin:5px 0 10px">'
+    +EXCUSE_DOCS.map(function(d,i){
+      return '<label style="display:flex;gap:8px;align-items:center;padding:5px 6px;cursor:pointer;font-size:12px">'
+       +'<input type="checkbox" value="'+esc(d)+'" onchange="excuseReplyBuild()" style="width:15px;height:15px;cursor:pointer">'
+       +'<span>'+esc(d)+'</span></label>';
+    }).join('')
+    +'<label style="display:flex;gap:8px;align-items:center;padding:5px 6px;font-size:12px">'
+    +'<span style="white-space:nowrap">Other:</span>'
+    +'<input id="xr-other" placeholder="Anything else you need" oninput="excuseReplyBuild()" style="flex:1">'
+    +'</label></div></div>'
+  +'<div class="fg"><label>Note to add (optional)</label><input id="xr-note" placeholder="e.g. Please send it before Thursday" oninput="excuseReplyBuild()"></div>'
+  +'<div class="fg"><label>Message *</label><textarea id="xr-msg" oninput="window._exReply.dirty=true" style="min-height:170px;font-size:12px"></textarea>'
+    +'<div style="font-size:10px;color:var(--tx3);margin-top:3px">Edit freely — what you see here is exactly what is sent.</div></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +(phones.length?'<button class="btn bp" onclick="excuseReplySend()">📱 Open WhatsApp →</button>':'')+'</div>',true);
+  const k=document.getElementById('xr-kind');
+  if(k)k.value=window._exReply.kind;
+  excuseReplyKind();
+}
+
+function excuseReplyKind(){
+  const kind=(document.getElementById('xr-kind')||{}).value||'accepted';
+  window._exReply.kind=kind;
+  const box=document.getElementById('xr-docs');
+  if(box)box.style.display=(kind==='document')?'block':'none';
+  window._exReply.dirty=false;   // the decision changed, so rewrite the message
+  excuseReplyBuild();
+}
+
+function excuseReplyDocs(){
+  const box=document.getElementById('xr-docs');
+  if(!box)return [];
+  const out=[].slice.call(box.querySelectorAll('input[type=checkbox]'))
+    .filter(function(c){return c.checked;}).map(function(c){return c.value;});
+  const other=((document.getElementById('xr-other')||{}).value||'').trim();
+  if(other)out.push(other);
+  return out;
+}
+
+function excuseReplyBuild(){
+  if(window._exReply&&window._exReply.dirty)return;   // never overwrite what staff typed
+  const e=getExcused().find(function(x){return x.id===window._exReply.id;});
+  if(!e)return;
+  const kind=window._exReply.kind;
+  const note=((document.getElementById('xr-note')||{}).value||'').trim();
+  const ta=document.getElementById('xr-msg');
+  if(ta)ta.value=excuseReplyText(e,kind,excuseReplyDocs(),note);
+}
+
+function excuseReplySend(){
+  const st=window._exReply;
+  const list=getExcused();
+  const i=list.findIndex(function(x){return x.id===st.id;});
+  if(i<0){toast('Request not found','danger');return;}
+  const phone=((document.getElementById('xr-ph')||{}).value||'').trim();
+  const msg=((document.getElementById('xr-msg')||{}).value||'').trim();
+  if(!phone){toast('No phone number to send to','danger');return;}
+  if(!msg){toast('The message is empty','danger');return;}
+  const docs=(st.kind==='document')?excuseReplyDocs():[];
+  if(st.kind==='document'&&!docs.length){toast('Choose at least one document to ask for','danger');return;}
+  const url=buildWaUrl(phone,msg);
+  if(!url){toast('That phone number is not valid','danger');return;}
+  // Open first, inside the click, or the browser blocks the popup
+  window.open(url,'_blank','noopener,noreferrer');
+  list[i].replyStatus=st.kind;
+  list[i].replyDocs=docs;
+  list[i].replyMessage=msg;
+  list[i].replyPhone=phone;
+  list[i].replyBy=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  list[i].replyAt=new Date().toISOString();
+  if(st.kind==='accepted'&&list[i].source==='parent'&&list[i].status==='pending'){
+    list[i].status='approved';
+    list[i].approvedBy=list[i].replyBy;
+    list[i].approvedAt=list[i].replyAt;
+  }
+  DB.set('excused',list);clearExcusedCache();
+  logA('Replied to parent about excuse for '+(list[i].studentName||'student')+' ('+st.kind+')');
+  closeM();
+  toast(st.kind==='document'?'Document request opened in WhatsApp':'Reply opened in WhatsApp','success');
+  rAttendance();
+}
+
+function excuseReplyLabel(e){
+  if(!e.replyStatus)return '';
+  const when=(e.replyAt||'').split('T')[0];
+  if(e.replyStatus==='accepted')return '<div style="font-size:9px;color:var(--su)">💬 Parent told: accepted'+(when?' · '+esc(when):'')+'</div>';
+  if(e.replyStatus==='declined')return '<div style="font-size:9px;color:var(--dn)">💬 Parent told: not accepted'+(when?' · '+esc(when):'')+'</div>';
+  return '<div style="font-size:9px;color:var(--gd)">📄 Document requested'+(when?' · '+esc(when):'')
+    +((e.replyDocs&&e.replyDocs.length)?': '+esc(e.replyDocs.join('; ')):'')+'</div>';
+}
+
 function approveExcused(id){
   const list=getExcused();
   const i=list.findIndex(x=>x.id===id);
@@ -3963,8 +4143,11 @@ function approveExcused(id){
   list[i].approvedBy=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
   list[i].approvedAt=new Date().toISOString();
   DB.set('excused',list);
+  clearExcusedCache();
   logA('Approved parent excuse for '+(list[i].studentName||'student'));
   toast('Excuse approved','success');rAttendance();
+  // Offer to tell the parent while it is still in hand
+  if(excuseReplyPhones(list[i]).length)setTimeout(function(){excuseReplyM(id,'accepted');},60);
 }
 
 function dayCountInclusive(from,to){
@@ -4270,10 +4453,12 @@ function buildExcusedCard(sel,canM){
       +'<td class="mono">'+esc(e.from)+'</td><td class="mono">'+esc(e.to)+'</td>'
       +'<td style="color:var(--tx2)">'+esc(e.reason||'—')+'</td>'
       +'<td>'+(pending?'<span class="badge bgo">⏳ Pending review</span> ':'')
-        +(active?(excusedStudentId(e)?'<span class="badge bgn">Excused on '+esc(sel)+'</span>':'<span class="badge brd">Not on the roll</span>'):'<span class="badge bgr">Not this date</span>')+'</td>'
+        +(active?(excusedStudentId(e)?'<span class="badge bgn">Excused on '+esc(sel)+'</span>':'<span class="badge brd">Not on the roll</span>'):'<span class="badge bgr">Not this date</span>')
+        +excuseReplyLabel(e)+'</td>'
       +'<td style="font-size:10px;color:var(--tx3)">'+esc(e.addedBy||'—')+'</td>'
       +(canM?'<td style="display:flex;gap:4px;flex-wrap:wrap">'
         +(pending?'<button class="btn bs bxs" onclick="approveExcused(\''+e.id+'\')">✓ Approve</button>':'')
+        +(excuseReplyPhones(e).length?'<button class="btn bs bxs" onclick="excuseReplyM(\''+e.id+'\')" title="Tell the parent the outcome, or ask for a document">💬 Reply</button>':'')
         +(e.source==='parent'?'<button class="btn bg2 bxs" onclick="excuseMatchM(\''+e.id+'\')" title="Compare the parent\'s spelling with the student roll">🔎 Check Name</button>':'')
         +'<button class="btn bd3 bxs" onclick="delExcused(\''+e.id+'\')">'+(pending?'✕ Reject':'Del')+'</button></td>':'')+'</tr>';
     }).join('')+'</tbody></table></div>'
