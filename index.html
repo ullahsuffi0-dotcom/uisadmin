@@ -3581,12 +3581,16 @@ function epSubmit(){
   if(to<from){toast('End date cannot be before start date','danger');return;}
   if(!rcat){toast('Please choose a reason','danger');return;}
   if(rcat===EXCUSE_REASON_OTHER&&!detail){toast('Please describe the reason','danger');return;}
-  const list=(function(){const e=DB.get('excused');return Array.isArray(e)?e:[];})();
-  list.push({id:nid('exc'),studentId:sid,studentName:sname,submittedClass:sclass,from:from,to:to,reason:reason,
+  const rec={id:nid('exc'),studentId:sid,studentName:sname,submittedClass:sclass,from:from,to:to,reason:reason,
     reasonCategory:rcat,reasonDetail:detail,
     source:'parent',status:'pending',parentName:pname,parentPhone:pphone,
-    addedBy:'Parent request',created:new Date().toISOString()});
-  DB.set('excused',list);
+    addedBy:'Parent request',created:new Date().toISOString()};
+  const btn=document.querySelector('#ep-card .btn.bp');
+  if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  appendExcused(rec).catch(function(){}).then(function(){epDone(sname,from,to);});
+}
+
+function epDone(sname,from,to){
   document.getElementById('ep-card').innerHTML='<div id="ep-done" style="text-align:center;padding:20px 10px">'
   +'<div style="font-size:46px;margin-bottom:10px">✅</div>'
   +'<div style="font-size:17px;font-weight:700;color:var(--su);margin-bottom:8px">Excuse Request Submitted</div>'
@@ -3825,6 +3829,32 @@ const EXCUSE_REASONS=[
 ];
 const EXCUSE_REASON_OTHER='Other';
 function getExcused(){const e=DB.get('excused');return Array.isArray(e)?e:[];}
+
+// DB.set writes the WHOLE array to Firebase, replacing the node. A parent's
+// phone renders the excuse form before the cloud pull lands, so its local list
+// is usually empty — saving from there replaced every excuse the school had
+// already recorded, and they were gone for good. Read what is stored now and
+// append to it, so an excuse once recorded stays recorded.
+async function appendExcused(rec){
+  let remote=null;
+  if(typeof fbReady==='function'&&fbReady()&&CURRENT_SCHOOL_ID){
+    try{
+      const{db,ref,get}=window.__FB;
+      const snap=await get(ref(db,getFirebaseSchoolPath()+'excused'));
+      const v=snap.exists()?fromFbValue(snap.val()):[];
+      if(Array.isArray(v))remote=v;
+    }catch(e){remote=null;}   // offline: fall back to whatever is local
+  }
+  const seen={},merged=[];
+  (Array.isArray(remote)?remote:[]).concat(getExcused()).forEach(function(e){
+    if(!e||!e.id||seen[e.id])return;
+    seen[e.id]=1;merged.push(e);
+  });
+  if(rec&&rec.id&&!seen[rec.id])merged.push(rec);
+  DB.set('excused',merged);
+  if(typeof clearExcusedCache==='function')clearExcusedCache();
+  return merged;
+}
 // A parent submitting from a plain link leaves the record with no student id
 // until staff run the name check, and until then the roll knew nothing about
 // it — the student showed as not excused and their parents were still messaged.
@@ -3892,7 +3922,7 @@ function addExcusedM(){
   };
 }
 
-function saveExcused(){
+async function saveExcused(){
   const sid=document.getElementById('exc-sid').value;
   const from=document.getElementById('exc-from').value;
   const to=document.getElementById('exc-to').value;
@@ -3900,11 +3930,9 @@ function saveExcused(){
   if(!from||!to){toast('Select both dates','danger');return;}
   if(to<from){toast('End date cannot be before start date','danger');return;}
   const s=gS(sid);
-  const list=getExcused();
-  list.push({id:nid('exc'),studentId:sid,studentName:s?fN(s):'',from:from,to:to,
+  await appendExcused({id:nid('exc'),studentId:sid,studentName:s?fN(s):'',from:from,to:to,
     reason:document.getElementById('exc-reason').value.trim(),
     addedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),created:new Date().toISOString()});
-  DB.set('excused',list);clearExcusedCache();
   logA('Excused '+(s?fN(s):'student')+' from '+from+' to '+to);
   closeM();toast('Student excused','success');rAttendance();
 }
