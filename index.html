@@ -12422,6 +12422,262 @@ function pdStudentsInClass(cls){
     .sort(function(a,b){return (a.csn||0)-(b.csn||0)||fN(a).localeCompare(fN(b));});
 }
 
+
+// ═══════════════════════════════════════════════════════════
+// BEST CLASS OF THE WEEK
+// Ranks classes from what teachers recorded period by period.
+// Each rating is worth points; a class is scored on its average
+// across every period recorded for it that week.
+// ═══════════════════════════════════════════════════════════
+const PD_POINTS={'Excellent':4,'V. Good':3,'Good':2,'Bad':0};
+function pdPoints(rating){const v=PD_POINTS[rating];return typeof v==='number'?v:0;}
+
+// The weeks a school can be asked about: the academic calendar if it is
+// set up, otherwise plain Saturday-to-Friday weeks around whatever exists.
+function pdWeekOptions(){
+  const defined=(typeof allWeeksOrdered==='function')?allWeeksOrdered():[];
+  if(defined.length)return defined;
+  const dates=getPeriodDiscipline().map(function(r){return r.date;}).filter(Boolean).sort();
+  const out=[];
+  if(!dates.length)return out;
+  const seen={};
+  dates.forEach(function(d){
+    const dt=new Date(d+'T00:00:00');
+    const back=(dt.getDay()+1)%7;                 // week starts on Saturday
+    const from=new Date(dt);from.setDate(from.getDate()-back);
+    const to=new Date(from);to.setDate(to.getDate()+6);
+    const key=ymd(from);
+    if(seen[key])return;
+    seen[key]=1;
+    out.push({termName:'',weekNo:0,from:ymd(from),to:ymd(to),label:ymd(from)+' → '+ymd(to)});
+  });
+  return out.sort(function(a,b){return (a.from||'').localeCompare(b.from||'');});
+}
+
+function pdCurrentWeek(){
+  const opts=pdWeekOptions();
+  if(!opts.length)return null;
+  const today=ymd(new Date());
+  return opts.find(function(w){return w.from<=today&&today<=w.to;})||opts[opts.length-1];
+}
+
+// One row per class, best first.
+function pdRankClasses(from,to){
+  const rows=pdVisible().filter(function(r){
+    return r.date&&r.date>=from&&r.date<=to&&r.className;
+  });
+  const by={};
+  rows.forEach(function(r){
+    const c=r.className;
+    if(!by[c])by[c]={className:c,periods:0,points:0,named:0,counts:{},teachers:{}};
+    const b=by[c];
+    b.periods++;
+    b.points+=pdPoints(r.rating);
+    b.named+=((r.students||[]).length);
+    b.counts[r.rating]=(b.counts[r.rating]||0)+1;
+    if(r.teacherName)b.teachers[r.teacherName]=1;
+  });
+  return Object.keys(by).map(function(c){
+    const b=by[c];
+    b.avg=b.periods?(b.points/b.periods):0;
+    b.pct=Math.round((b.avg/4)*100);
+    b.teacherCount=Object.keys(b.teachers).length;
+    return b;
+  }).sort(function(a,b){
+    return b.avg-a.avg                 // best average first
+      ||a.named-b.named                // then fewest students named
+      ||b.periods-a.periods            // then the class judged most often
+      ||a.className.localeCompare(b.className);
+  });
+}
+
+// A class only wins if enough teachers actually reported on it.
+const PD_MIN_PERIODS=3;
+function pdWinner(ranked){
+  const eligible=ranked.filter(function(r){return r.periods>=PD_MIN_PERIODS;});
+  return eligible.length?eligible[0]:(ranked.length?ranked[0]:null);
+}
+
+function pdBestM(){
+  const opts=pdWeekOptions();
+  if(!opts.length){toast('Record some periods first — there is nothing to rank yet','danger');return;}
+  const cur=window._pdBestWeek||pdCurrentWeek();
+  window._pdBestWeek=cur;
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>\u{1f3c6} Best Class of the Week</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Ranked from what teachers recorded period by period. Excellent counts 4, V. Good 3, Good 2, Bad 0 — a class is scored on its average across every period recorded for it. '
+   +'A class needs at least '+PD_MIN_PERIODS+' periods recorded to win.</div>'
+  +'<div class="fg"><label>Week</label><select id="pd-bw" onchange="pdBestWeekChanged()">'
+  +opts.map(function(w,i){
+     const on=cur&&w.from===cur.from&&w.to===cur.to;
+     return '<option value="'+i+'"'+(on?' selected':'')+'>'+esc(w.label)+' ('+esc(w.from)+' → '+esc(w.to)+')</option>';
+   }).join('')+'</select></div>'
+  +'<div id="pd-best-body"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bs" onclick="pdBestPDF()">\u{1f4c4} Ranking PDF</button>'
+  +'<button class="btn bp" onclick="pdCertificate()">\u{1f3c5} Certificate</button></div>',true);
+  pdBestRender();
+}
+
+function pdBestWeekChanged(){
+  const opts=pdWeekOptions();
+  const i=parseInt((document.getElementById('pd-bw')||{}).value||'0',10);
+  window._pdBestWeek=opts[i]||opts[0];
+  pdBestRender();
+}
+
+function pdBestRender(){
+  const w=window._pdBestWeek;
+  const box=document.getElementById('pd-best-body');
+  if(!box||!w)return;
+  const ranked=pdRankClasses(w.from,w.to);
+  if(!ranked.length){
+    box.innerHTML='<div class="emp" style="padding:16px"><div class="ei">\u{1f4dd}</div><p style="font-size:11px">Nothing was recorded in this week.</p></div>';
+    return;
+  }
+  const win=pdWinner(ranked);
+  const thin=ranked.filter(function(r){return r.periods<PD_MIN_PERIODS;}).length;
+  box.innerHTML=(win?'<div class="stat gn" style="margin-bottom:10px"><div class="sl2">Best class this week</div>'
+     +'<div style="font-size:24px;font-weight:700;margin-top:6px">\u{1f3c6} '+esc(win.className)+'</div>'
+     +'<div class="sb3">'+win.avg.toFixed(2)+' out of 4 · '+win.pct+'% · '+win.periods+' period(s) recorded</div>'
+     +'<div class="sic">\u{1f3c5}</div></div>':'')
+   +'<div class="tw" style="max-height:280px;overflow:auto"><table style="font-size:11px"><thead><tr>'
+   +'<th class="c">#</th><th>Class</th><th class="c">Periods</th>'
+   +PD_RATINGS.map(function(r){return '<th class="c" title="'+esc(r.v)+'">'+r.i+'</th>';}).join('')
+   +'<th class="c">Named</th><th class="c">Score</th><th class="c">%</th></tr></thead><tbody>'
+   +ranked.map(function(r,i){
+     const isWin=win&&r.className===win.className;
+     const thinRow=r.periods<PD_MIN_PERIODS;
+     return '<tr'+(isWin?' style="background:var(--subg,#e8f7ee)"':'')+'>'
+      +'<td class="c">'+(isWin?'\u{1f3c6}':(i+1))+'</td>'
+      +'<td><strong>'+esc(r.className)+'</strong>'+(thinRow?'<div style="font-size:9px;color:var(--tx3)">too few periods to win</div>':'')+'</td>'
+      +'<td class="c">'+r.periods+'</td>'
+      +PD_RATINGS.map(function(x){return '<td class="c">'+(r.counts[x.v]||0)+'</td>';}).join('')
+      +'<td class="c">'+r.named+'</td>'
+      +'<td class="c"><strong>'+r.avg.toFixed(2)+'</strong></td>'
+      +'<td class="c">'+r.pct+'%</td></tr>';
+   }).join('')+'</tbody></table></div>'
+   +(thin?'<div style="font-size:10px;color:var(--tx3);margin-top:6px">'+thin+' class(es) had fewer than '+PD_MIN_PERIODS+' periods recorded, so they are listed but cannot win.</div>':'');
+}
+
+function pdBestPDF(){
+  const w=window._pdBestWeek;
+  if(!w){toast('Choose a week','danger');return;}
+  const ranked=pdRankClasses(w.from,w.to);
+  if(!ranked.length){toast('Nothing was recorded in this week','danger');return;}
+  const win=pdWinner(ranked);
+  const s=DB.get('settings')||{};
+  const win2=window.open('','_blank');
+  if(!win2){toast('Allow pop-ups to open the PDF','danger');return;}
+  win2.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Best Class — '+esc(w.label)+'</title><style>'
+   +'@page{size:A4;margin:16mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:12px}'
+   +'table{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px}'
+   +'th{background:#1a5f7a;color:#fff;padding:8px;text-align:left;font-size:10px;text-transform:uppercase}'
+   +'td{padding:7px 8px;border-bottom:1px solid #ddd}.c{text-align:center}'
+   +'tr.win{background:#e8f7ee;font-weight:bold}'
+   +'.banner{background:#e8f7ee;border:2px solid #16a34a;border-radius:10px;padding:14px 18px;margin:14px 0;text-align:center}'
+   +'.banner .cls{font-size:34px;font-weight:bold;color:#15803d;margin:4px 0}'
+   +'.note{margin-top:14px;font-size:10px;color:#666;line-height:1.6}'
+   +'@media print{button{display:none}}</style></head><body>'
+   +pdfHeaderHTML({subtitle:'Class Discipline — Best Class Ranking'})
+   +'<button onclick="window.print()" style="margin-bottom:10px;padding:7px 15px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">\u{1f5a8}️ Print / Save as PDF</button>'
+   +'<div style="font-size:14px;font-weight:bold">'+esc(w.label)+'</div>'
+   +'<div style="font-size:11px;color:#555">'+esc(w.from)+' to '+esc(w.to)+'</div>'
+   +(win?'<div class="banner"><div style="font-size:12px;letter-spacing:2px;color:#166534">BEST CLASS OF THE WEEK</div>'
+      +'<div class="cls">'+esc(win.className)+'</div>'
+      +'<div style="font-size:12px;color:#166534">'+win.avg.toFixed(2)+' out of 4 &nbsp;·&nbsp; '+win.pct+'% &nbsp;·&nbsp; '+win.periods+' periods recorded</div></div>':'')
+   +'<table><thead><tr><th class="c">#</th><th>Class</th><th class="c">Periods</th>'
+   +PD_RATINGS.map(function(r){return '<th class="c">'+esc(r.v)+'</th>';}).join('')
+   +'<th class="c">Students Named</th><th class="c">Score /4</th><th class="c">%</th></tr></thead><tbody>'
+   +ranked.map(function(r,i){
+     const isWin=win&&r.className===win.className;
+     return '<tr'+(isWin?' class="win"':'')+'><td class="c">'+(i+1)+'</td>'
+      +'<td>'+esc(r.className)+(r.periods<PD_MIN_PERIODS?' <span style="font-size:9px;color:#888">(too few periods to win)</span>':'')+'</td>'
+      +'<td class="c">'+r.periods+'</td>'
+      +PD_RATINGS.map(function(x){return '<td class="c">'+(r.counts[x.v]||0)+'</td>';}).join('')
+      +'<td class="c">'+r.named+'</td><td class="c">'+r.avg.toFixed(2)+'</td><td class="c">'+r.pct+'%</td></tr>';
+   }).join('')+'</tbody></table>'
+   +'<div class="note"><strong>How the score works:</strong> every period a teacher recorded is worth Excellent 4, V. Good 3, Good 2, Bad 0. '
+   +'A class is scored on its average across all its recorded periods, so a class judged more often is not penalised. '
+   +'Ties are broken by the fewest students named, then by the most periods recorded. '
+   +'A class needs at least '+PD_MIN_PERIODS+' recorded periods to be eligible to win.</div>'
+   +'<div class="note">Prepared from '+ranked.reduce(function(n,r){return n+r.periods;},0)+' teacher reports across '+ranked.length+' class(es).</div>'
+   +'</body></html>');
+  win2.document.close();
+  logA('Generated best class ranking for '+w.label);
+}
+
+function pdCertificate(){
+  const w=window._pdBestWeek;
+  if(!w){toast('Choose a week','danger');return;}
+  const ranked=pdRankClasses(w.from,w.to);
+  const win=pdWinner(ranked);
+  if(!win){toast('Nothing was recorded in this week','danger');return;}
+  if(win.periods<PD_MIN_PERIODS){
+    if(!confirm(win.className+' has only '+win.periods+' period(s) recorded this week, fewer than the '+PD_MIN_PERIODS+' normally needed.\n\nIssue the certificate anyway?'))return;
+  }
+  const s=DB.get('settings')||{};
+  const logo=s.logo||'\u{1f3eb}';
+  const isImg=logo.startsWith&&logo.startsWith('data:');
+  const runnerUp=ranked.filter(function(r){
+    return r.className!==win.className&&r.periods>=PD_MIN_PERIODS;
+  })[0];
+  const wOut=window.open('','_blank');
+  if(!wOut){toast('Allow pop-ups to open the certificate','danger');return;}
+  wOut.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Best Class Certificate — '+esc(win.className)+'</title><style>'
+   +'@page{size:A4 landscape;margin:0}'
+   +'*{box-sizing:border-box}'
+   +'body{margin:0;font-family:Georgia,"Times New Roman",serif;color:#1a3a5c}'
+   +'.sheet{width:297mm;height:210mm;padding:12mm;display:flex}'
+   +'.frame{flex:1;border:6px double #1a5f7a;border-radius:6px;padding:10mm 14mm;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;background:#fffdf7}'
+   +'.corner{position:absolute;width:26mm;height:26mm;border:3px solid #c8a44a}'
+   +'.tl{top:5mm;left:5mm;border-right:0;border-bottom:0}.tr{top:5mm;right:5mm;border-left:0;border-bottom:0}'
+   +'.bl{bottom:5mm;left:5mm;border-right:0;border-top:0}.br{bottom:5mm;right:5mm;border-left:0;border-top:0}'
+   +'.logo{font-size:42px;line-height:1;margin-bottom:2mm}.logo img{width:58px;height:58px;object-fit:contain}'
+   +'.school{font-size:20px;font-weight:bold;letter-spacing:1px}'
+   +'.school-ar{font-size:14px;color:#666;direction:rtl;margin-bottom:3mm}'
+   +'.ribbon{font-size:12px;letter-spacing:5px;color:#c8a44a;text-transform:uppercase;margin:2mm 0}'
+   +'.title{font-size:38px;font-weight:bold;color:#1a5f7a;margin:1mm 0 3mm;letter-spacing:1px}'
+   +'.awarded{font-size:15px;color:#555;font-style:italic}'
+   +'.cls{font-size:86px;font-weight:bold;color:#15803d;line-height:1.05;margin:2mm 0}'
+   +'.week{font-size:17px;color:#1a3a5c;margin-bottom:3mm}'
+   +'.cite{font-size:14px;color:#444;line-height:1.7;max-width:200mm}'
+   +'.score{display:flex;gap:12mm;justify-content:center;margin:5mm 0 0}'
+   +'.score div{text-align:center}.score .n{font-size:26px;font-weight:bold;color:#1a5f7a}'
+   +'.score .l{font-size:10px;color:#777;text-transform:uppercase;letter-spacing:1px}'
+   +'.sigs{display:flex;justify-content:space-around;width:100%;margin-top:auto;padding-top:6mm}'
+   +'.sig{width:70mm;border-top:1px solid #999;padding-top:2mm;font-size:11px;color:#555}'
+   +'.foot{font-size:9px;color:#999;margin-top:3mm}'
+   +'@media print{.noprint{display:none}}'
+   +'</style></head><body>'
+   +'<button class="noprint" onclick="window.print()" style="position:fixed;top:8px;right:8px;padding:8px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-family:Arial;z-index:9">\u{1f5a8}️ Print</button>'
+   +'<div class="sheet"><div class="frame">'
+   +'<div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>'
+   +'<div class="logo">'+(isImg?'<img src="'+logo+'">':logo)+'</div>'
+   +'<div class="school">'+esc(s.schoolName||'School')+'</div>'
+   +(s.schoolNameAr?'<div class="school-ar">'+esc(s.schoolNameAr)+'</div>':'')
+   +'<div class="ribbon">Certificate of Achievement</div>'
+   +'<div class="title">Best Class of the Week</div>'
+   +'<div class="awarded">is proudly awarded to</div>'
+   +'<div class="cls">'+esc(win.className)+'</div>'
+   +'<div class="week">'+esc(w.label)+' &nbsp;·&nbsp; '+esc(w.from)+' to '+esc(w.to)+'</div>'
+   +'<div class="cite">For the finest classroom conduct in the school this week, as reported by their teachers at the end of every period.'
+   +(runnerUp?'<br>Runner-up: <strong>'+esc(runnerUp.className)+'</strong> ('+runnerUp.avg.toFixed(2)+' out of 4).':'')+'</div>'
+   +'<div class="score">'
+   +'<div><div class="n">'+win.avg.toFixed(2)+'</div><div class="l">Score out of 4</div></div>'
+   +'<div><div class="n">'+win.pct+'%</div><div class="l">Rating</div></div>'
+   +'<div><div class="n">'+win.periods+'</div><div class="l">Periods judged</div></div>'
+   +'<div><div class="n">'+((win.counts['Excellent']||0))+'</div><div class="l">Excellent periods</div></div>'
+   +'</div>'
+   +'<div class="sigs"><div class="sig">Vice Principal</div><div class="sig">Principal</div></div>'
+   +'<div class="foot">Issued '+new Date().toLocaleDateString()+'</div>'
+   +'</div></div></body></html>');
+  wOut.document.close();
+  logA('Issued best class certificate to '+win.className+' for '+w.label);
+}
+
 // ── The page ──────────────────────────────────────────────
 function rPeriodDiscipline(){
   const perm=canDo('period_discipline');
@@ -12440,6 +12696,7 @@ function rPeriodDiscipline(){
    +'<label style="font-size:11px;color:var(--tx3)">Date:</label>'
    +'<input type="date" id="pd-date" value="'+esc(sel)+'" onchange="window._pdDate=this.value;rPeriodDiscipline()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'
    +(canAdd?'<button class="btn bp bsm" onclick="pdEntryM()">+ Record a Period</button>':'')
+   +'<button class="btn bs bsm" onclick="pdBestM()">\u{1f3c6} Best Class</button>'
    +'<button class="btn bg2 bsm" onclick="pdQrM()">\u{1f4f1} Class QR Poster</button>'
    +'<button class="btn bg2 bsm" onclick="pdExport()">\u{1f4ca} Export</button>'
    +'</div></div>'
