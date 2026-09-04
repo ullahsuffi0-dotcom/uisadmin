@@ -12293,6 +12293,107 @@ const PD_RATINGS=[
   {v:'Good',     i:'\u{1f642}',c:'var(--gd)',bg:'bgo'},
   {v:'Bad',      i:'\u{1f61f}',c:'var(--dn)',bg:'brd'}
 ];
+
+// What actually goes wrong in a classroom, grouped so a teacher can find it
+// in a second on a phone. Free text stays alongside for anything unusual.
+const PD_BEHAVIOURS=[
+  {g:'Talking & noise',items:[
+    'Talking during the lesson',
+    'Shouting or making noise',
+    'Interrupting the teacher',
+    'Talking back / arguing with the teacher',
+    'Disturbing the students around him'
+  ]},
+  {g:'Attention & work',items:[
+    'Not paying attention / daydreaming',
+    'Sleeping in class',
+    'Classwork not done',
+    'Homework not done',
+    'Came without books or materials',
+    'Not following instructions',
+    'Refusing to do the work'
+  ]},
+  {g:'Movement & timing',items:[
+    'Late to the lesson',
+    'Left his seat without permission',
+    'Moving around the classroom',
+    'Left the class without permission',
+    'Absent from the lesson without reason'
+  ]},
+  {g:'Respect & language',items:[
+    'Rude or disrespectful to the teacher',
+    'Bad language or swearing',
+    'Making fun of another student',
+    'Bullying or threatening another student',
+    'Rude to a visitor or another member of staff'
+  ]},
+  {g:'Physical behaviour',items:[
+    'Fighting',
+    'Pushing or rough play',
+    'Throwing objects',
+    'Play fighting that got out of hand'
+  ]},
+  {g:'Property & devices',items:[
+    'Using a mobile phone in class',
+    'Playing games on a device',
+    'Damaging school property',
+    'Writing on desks, walls or books',
+    'Taking or hiding another student’s belongings',
+    'Littering in the classroom'
+  ]},
+  {g:'Honesty & rules',items:[
+    'Cheating in a test or quiz',
+    'Copying another student’s work',
+    'Lying to the teacher',
+    'Eating or drinking in class',
+    'Uniform or appearance not correct',
+    'Bringing something not allowed to school'
+  ]}
+];
+function pdAllBehaviours(){
+  return PD_BEHAVIOURS.reduce(function(a,g){return a.concat(g.items);},[]);
+}
+
+// One picker used by both the staff form and the wall-poster form.
+// `key` says which piece of state holds the selection.
+function pdBehaviourBox(key,selected){
+  const sel=selected||[];
+  const q=String.fromCharCode(39);
+  return '<div style="border:1px solid var(--bd);border-radius:var(--rs);padding:8px;max-height:270px;overflow:auto">'
+   +PD_BEHAVIOURS.map(function(g){
+     return '<div style="margin-bottom:9px">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:5px">'+esc(g.g)+'</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:5px">'
+      +g.items.map(function(b){
+        const on=sel.indexOf(b)>=0;
+        return '<button type="button" class="btn '+(on?'bp':'bg2')+' bxs" onclick="pdBehTog('+q+escJs(key)+q+','+q+escJs(b)+q+')" style="font-size:11px">'
+         +(on?'✓ ':'')+esc(b)+'</button>';
+      }).join('')+'</div></div>';
+   }).join('')+'</div>'
+   +'<div id="pd-beh-count-'+esc(key)+'" style="font-size:10px;color:var(--tx3);margin-top:5px">'
+   +(sel.length?sel.length+' selected':'Tap anything that happened — or leave it empty')+'</div>';
+}
+
+function pdBehState(key){
+  if(key==='portal')return window._pdp||(window._pdp={});
+  return window._pdForm||(window._pdForm={});
+}
+
+function pdBehTog(key,b){
+  const st=pdBehState(key);
+  if(!Array.isArray(st.behaviours))st.behaviours=[];
+  const i=st.behaviours.indexOf(b);
+  if(i>=0)st.behaviours.splice(i,1);else st.behaviours.push(b);
+  const box=document.getElementById('pd-beh-'+key);
+  if(box)box.innerHTML=pdBehaviourBox(key,st.behaviours);
+}
+
+function pdBehBadges(list){
+  if(!list||!list.length)return '';
+  return '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">'
+   +list.map(function(b){return '<span class="badge bgr" style="font-size:9px">'+esc(b)+'</span>';}).join('')+'</div>';
+}
+
 function pdRating(v){return PD_RATINGS.find(function(r){return r.v===v;})||{v:v||'',i:'',c:'var(--tx2)',bg:'bgr'};}
 function getPeriodDiscipline(){const a=DB.get('period_discipline');return Array.isArray(a)?a:[];}
 function pdMyName(){return ((CU.firstName||'')+' '+(CU.lastName||'')).trim();}
@@ -12404,6 +12505,7 @@ function pdRowsHTML(list,canInf){
              +(st.infractionId?'<span class="badge bgr" style="font-size:9px">✓ infraction filed</span>':'')+'</div>';
            }).join('')
          :'<span style="color:var(--tx3)">—</span>')
+       +pdBehBadges(r.behaviours)
        +(r.note?'<div style="font-size:10px;color:var(--tx3);margin-top:2px">'+esc(r.note)+'</div>':'')+'</td>'
       +'<td style="font-size:10px;color:var(--tx3)">'+esc(r.teacherName||'—')+'</td>'
       +'<td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn bg2 bxs" onclick="pdViewM('+q+escJs(r.id)+q+')">View</button>'
@@ -12420,6 +12522,7 @@ function pdFilter(){
     return String(r.className||'').toLowerCase().includes(q)
       ||String(r.teacherName||'').toLowerCase().includes(q)
       ||String(r.rating||'').toLowerCase().includes(q)
+      ||(r.behaviours||[]).some(function(b){return String(b).toLowerCase().includes(q);})
       ||(r.students||[]).some(function(s){return String(s.name||'').toLowerCase().includes(q);});
   });
   document.getElementById('pd-rows').innerHTML=pdRowsHTML(list.slice(0,120),canDo('infractions')!=='disabled');
@@ -12433,7 +12536,8 @@ function pdEntryM(id,presetClass,presetPeriod){
   if(!classes.length){toast('No classes on the roll yet','danger');return;}
   const cls=ex?ex.className:(presetClass||window._pdClass||classes[0]);
   const per=ex?ex.period:(presetPeriod||1);
-  window._pdForm={id:id||null,cls:cls,rating:ex?ex.rating:'',picked:(ex&&ex.students?ex.students.slice():[])};
+  window._pdForm={id:id||null,cls:cls,rating:ex?ex.rating:'',picked:(ex&&ex.students?ex.students.slice():[]),
+    behaviours:(ex&&Array.isArray(ex.behaviours))?ex.behaviours.slice():[]};
   const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f9ed} '+(ex?'Edit':'Record')+' Period Discipline</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
@@ -12452,7 +12556,9 @@ function pdEntryM(id,presetClass,presetPeriod){
   +'<input id="pd-f-q" placeholder="Type a name from this class…" oninput="pdStuSearch()" style="margin-bottom:5px">'
   +'<div id="pd-f-stu" style="max-height:190px;overflow:auto;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
   +'<div style="display:flex;gap:5px;margin-top:6px"><input id="pd-f-other" placeholder="Or type a name that is not on the roll" style="flex:1"><button class="btn bg2 bsm" onclick="pdAddOther()">+ Add</button></div></div>'
-  +'<div class="fg"><label>Note (optional)</label><textarea id="pd-f-note" placeholder="What happened, what you did about it…" style="min-height:70px">'+esc(ex?(ex.note||''):'')+'</textarea></div>'
+  +'<div class="fg"><label>What happened? (optional)</label>'
+  +'<div id="pd-beh-form">'+pdBehaviourBox('form',(ex&&ex.behaviours)||[])+'</div></div>'
+  +'<div class="fg"><label>Note (optional)</label><textarea id="pd-f-note" placeholder="In your own words…" style="min-height:70px">'+esc(ex?(ex.note||''):'')+'</textarea></div>'
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
   +'<button class="btn bp" onclick="pdSave()">'+T('save')+' →</button></div>',true);
@@ -12540,6 +12646,7 @@ function pdSave(){
   const now=new Date().toISOString();
   const body={date:date,period:period,className:cls,rating:f.rating,
     students:f.picked.map(function(p){return {id:p.id||'',name:p.name,infractionId:p.infractionId||''};}),
+    behaviours:(f.behaviours||[]).slice(),
     note:note,teacherId:CU.id,teacherName:pdMyName()};
   const i=f.id?list.findIndex(function(r){return r.id===f.id;}):-1;
   if(i>=0){
@@ -12593,6 +12700,8 @@ function pdViewM(id){
          +'</div>';
       }).join('')+'</div>'
     :'<div class="al ag" style="margin-bottom:12px">✅ Nobody was named for this period.</div>')
+  +((r.behaviours||[]).length?'<div class="fg"><label>What happened</label><div style="display:flex;flex-wrap:wrap;gap:4px">'
+     +r.behaviours.map(function(b){return '<span class="badge bgo">'+esc(b)+'</span>';}).join('')+'</div></div>':'')
   +(r.note?'<div class="fg"><label>Note</label><div style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;white-space:pre-wrap">'+esc(r.note)+'</div></div>':'')
   +'<div style="font-size:10px;color:var(--tx3)">Recorded by '+esc(r.teacherName||'—')+(r.created?' on '+esc(r.created.split('T')[0]):'')
    +(r.updated?' · last edited '+esc(r.updated.split('T')[0])+(r.updatedBy?' by '+esc(r.updatedBy):''):'')+'</div>'
@@ -12615,7 +12724,9 @@ function pdInfraction(recId,sid){
       const d=document.getElementById('infd');
       if(d&&r&&!d.value){
         d.value='Classroom discipline, '+r.className+' period '+r.period+' on '+r.date
-          +' (class rated '+r.rating+').'+(r.note?' '+r.note:'');
+          +' (class rated '+r.rating+').'
+          +((r.behaviours||[]).length?' '+r.behaviours.join('; ')+'.':'')
+          +(r.note?' '+r.note:'');
       }
       const dt=document.getElementById('infdt');
       if(dt&&r&&r.date)dt.value=r.date;
@@ -12648,6 +12759,7 @@ function pdExport(){
       (r.students||[]).map(function(s){return s.name;}).join('; '),
       String((r.students||[]).length),
       (r.students||[]).filter(function(s){return s.infractionId;}).length+'',
+      (r.behaviours||[]).join('; '),
       r.note||'',r.teacherName||'',(r.created||'').split('T')[0]];
   });
   const byRating={};
@@ -12657,7 +12769,7 @@ function pdExport(){
   PD_RATINGS.forEach(function(r){out.push([r.v,String(byRating[r.v]||0)]);});
   out.push(['Total periods recorded',String(rows.length)]);
   out.push(['Students named',String(rows.reduce(function(n,r){return n+((r.students||[]).length);},0))]);
-  expCSV(['Date','Period','Class','Discipline','Students Named','Count','Infractions Filed','Note','Teacher','Recorded'],
+  expCSV(['Date','Period','Class','Discipline','Students Named','Count','Infractions Filed','What Happened','Note','Teacher','Recorded'],
     out,'class_period_discipline_'+ymd(new Date()));
   logA('Exported class period discipline ('+rows.length+' records)');
 }
@@ -12703,7 +12815,8 @@ function renderPdPortal(){
   const old=document.getElementById('pdp');if(old)old.remove();
   const classes=getAllClasses();
   const teachers=pdTeacherOptions();
-  const st=window._pdp||(window._pdp={cls:'',period:0,rating:'',picked:[],teacher:''});
+  const st=window._pdp||(window._pdp={cls:'',period:0,rating:'',picked:[],teacher:'',behaviours:[]});
+  if(!Array.isArray(st.behaviours))st.behaviours=[];
   const q=String.fromCharCode(39);
   const wrap=document.createElement('div');
   wrap.id='pdp';
@@ -12755,8 +12868,9 @@ function renderPdPortal(){
   +pdpQ('5. Any student who caused a problem?','Leave this empty if the class was fine.',
     '<div id="pdp-s"></div>',false)
   // 6 — note
-  +pdpQ('6. Anything to add?','',
-    '<textarea id="pdp-n" placeholder="What happened, what you did about it…" style="min-height:80px">'+esc(st.note||'')+'</textarea>',false)
+  +pdpQ('6. Anything to add?','Tap whatever happened. Add your own words underneath if you need to.',
+    '<div id="pd-beh-portal">'+pdBehaviourBox('portal',st.behaviours||[])+'</div>'
+    +'<textarea id="pdp-n" placeholder="In your own words (optional)…" style="min-height:70px;margin-top:8px">'+esc(st.note||'')+'</textarea>',false)
   +'</div>'
   +'<button class="btn bp" id="pdp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:4px" onclick="pdpSubmit()">Submit →</button>'
   +'<div style="text-align:center;margin-top:16px;font-size:11px;color:var(--tx3)"><a href="?" style="color:var(--ac);text-decoration:none">Staff sign in →</a></div>'
@@ -12893,6 +13007,7 @@ function pdpSubmit(){
   if(btn){btn.disabled=true;btn.textContent='Sending…';}
   const rec={id:nid('pdi'),date:ymd(new Date()),period:st.period,className:cls,rating:st.rating,
     students:st.picked.map(function(p){return {id:p.id||'',name:p.name,infractionId:''};}),
+    behaviours:(st.behaviours||[]).slice(),
     note:note,teacherId:tid,teacherName:teacher,source:'qr',created:new Date().toISOString()};
   appendPeriodDiscipline(rec).catch(function(){return null;}).then(function(replaced){
     pdpDone(rec,replaced);
@@ -12911,6 +13026,7 @@ function pdpDone(rec,replaced){
    +'<div style="font-size:13px;color:var(--tx2);line-height:1.7"><strong>'+esc(rec.className)+'</strong> · Period '+esc(String(rec.period))
    +'<br>'+rt.i+' '+esc(rec.rating)
    +((rec.students||[]).length?'<br>Named: '+esc(rec.students.map(function(s){return s.name;}).join(', ')):'')
+   +((rec.behaviours||[]).length?'<br><span style="font-size:12px;color:var(--tx3)">'+esc(rec.behaviours.join(' · '))+'</span>':'')
    +'</div>'
    +(replaced?'<div class="al aw" style="margin-top:12px;text-align:left">ℹ️ This period was already recorded'+(replaced.teacherName?' by '+esc(replaced.teacherName):'')+'. Your entry has replaced it.</div>':'')
    +'<div style="margin-top:16px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">'
@@ -12920,7 +13036,7 @@ function pdpDone(rec,replaced){
 
 function pdpAgain(){
   const t=window._pdp?window._pdp.teacher:'';
-  window._pdp={cls:'',period:0,rating:'',picked:[],teacher:t,note:''};
+  window._pdp={cls:'',period:0,rating:'',picked:[],teacher:t,note:'',behaviours:[]};
   renderPdPortal();
 }
 
