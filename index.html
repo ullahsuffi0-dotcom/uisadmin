@@ -7822,7 +7822,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
-  'duty_places','duty_remarks','classroom_discipline','period_discipline','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
+  'duty_places','duty_remarks','classroom_discipline','period_discipline','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -7851,7 +7851,7 @@ const AUTO_REFRESH_MAP = {
   reexam_schedules:['rReexam'],
   duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
   duty_places:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
-  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],
+  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],sub_preferences:['rSubstitutions'],
   sessions:['rSessions'],active_session_id:['rSessions'],
   todos:['rMyTodos']
 };
@@ -11568,7 +11568,7 @@ function rSubstitutions(){
   const weekStartStr=weekStart.toISOString().split('T')[0];
   const weekCount=subs.filter(s=>s.date>=weekStartStr).length;
   
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🔄 Teacher Substitutions ('+subs.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bp bsm" onclick="addSubM()">+ Add Substitution</button>':'')+'<button class="btn bs bsm" onclick="exportSubsM()">📊 Export Substitutions (Excel)</button><button class="btn bg2 bsm" onclick="expSubScheduleDayPDF()">📄 Day Schedule PDF</button>'+(['vice_principal','superadmin','principal'].includes(CU.role)?'<button class="btn bs bsm" onclick="shareSubScheduleWA()">📲 Share via WhatsApp</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">When a teacher is absent, assign a substitute from available staff. The substitute teacher is automatically notified on their dashboard.</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🔄 Teacher Substitutions ('+subs.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bp bsm" onclick="addSubM()">+ Add Substitution</button>':'')+'<button class="btn bg2 bsm" onclick="subPrefM()">📋 Preference List</button><button class="btn bs bsm" onclick="exportSubsM()">📊 Export Substitutions (Excel)</button><button class="btn bg2 bsm" onclick="expSubScheduleDayPDF()">📄 Day Schedule PDF</button>'+(['vice_principal','superadmin','principal'].includes(CU.role)?'<button class="btn bs bsm" onclick="shareSubScheduleWA()">📲 Share via WhatsApp</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">When a teacher is absent, assign a substitute from available staff. The substitute teacher is automatically notified on their dashboard.</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Today</div><div class="sv">'+todayCount+'</div><div class="sb3">'+todayDate+'</div><div class="sic">📅</div></div><div class="stat go"><div class="sl2">This Week</div><div class="sv">'+weekCount+'</div><div class="sic">📊</div></div><div class="stat gn"><div class="sl2">Total Recorded</div><div class="sv">'+subs.length+'</div><div class="sic">🔄</div></div><div class="stat tl"><div class="sl2">Unique Teachers</div><div class="sv">'+(new Set(subs.map(s=>s.substituteName))).size+'</div><div class="sb3">substituting</div><div class="sic">👥</div></div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="sub-q" placeholder="🔍 Search by absent teacher, substitute, period…" oninput="fltSubs()" style="flex:1;min-width:200px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><input type="date" id="sub-date" onchange="fltSubs()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><button class="btn bg2 bsm" onclick="document.getElementById(\'sub-date\').value=\''+todayDate+'\';fltSubs()">Today</button><button class="btn bg2 bsm" onclick="document.getElementById(\'sub-date\').value=\'\';fltSubs()">All</button><button class="btn bg2 bsm" onclick="vSubsByTeacher()">📊 By Teacher</button></div></div>'
   +'<div id="subs-list">'+buildSubsTable(subs,canEdit)+'</div>';
@@ -11586,6 +11586,270 @@ function rSubstitutions(){
 function buildSubsTable(list,canEdit){
   if(!list.length)return'<div class="emp"><div class="ei">🔄</div><p>No substitutions recorded</p></div>';
   return'<div class="card"><div class="tw"><table><thead><tr><th>Date</th><th>Day</th><th>Period / Time</th><th>Subject</th><th>Class</th><th>Absent Teacher</th><th>Substitute</th><th>Notes</th><th>Created</th>'+(canEdit?'<th></th>':'')+'</tr></thead><tbody>'+list.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.created||'').localeCompare(a.created||'')).map(s=>'<tr><td class="mono" style="font-size:11px">'+esc(s.date||'—')+'</td><td style="font-size:11px">'+esc(s.day||'')+'</td><td><strong style="font-size:12px">'+esc(s.period||'—')+'</strong>'+(s.time?'<br><span class="mono" style="font-size:10px;color:var(--tx3)">'+esc(s.time)+'</span>':'')+'</td><td>'+esc(s.subject||'—')+'</td><td>'+esc(s.class||'—')+'</td><td><span class="badge brd">❌ '+esc(s.absentName)+'</span></td><td><strong style="color:var(--gd)">✓ '+esc(s.substituteName)+'</strong></td><td style="font-size:11px;color:var(--tx2);max-width:180px">'+esc((s.notes||'').slice(0,80))+((s.notes||'').length>80?'…':'')+'</td><td style="font-size:10px;color:var(--tx3)">'+esc(s.assignedByName||'—')+'<br>'+(s.created||'').split('T')[0]+'</td>'+(canEdit?'<td><button class="btn bd3 bxs" onclick="delSub(\''+s.id+'\')">Del</button></td>':'')+'</tr>').join('')+'</tbody></table></div></div>';
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// SUBSTITUTION PREFERENCE LIST
+// The school's own rota: for each day and period, who should be
+// asked first, second and third. Suggested when a substitution is
+// being assigned; a preference who is already absent or already
+// covering that period is shown but cannot be picked by mistake,
+// and any other member of staff can still be chosen instead.
+// Source: Substitution Preference List, academic year 2026-2027.
+// ═══════════════════════════════════════════════════════════
+const SUB_PREF_DEFAULT={
+  Sunday:{
+    1:['M.Ayman','WAHAJ','Bhaskar'],
+    2:['Gomah','M.Elsayed','Salah'],
+    3:['SAJID','Ahmed Ibrahim','Rizwan'],
+    4:['M.Hafiz','A.Saleh','Asad'],
+    5:['Abdul Rehman','M.Ibrahim','Mustafa'],
+    6:['Mobeen','Gomah','M.Muneer'],
+    7:['M.shaban','M.Hafiz','Abdulwakeel']
+  },
+  Monday:{
+    1:['Abdelqawy','Daud','I.Shokry'],
+    2:['Bhaskar','SHAN.Z','A.Saleh'],
+    3:['Salah','Asad','M.ANQARY'],
+    4:['Abdulwakeel','M.shaban','O.GALALY'],
+    5:['Zaheer','M.Ayman','Sahal'],
+    6:['Ibrahim Metwaly','M.Muneer','Ahmed Ibrahim'],
+    7:['Sahal','M.Atif Anwar','Binu']
+  },
+  Tuesday:{
+    1:['M.ANQARY','Hosni','Saffir'],
+    2:['Ahmed Ibrahim','Fiaz','WAHAJ'],
+    3:['Hosni','Nawaz','SHAN.Z'],
+    4:['Faisal','Sahal','M.Elsayed'],
+    5:['Rizwan','Ibrahim Metwaly','Soliman'],
+    6:['Soliman','Faisal','BILAL'],
+    7:['Fiaz','Binu','Abdelqawy']
+  },
+  Wednesday:{
+    1:['Daud','Ismail','Ibrahim Metwaly'],
+    2:['M.Atif Anwar','Amr','M.Ayman'],
+    3:['SHAN.Z','Mustafa','M.shaban'],
+    4:['Binu','Bhaskar','SAJID'],
+    5:['M.Muneer','I.Shokry','M.Atif Anwar'],
+    6:['M.Ibrahim','Zaheer','Nawaz'],
+    7:['Saffir','Nayel','Abdul Rehman']
+  },
+  Thursday:{
+    1:['Nayel','Abdul Rehman','Fiaz'],
+    2:['BILAL','O.GALALY','Gomah'],
+    3:['I.Shokry','Abdulwakeel','Zaheer'],
+    4:['Ismail','Saffir','Amr'],
+    5:['Nawaz','BILAL','Ismail'],
+    6:['WAHAJ','Abdelqawy','M.Ibrahim'],
+    7:['Mustafa','Mobeen','Daud']
+  }
+};
+const SUB_PREF_DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday'];
+
+// Nothing is written until someone edits the list, so a school that never
+// touches it simply reads the sheet above.
+function getSubPrefs(){
+  const v=DB.get('sub_preferences');
+  if(v&&typeof v==='object'&&!Array.isArray(v))return v;
+  return SUB_PREF_DEFAULT;
+}
+function subPrefFor(day,period){
+  const t=getSubPrefs()[day];
+  if(!t)return [];
+  const list=t[period]||t[String(period)]||[];
+  return Array.isArray(list)?list.filter(Boolean):[];
+}
+
+// The list uses short staff names. Match them to the roll loosely so
+// "M.Ayman" finds "Mohamed Ayman" without demanding an exact string.
+function subNameKey(s){return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,'');}
+function subNameTokens(s){return String(s==null?'':s).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);}
+// "M.Ayman" should find "Mohamed Ayman" but never "Ahmed Ayman", and
+// "Ahmed Ibrahim" must not be mistaken for "Ibrahim Metwaly".
+function subNameMatch(a,b){
+  const A=subNameTokens(a),B=subNameTokens(b);
+  if(!A.length||!B.length)return false;
+  if(A.join('')===B.join(''))return true;
+  const shared=A.some(function(x){return x.length>=4&&B.indexOf(x)>=0;});
+  if(!shared)return false;
+  const ia=A.find(function(x){return x.length===1;});
+  const ib=B.find(function(x){return x.length===1;});
+  if(ia&&!ib)return B.some(function(x){return x.length>1&&x[0]===ia;});
+  if(ib&&!ia)return A.some(function(x){return x.length>1&&x[0]===ib;});
+  return true;
+}
+// Only an unambiguous loose match counts, so two staff sharing a name part
+// resolve to nobody rather than to the wrong person.
+function subResolveStaff(name){
+  const staff=getAssignableStaff();
+  const exact=staff.find(function(x){return subNameKey(x.name)===subNameKey(name);});
+  if(exact)return exact;
+  const near=staff.filter(function(x){return subNameMatch(x.name,name);});
+  return near.length===1?near[0]:null;
+}
+// Two names are the same person only when they resolve to the same member of
+// staff, or when the raw names match exactly.
+function subSamePerson(a,b){
+  if(!a||!b)return false;
+  if(subNameKey(a)===subNameKey(b))return true;
+  const ra=subResolveStaff(a),rb=subResolveStaff(b);
+  if(ra&&rb)return subNameKey(ra.name)===subNameKey(rb.name);
+  if(ra)return subNameKey(ra.name)===subNameKey(b);
+  if(rb)return subNameKey(rb.name)===subNameKey(a);
+  return false;
+}
+
+// Why a preference cannot take this period: already off, or already covering.
+function subPrefStatus(name,date,period,alsoAbsent){
+  const out={state:'ok',why:''};
+  if(!name)return out;
+  if(alsoAbsent&&subSamePerson(alsoAbsent,name)){
+    out.state='absent';out.why='is the absent teacher';return out;
+  }
+  const subs=(DB.get('substitutions')||[]).filter(function(s){return s.date===date;});
+  const off=subs.find(function(s){return subSamePerson(s.absentName,name);});
+  if(off){out.state='absent';out.why='absent this day';return out;}
+  const busy=subs.find(function(s){
+    return String(s.periodNumber||'')===String(period)&&subSamePerson(s.substituteName,name);
+  });
+  if(busy){out.state='busy';out.why='already covering period '+period;return out;}
+  return out;
+}
+
+// The chips under one period's substitute box.
+function subPrefChips(period){
+  const dateEl=document.getElementById('sub-d');
+  const date=dateEl?dateEl.value:'';
+  const day=getDayOfWeek(date);
+  const absEl=document.getElementById('sub-absent');
+  const absentName=absEl?absEl.value:'';
+  const prefs=subPrefFor(day,period);
+  if(!prefs.length){
+    return '<div style="font-size:9px;color:var(--tx3);margin-top:3px">'
+     +(day?'No preference set for '+esc(day)+'':'Pick a date to see preferences')+'</div>';
+  }
+  const q=String.fromCharCode(39);
+  return '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;justify-content:center">'
+   +prefs.map(function(nm,i){
+     const st=subPrefStatus(nm,date,period,absentName);
+     const staff=subResolveStaff(nm);
+     const use=staff?staff.name:nm;
+     const ok=st.state==='ok';
+     const bg=ok?(i===0?'var(--su)':'var(--sf3)'):'var(--dnbg)';
+     const fg=ok?(i===0?'#fff':'var(--tx2)'):'var(--dn)';
+     const title=(staff?staff.name+(staff.detail?' — '+staff.detail:''):nm+' (not found on the staff list)')
+       +(ok?'':' · '+st.why);
+     return '<button type="button" onclick="subPickPref('+period+','+q+escJs(use)+q+')" title="'+esc(title)+'"'
+      +' style="border:1px solid var(--bd);background:'+bg+';color:'+fg+';border-radius:10px;padding:2px 7px;font-size:9px;cursor:pointer;font-family:inherit;'
+      +(ok?'':'text-decoration:line-through;')+'">'
+      +(i+1)+'. '+esc(nm)+(ok?'':' ✕')+'</button>';
+   }).join('')+'</div>';
+}
+
+function subPickPref(period,name){
+  const el=document.getElementById('sub-tch-p'+period);
+  if(!el)return;
+  el.value=name;
+  subPrefRefresh();
+}
+
+function subPrefRefresh(){
+  [1,2,3,4,5,6,7].forEach(function(p){
+    const box=document.getElementById('sub-pref-p'+p);
+    if(box)box.innerHTML=subPrefChips(p);
+  });
+  const dEl=document.getElementById('sub-day');
+  const dateEl=document.getElementById('sub-d');
+  if(dEl&&dateEl)dEl.textContent=getDayOfWeek(dateEl.value)||'—';
+}
+
+// Fill every empty period with the first preference who can actually take it.
+function subFillPrefs(){
+  const dateEl=document.getElementById('sub-d');
+  const day=getDayOfWeek(dateEl?dateEl.value:'');
+  if(!day){toast('Choose a date first','danger');return;}
+  const absentName=(document.getElementById('sub-absent')||{}).value||'';
+  let filled=0,none=[];
+  [1,2,3,4,5,6,7].forEach(function(p){
+    const el=document.getElementById('sub-tch-p'+p);
+    const cls=document.getElementById('sub-class-p'+p);
+    if(!el||el.value.trim())return;                 // never overwrite a choice
+    if(cls&&!cls.value.trim())return;               // only periods needing cover
+    const prefs=subPrefFor(day,p);
+    const pick=prefs.find(function(nm){return subPrefStatus(nm,dateEl.value,p,absentName).state==='ok';});
+    if(pick){
+      const staff=subResolveStaff(pick);
+      el.value=staff?staff.name:pick;
+      filled++;
+    }else if(prefs.length)none.push(p);
+  });
+  subPrefRefresh();
+  if(!filled&&!none.length){toast('Nothing to fill — enter the classes that need cover first','info');return;}
+  toast(filled+' period(s) filled from the preference list'
+    +(none.length?' · no preference free for period '+none.join(', '):''),filled?'success':'danger');
+}
+
+// ── Viewing and editing the list ──────────────────────────
+function subPrefM(){
+  const canEdit=['vice_principal','superadmin','principal'].includes(CU.role);
+  const prefs=getSubPrefs();
+  const custom=!!(DB.get('sub_preferences'));
+  openM('<div class="mh"><h3>\u{1f4cb} Substitution Preference List</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Who to ask first, second and third for each day and period. These are suggested when a substitution is assigned — anyone already absent or already covering that period is shown crossed out, and any other member of staff can still be chosen.</div>'
+  +(custom?'':'<div class="al aw" style="margin-bottom:10px">\u{1f4c4} Showing the list from the school’s preference sheet. Saving here keeps your own copy.</div>')
+  +SUB_PREF_DAYS.map(function(day){
+    return '<div style="margin-bottom:12px">'
+     +'<div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:5px">'+esc(day)+'</div>'
+     +'<div class="tw"><table style="font-size:11px"><thead><tr><th style="width:64px">Period</th><th>1st choice</th><th>2nd choice</th><th>3rd choice</th></tr></thead><tbody>'
+     +[1,2,3,4,5,6,7].map(function(p){
+       const row=((prefs[day]||{})[p]||(prefs[day]||{})[String(p)]||[]);
+       return '<tr><td class="c"><strong>'+p+'</strong></td>'
+        +[0,1,2].map(function(i){
+          const v=row[i]||'';
+          return '<td>'+(canEdit
+            ? '<input id="spf-'+day+'-'+p+'-'+i+'" list="sub-staff-list" value="'+esc(v)+'" style="width:100%;padding:5px 7px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px">'
+            : esc(v||'—'))+'</td>';
+        }).join('')+'</tr>';
+     }).join('')+'</tbody></table></div></div>';
+  }).join('')
+  +'<datalist id="sub-staff-list">'+getAssignableStaff().map(function(s){return '<option value="'+esc(s.name)+'">'+esc(s.detail)+'</option>';}).join('')+'</datalist>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +(canEdit&&custom?'<button class="btn bd3 bsm" onclick="subPrefReset()">↺ Back to the sheet</button>':'')
+  +(canEdit?'<button class="btn bp" onclick="subPrefSave()">'+T('save')+' →</button>':'')+'</div>',true);
+}
+
+function subPrefSave(){
+  const out={};
+  SUB_PREF_DAYS.forEach(function(day){
+    out[day]={};
+    [1,2,3,4,5,6,7].forEach(function(p){
+      out[day][p]=[0,1,2].map(function(i){
+        const el=document.getElementById('spf-'+day+'-'+p+'-'+i);
+        return el?el.value.trim():'';
+      }).filter(Boolean);
+    });
+  });
+  DB.set('sub_preferences',out);
+  logA('Updated the substitution preference list');
+  closeM();toast('Preference list saved','success');
+  if(typeof rSubstitutions==='function')rSubstitutions();
+}
+
+function subPrefReset(){
+  if(!confirm('Discard your edits and go back to the school’s original preference sheet?'))return;
+  DB.del('sub_preferences');
+  if(typeof fbReady==='function'&&fbReady()&&CURRENT_SCHOOL_ID){
+    try{
+      const{db,ref,set}=window.__FB;
+      set(ref(db,getFirebaseSchoolPath()+'sub_preferences'),null);
+    }catch(e){}
+  }
+  logA('Reset the substitution preference list to the original sheet');
+  closeM();toast('Back to the original list','info');
+  if(typeof rSubstitutions==='function')rSubstitutions();
 }
 
 function addSubM(){
@@ -11625,7 +11889,8 @@ function addSubM(){
   // Substitute teacher row
   gridHtml+='<tr style="background:var(--sf)"><td style="padding:8px 10px;font-weight:600;color:var(--gd);border:1px solid var(--bd)">✓ Substitute</td>';
   periods.forEach(p=>{
-    gridHtml+='<td style="padding:5px;border:1px solid var(--bd)"><input id="sub-tch-p'+p+'" list="sub-staff-list" autocomplete="off" placeholder="— None —" style="width:100%;padding:6px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px;text-align:center"></td>';
+    gridHtml+='<td style="padding:5px;border:1px solid var(--bd);vertical-align:top"><input id="sub-tch-p'+p+'" list="sub-staff-list" autocomplete="off" placeholder="— None —" style="width:100%;padding:6px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px;text-align:center">'
+      +'<div id="sub-pref-p'+p+'"></div></td>';
   });
   gridHtml+='</tr>';
   
@@ -11636,18 +11901,24 @@ function addSubM(){
   +'<div class="al ai">📋 Fill in only the periods where cover is needed. Each filled period is saved as a separate substitution record; empty columns are skipped.<br><span style="font-size:11px">Any staff member can be assigned, and you can type a name that is not on the list.</span></div>'
   
   // Row 1: Absent teacher (single field)
-  +'<div style="background:var(--sf2);border-left:4px solid #d63838;border-radius:var(--rs);padding:11px 14px;margin-bottom:11px"><div style="font-size:11px;font-weight:700;color:#a52424;text-transform:uppercase;margin-bottom:6px">❌ Absent Staff Member</div><input id="sub-absent" list="sub-staff-list" autocomplete="off" placeholder="Type a name, or pick from the list" style="width:100%;padding:9px 11px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);font-size:13px;font-weight:600"></div>'
+  +'<div style="background:var(--sf2);border-left:4px solid #d63838;border-radius:var(--rs);padding:11px 14px;margin-bottom:11px"><div style="font-size:11px;font-weight:700;color:#a52424;text-transform:uppercase;margin-bottom:6px">❌ Absent Staff Member</div><input id="sub-absent" list="sub-staff-list" autocomplete="off" oninput="subPrefRefresh()" placeholder="Type a name, or pick from the list" style="width:100%;padding:9px 11px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);font-size:13px;font-weight:600"></div>'
   
   // Date row
-  +'<div class="fr f2"><div class="fg"><label>📅 Date *</label><input type="date" id="sub-d" value="'+today+'" onchange="document.getElementById(\'sub-day\').textContent=getDayOfWeek(this.value)||\'—\'"></div><div class="fg"><label>Day</label><div id="sub-day" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:13px;font-weight:600">'+esc(day||'—')+'</div></div></div>'
+  +'<div class="fr f2"><div class="fg"><label>📅 Date *</label><input type="date" id="sub-d" value="'+today+'" onchange="subPrefRefresh()"></div><div class="fg"><label>Day</label><div id="sub-day" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:13px;font-weight:600">'+esc(day||'—')+'</div></div></div>'
   
   // Period grid
-  +'<div style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:6px">📋 Period-by-Period Schedule</label>'+gridHtml+'</div>'
+  +'<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">'
+  +'<label style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase">📋 Period-by-Period Schedule</label>'
+  +'<div style="display:flex;gap:5px;flex-wrap:wrap"><button type="button" class="btn bs bxs" onclick="subFillPrefs()">⚡ Fill from preference list</button>'
+  +'<button type="button" class="btn bg2 bxs" onclick="subPrefM()">📋 View list</button></div></div>'
+  +'<div style="font-size:10px;color:var(--tx3);margin-bottom:6px">Under each period are that day\'s 1st, 2nd and 3rd choices. Tap one to use it. A choice who is absent that day or already covering that period is crossed out — you can still type anyone else.</div>'
+  +gridHtml+'</div>'
   
   // Common notes
   +'<div class="fg" style="margin-bottom:0"><label>Common Notes (optional, applies to all periods)</label><textarea id="sub-notes" placeholder="Any instructions, materials, or context for the substitute(s)…" style="min-height:60px"></textarea></div>'
   
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveSubGrid()">💾 Create Substitutions →</button></div>',true);
+  subPrefRefresh();
 }
 
 function saveSubGrid(){
