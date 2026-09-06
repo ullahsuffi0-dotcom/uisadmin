@@ -7889,7 +7889,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
-  'duty_places','duty_remarks','classroom_discipline','period_discipline','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
+  'duty_places','duty_remarks','classroom_discipline','period_discipline','pd_exclusions','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -7918,7 +7918,7 @@ const AUTO_REFRESH_MAP = {
   reexam_schedules:['rReexam'],
   duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
   duty_places:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
-  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],sub_preferences:['rSubstitutions'],
+  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline'],sub_preferences:['rSubstitutions'],
   sessions:['rSessions'],active_session_id:['rSessions'],
   todos:['rMyTodos']
 };
@@ -12761,6 +12761,121 @@ function pdStudentsInClass(cls){
 }
 
 
+
+// ═══════════════════════════════════════════════════════════
+// EXCLUDED LESSONS
+// A class on a trip, sitting an exam, or with no lesson that
+// period should not be marked down for a blank. An excluded
+// slot is expected of nobody: it is not counted as missing, any
+// record already sitting in it is ignored, and a class excluded
+// for the whole range drops out of the ranking altogether.
+// ═══════════════════════════════════════════════════════════
+function getPdExclusions(){const a=DB.get('pd_exclusions');return Array.isArray(a)?a:[];}
+
+// period 0 means the whole day; className '' means every class.
+function pdExclMatch(x,className,date){
+  if(!x||x.date!==date)return false;
+  if(!x.className)return true;
+  return normClass(x.className)===normClass(className);
+}
+function pdIsExcluded(className,date,period){
+  return getPdExclusions().some(function(x){
+    if(!pdExclMatch(x,className,date))return false;
+    return !x.period||Number(x.period)===Number(period);
+  });
+}
+// How many of a class's lessons are written off on one day.
+function pdExcludedCount(className,date,perDay){
+  const list=getPdExclusions().filter(function(x){return pdExclMatch(x,className,date);});
+  if(!list.length)return 0;
+  if(list.some(function(x){return !x.period;}))return perDay;
+  const seen={};
+  list.forEach(function(x){
+    const p=Number(x.period);
+    if(p>=1&&p<=perDay)seen[p]=1;
+  });
+  return Object.keys(seen).length;
+}
+function pdExpectedFor(className,days){
+  const tt=pdTimetable(className);
+  let n=0;
+  (days||[]).forEach(function(d){
+    n+=Math.max(0,tt.perDay-pdExcludedCount(className,d,tt.perDay));
+  });
+  return n;
+}
+
+// ── Managing them ─────────────────────────────────────────
+function pdExclusionsM(){
+  const canEdit=['superadmin','principal','vice_principal'].includes(CU.role);
+  const list=getPdExclusions().slice().sort(function(a,b){
+    return (b.date||'').localeCompare(a.date||'')||String(a.className).localeCompare(String(b.className));
+  });
+  const classes=getAllClasses();
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>\u{1f6ab} Excluded Lessons</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">A class on a trip, sitting an exam or with no lesson that period should not be marked down for a blank. '
+   +'An excluded slot is expected of nobody — it does not count as missing, anything already recorded in it is ignored, '
+   +'and a class excluded for the whole week drops out of the ranking rather than scoring zero.</div>'
+  +(canEdit?'<div style="background:var(--sf2);border-radius:var(--rs);padding:11px;margin-bottom:12px">'
+    +'<div class="fr f2"><div class="fg"><label>Date *</label><input type="date" id="px-date" value="'+esc(window._pdDate||ymd(new Date()))+'"></div>'
+    +'<div class="fg"><label>Class</label><select id="px-cls"><option value="">— Every class —</option>'
+      +classes.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('')+'</select></div></div>'
+    +'<div class="fr f2"><div class="fg"><label>Period</label><select id="px-per"><option value="0">— The whole day —</option>'
+      +PD_PERIODS.map(function(p){return '<option value="'+p+'">Period '+p+'</option>';}).join('')+'</select></div>'
+    +'<div class="fg"><label>Reason</label><input id="px-why" list="px-why-list" placeholder="e.g. School trip">'
+      +'<datalist id="px-why-list">'
+      +['School trip','Examination','Assembly','Sports day','Public holiday','No lesson timetabled','Class merged','Staff meeting']
+        .map(function(r){return '<option value="'+esc(r)+'">';}).join('')
+      +'</datalist></div></div>'
+    +'<button class="btn bp bsm" onclick="pdExclAdd()">+ Exclude</button></div>':'')
+  +(list.length?'<div class="tw" style="max-height:280px;overflow:auto"><table style="font-size:11px"><thead><tr>'
+     +'<th>Date</th><th>Class</th><th>Period</th><th>Reason</th><th>Added by</th>'+(canEdit?'<th></th>':'')+'</tr></thead><tbody>'
+     +list.map(function(x){
+       return '<tr><td class="mono">'+esc(x.date||'')+'</td>'
+        +'<td>'+(x.className?'<strong>'+esc(x.className)+'</strong>':'<em>Every class</em>')+'</td>'
+        +'<td>'+(x.period?'Period '+esc(String(x.period)):'<strong>Whole day</strong>')+'</td>'
+        +'<td style="color:var(--tx2)">'+esc(x.reason||'—')+'</td>'
+        +'<td style="font-size:10px;color:var(--tx3)">'+esc(x.by||'—')+'</td>'
+        +(canEdit?'<td><button class="btn bd3 bxs" onclick="pdExclDel('+q+escJs(x.id)+q+')">Remove</button></td>':'')
+        +'</tr>';
+     }).join('')+'</tbody></table></div>'
+   :'<div class="emp" style="padding:16px"><div class="ei">\u{1f6ab}</div><p style="font-size:11px">Nothing is excluded.</p></div>')
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
+}
+
+function pdExclAdd(){
+  const date=(document.getElementById('px-date')||{}).value||'';
+  const cls=(document.getElementById('px-cls')||{}).value||'';
+  const per=parseInt((document.getElementById('px-per')||{}).value||'0',10)||0;
+  const why=((document.getElementById('px-why')||{}).value||'').trim();
+  if(!date){toast('Choose the date','danger');return;}
+  const list=getPdExclusions();
+  const dup=list.find(function(x){
+    return x.date===date&&normClass(x.className||'')===normClass(cls)&&Number(x.period||0)===per;
+  });
+  if(dup){toast('That is already excluded','info');return;}
+  list.push({id:nid('pdx'),date:date,className:cls,period:per,reason:why,
+    by:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),created:new Date().toISOString()});
+  DB.set('pd_exclusions',list);
+  logA('Excluded '+(cls||'every class')+' on '+date+(per?' period '+per:' for the whole day')+(why?' ('+why+')':''));
+  toast('Excluded','success');
+  pdExclusionsM();
+  if(typeof rPeriodDiscipline==='function'&&_page==='period_discipline')setTimeout(function(){},0);
+}
+
+function pdExclDel(id){
+  const x=getPdExclusions().find(function(y){return y.id===id;});
+  if(!x)return;
+  if(!confirm('Stop excluding '+(x.className||'every class')+' on '+x.date+(x.period?' period '+x.period:' for the whole day')+'?'))return;
+  DB.set('pd_exclusions',getPdExclusions().filter(function(y){return y.id!==id;}));
+  logA('Removed an exclusion for '+(x.className||'every class')+' on '+x.date);
+  toast('Removed','danger');
+  pdExclusionsM();
+}
+
 // ═══════════════════════════════════════════════════════════
 // BEST CLASS OF THE WEEK
 // Ranks classes from what teachers recorded period by period.
@@ -12834,12 +12949,17 @@ const PD_NAMED_PENALTY=0.1;      // per student reported
 function pdNamedPenalty(named){return (named||0)*PD_NAMED_PENALTY;}
 function pdMissPenalty(missing){return (missing||0)*PD_MISS_PENALTY;}
 function pdRankClasses(from,to){
-  const rows=pdVisible().filter(function(r){
+  const all=pdVisible().filter(function(r){
     return r.date&&r.date>=from&&r.date<=to&&r.className;
   });
   // A day the school recorded nothing at all is a holiday, not a gap, so only
   // days with some record anywhere count towards what a class owes.
-  const activeDays=Array.from(new Set(rows.map(function(r){return r.date;}))).length;
+  const dayList=Array.from(new Set(all.map(function(r){return r.date;}))).sort();
+  const activeDays=dayList.length;
+  // Anything recorded in a slot that was written off does not count either way.
+  const rows=all.filter(function(r){
+    return !pdIsExcluded(r.className,r.date,r.periodNumber||r.period);
+  });
   const by={};
   rows.forEach(function(r){
     const c=r.className;
@@ -12861,7 +12981,8 @@ function pdRankClasses(from,to){
     b.perDay=tt.perDay;
     b.perWeek=tt.perWeek;
     b.activeDays=activeDays;
-    b.expected=activeDays*tt.perDay;
+    b.expected=pdExpectedFor(c,dayList);
+    b.excluded=activeDays*tt.perDay-b.expected;
     b.missing=Math.max(0,b.expected-b.periods);
     b.coverage=b.expected?Math.min(1,b.periods/b.expected):0;
     b.covPct=Math.round(b.coverage*100);
@@ -12873,6 +12994,8 @@ function pdRankClasses(from,to){
     b.pct=Math.round(b.avg*10)/10;
     b.teacherCount=Object.keys(b.teachers).length;
     return b;
+  }).filter(function(b){
+    return b.expected>0;              // excluded all week — no result, no position
   }).sort(function(a,b){
     // Score first, then the quality of the ratings themselves: more Excellent,
     // then more V. Good, then more Good, then fewer Bad.
@@ -12941,6 +13064,7 @@ function pdBestM(){
    +'V. Good costs '+PD_RATING_DROP['V. Good'].toFixed(2)+', Good '+PD_RATING_DROP['Good'].toFixed(2)+' and Bad '+PD_RATING_DROP['Bad'].toFixed(2)+'. '
    +'A class is judged against its own timetable — '+PD_TIMETABLE.map(function(t){return t.perWeek+' periods a week for grades '+t.grades[0]+' to '+t.grades[t.grades.length-1];}).join(', ')
    +' — losing '+PD_MISS_PENALTY.toFixed(2)+' for every lesson no teacher filled in and '+PD_NAMED_PENALTY.toFixed(2)+' for every student reported. '
+   +'Lessons written off on the Excluded screen \u2014 a trip, an exam, no lesson timetabled \u2014 are expected of nobody and cost nothing. '
    +'Level scores are separated by the number of Excellent, then V. Good, then Good, then fewest Bad. '
    +'A class needs at least '+PD_MIN_PERIODS+' periods recorded to win. '
    +'Each group is judged on its own: '+PD_GROUPS.map(function(g){return esc(g.name)+' (' + esc(g.label) + ')';}).join(', ')+'.</div>'
@@ -13007,7 +13131,8 @@ function pdBestRender(){
        return '<tr'+(isWin?' style="background:var(--subg,#e8f7ee)"':'')+'>'
         +'<td class="c">'+(isWin?'\u{1f3c6}':(i+1))+'</td>'
         +'<td><strong>'+esc(r.className)+'</strong>'+(thinRow&&g.id!=='other'?'<div style="font-size:9px;color:var(--tx3)">too few periods to win</div>':'')+'</td>'
-        +'<td class="c">'+r.periods+'<div style="font-size:9px;color:var(--tx3)">of '+r.expected+' ('+r.perWeek+'/wk)</div></td>'
+        +'<td class="c">'+r.periods+'<div style="font-size:9px;color:var(--tx3)">of '+r.expected
+          +(r.excluded?' \u00b7 '+r.excluded+' excluded':' ('+r.perWeek+'/wk)')+'</div></td>'
         +PD_RATINGS.map(function(x){return '<td class="c">'+(r.counts[x.v]||0)+'</td>';}).join('')
         +'<td class="c"'+(r.conductDrop?' style="color:var(--dg)"':'')+'>'+(r.conductDrop?'\u2212'+r.conductDrop.toFixed(2):'\u2014')+'</td>'
         +'<td class="c"'+(r.missing?' style="color:var(--dg);font-weight:600"':'')+'>'+(r.missing?r.missing:'\u2014')
@@ -13085,7 +13210,9 @@ function pdBestPDF(){
    +' — losing <strong>'+PD_MISS_PENALTY.toFixed(2)+'</strong> for every lesson no teacher filled in and <strong>'+PD_NAMED_PENALTY.toFixed(2)+'</strong> for every student reported for disturbing a lesson. '
    +'<strong>Score = '+PD_BASE_SCORE+' − ratings cost − (missing × '+PD_MISS_PENALTY.toFixed(2)+') − (students reported × '+PD_NAMED_PENALTY.toFixed(2)+')</strong>, never below zero. '
    +'Classes level on score are separated by the number of Excellent periods, then V. Good, then Good, then the fewest Bad. '
-   +'A day on which the school recorded nothing at all is treated as a holiday and is not counted against anyone. '
+   +'A day on which the school recorded nothing at all is treated as a holiday and is not counted against anyone, '
+   +'and lessons written off as excluded \u2014 a trip, an exam, no lesson timetabled \u2014 are expected of nobody. '
+   +'A class excluded for the whole period is left out of the ranking rather than scoring zero. '
    +'A class needs at least '+PD_MIN_PERIODS+' recorded periods to be eligible to win.</div>'
    +'<div class="note">Prepared from '+reports+' teacher reports across '+total+' class(es).</div>'
    +'</body></html>');
@@ -13202,8 +13329,11 @@ function pdCertificate(groupId){
 // period, so a weak period across the school stands out.
 // ═══════════════════════════════════════════════════════════
 function pdSummaryData(from,to){
+  // A lesson written off is expected of nobody, so anything sitting in one is
+  // left out here too, exactly as it is in the ranking.
   const rows=pdVisible().filter(function(r){
-    return r.date&&r.date>=from&&r.date<=to&&r.className;
+    if(!(r.date&&r.date>=from&&r.date<=to&&r.className))return false;
+    return !pdIsExcluded(r.className,r.date,r.periodNumber||r.period);
   });
   const cells={},classes={},periodTot={};
   PD_PERIODS.forEach(function(p){periodTot[p]={n:0,points:0,named:0,counts:{}};});
@@ -13226,7 +13356,8 @@ function pdSummaryData(from,to){
     }
   });
   // Days the school recorded something; a silent day is a holiday, not a gap.
-  const activeDays=Array.from(new Set(rows.map(function(r){return r.date;}))).length;
+  const dayList=Array.from(new Set(rows.map(function(r){return r.date;}))).sort();
+  const activeDays=dayList.length;
   const clsList=Object.keys(classes).sort(function(a,b){
     return (pdGradeOf(a)||99)-(pdGradeOf(b)||99)||a.localeCompare(b);
   });
@@ -13234,7 +13365,8 @@ function pdSummaryData(from,to){
     const cl=classes[c];
     cl.avg=cl.n?cl.points/cl.n:0;
     const tt=pdTimetable(c);
-    cl.expected=activeDays*tt.perDay;
+    cl.expected=pdExpectedFor(c,dayList);
+    cl.excluded=activeDays*tt.perDay-cl.expected;
     cl.missing=Math.max(0,cl.expected-cl.n);
     cl.missPenalty=pdMissPenalty(cl.missing);
     cl.penalty=pdNamedPenalty(cl.named);
@@ -13606,6 +13738,7 @@ function rPeriodDiscipline(){
    +'<label style="font-size:11px;color:var(--tx3)">Date:</label>'
    +'<input type="date" id="pd-date" value="'+esc(sel)+'" onchange="window._pdDate=this.value;rPeriodDiscipline()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'
    +(canAdd?'<button class="btn bp bsm" onclick="pdEntryM()">+ Record a Period</button>':'')
+   +'<button class="btn bg2 bsm" onclick="pdExclusionsM()">\u{1f6ab} Excluded</button>'
    +'<button class="btn bs bsm" onclick="pdSummaryM()">\u{1f4c8} Summary</button>'
    +'<button class="btn bs bsm" onclick="pdBestM()">\u{1f3c6} Best Class</button>'
    +'<button class="btn bg2 bsm" onclick="pdQrM()">\u{1f4f1} Class QR Poster</button>'
@@ -13636,6 +13769,7 @@ function pdGridCard(sel,todayRows,canAdd){
      return '<tr><td><strong>'+esc(c)+'</strong></td>'
       +PD_PERIODS.map(function(p){
         const r=at[c+'|'+p];
+        if(pdIsExcluded(c,sel,p))return '<td class="c" title="Excluded — not expected"><span style="color:var(--tx3);font-size:11px">\u{1f6ab}</span></td>';
         if(!r)return '<td class="c">'+(canAdd?'<button class="btn bg2 bxs" title="Record '+esc(c)+' period '+p+'" onclick="pdEntryM(null,'+String.fromCharCode(39)+escJs(c)+String.fromCharCode(39)+','+p+')">+</button>':'<span style="color:var(--tx3)">·</span>')+'</td>';
         const rt=pdRating(r.rating);
         const n=(r.students||[]).length;
@@ -13644,6 +13778,7 @@ function pdGridCard(sel,todayRows,canAdd){
    }).join('')+'</tbody></table></div>'
    +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:10px;color:var(--tx3)">'
    +PD_RATINGS.map(function(r){return '<span>'+r.i+' '+esc(r.v)+'</span>';}).join('')
+   +'<span>\u{1f6ab} excluded</span>'
    +'<span>A number next to the face is how many students were named.</span></div></div>';
 }
 
