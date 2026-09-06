@@ -12770,6 +12770,16 @@ function pdStudentsInClass(cls){
 const PD_POINTS={'Excellent':4,'V. Good':3,'Good':2,'Bad':0};
 function pdPoints(rating){const v=PD_POINTS[rating];return typeof v==='number'?v:0;}
 
+// A class starts on full marks and loses them. An excellent period costs
+// nothing; anything less costs the class something, and so does a lesson
+// nobody filled in or a student reported for disturbing one.
+const PD_BASE_SCORE=100;
+const PD_RATING_DROP={'Excellent':0,'V. Good':0.05,'Good':0.10,'Bad':0.50};
+function pdRatingDrop(rating){
+  const v=PD_RATING_DROP[rating];
+  return typeof v==='number'?v:0;
+}
+
 // The weeks a school can be asked about: the academic calendar if it is
 // set up, otherwise plain Saturday-to-Friday weeks around whatever exists.
 function pdWeekOptions(){
@@ -12833,10 +12843,11 @@ function pdRankClasses(from,to){
   const by={};
   rows.forEach(function(r){
     const c=r.className;
-    if(!by[c])by[c]={className:c,periods:0,points:0,named:0,reports:0,counts:{},teachers:{}};
+    if(!by[c])by[c]={className:c,periods:0,points:0,drop:0,named:0,reports:0,counts:{},teachers:{}};
     const b=by[c];
     b.periods++;
     b.points+=pdPoints(r.rating);
+    b.drop+=pdRatingDrop(r.rating);
     const n=((r.students||[]).length);
     b.named+=n;
     if(n)b.reports++;               // periods in which somebody was reported
@@ -12846,7 +12857,7 @@ function pdRankClasses(from,to){
   return Object.keys(by).map(function(c){
     const b=by[c];
     const tt=pdTimetable(c);
-    b.conduct=b.periods?(b.points/b.periods):0;          // teachers' ratings alone
+    b.conduct=b.periods?(b.points/b.periods):0;          // the old 0-4 average, kept for reference
     b.perDay=tt.perDay;
     b.perWeek=tt.perWeek;
     b.activeDays=activeDays;
@@ -12854,10 +12865,12 @@ function pdRankClasses(from,to){
     b.missing=Math.max(0,b.expected-b.periods);
     b.coverage=b.expected?Math.min(1,b.periods/b.expected):0;
     b.covPct=Math.round(b.coverage*100);
+    b.conductDrop=b.drop;                                // what the ratings cost
     b.missPenalty=pdMissPenalty(b.missing);              // 0.10 a lesson left blank
     b.penalty=pdNamedPenalty(b.named);                   // 0.10 a student reported
-    b.avg=Math.max(0,b.conduct-b.missPenalty-b.penalty);
-    b.pct=Math.round((b.avg/4)*100);
+    b.deducted=b.conductDrop+b.missPenalty+b.penalty;
+    b.avg=Math.max(0,PD_BASE_SCORE-b.deducted);          // out of 100
+    b.pct=Math.round(b.avg*10)/10;
     b.teacherCount=Object.keys(b.teachers).length;
     return b;
   }).sort(function(a,b){
@@ -12924,9 +12937,10 @@ function pdBestM(){
   const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f3c6} Best Class of the Week</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">Ranked from what teachers recorded period by period. Excellent counts 4, V. Good 3, Good 2, Bad 0 — a class is scored on its average across every period recorded for it. '
+  +'<div class="al ai">Every class starts on '+PD_BASE_SCORE+' and loses marks. An Excellent period costs nothing; '
+   +'V. Good costs '+PD_RATING_DROP['V. Good'].toFixed(2)+', Good '+PD_RATING_DROP['Good'].toFixed(2)+' and Bad '+PD_RATING_DROP['Bad'].toFixed(2)+'. '
    +'A class is judged against its own timetable — '+PD_TIMETABLE.map(function(t){return t.perWeek+' periods a week for grades '+t.grades[0]+' to '+t.grades[t.grades.length-1];}).join(', ')
-   +' — and loses '+PD_MISS_PENALTY.toFixed(2)+' for every lesson no teacher filled in and '+PD_NAMED_PENALTY.toFixed(2)+' for every student reported. '
+   +' — losing '+PD_MISS_PENALTY.toFixed(2)+' for every lesson no teacher filled in and '+PD_NAMED_PENALTY.toFixed(2)+' for every student reported. '
    +'Level scores are separated by the number of Excellent, then V. Good, then Good, then fewest Bad. '
    +'A class needs at least '+PD_MIN_PERIODS+' periods recorded to win. '
    +'Each group is judged on its own: '+PD_GROUPS.map(function(g){return esc(g.name)+' (' + esc(g.label) + ')';}).join(', ')+'.</div>'
@@ -12975,18 +12989,18 @@ function pdBestRender(){
      +'</div>'
      +(win&&g.id!=='other'?'<div class="stat gn" style="margin-bottom:8px"><div class="sl2">Best class</div>'
         +'<div style="font-size:21px;font-weight:700;margin-top:5px">\u{1f3c6} '+esc(win.className)+'</div>'
-        +'<div class="sb3">'+win.avg.toFixed(2)+' out of 4 \u00b7 '+win.periods+' of '+win.expected+' periods filled in'
+        +'<div class="sb3">'+win.avg.toFixed(2)+' out of '+PD_BASE_SCORE+' \u00b7 '+win.periods+' of '+win.expected+' periods filled in'
         +(win.missing?' \u00b7 '+win.missing+' missing (\u2212'+win.missPenalty.toFixed(2)+')':'')
         +' \u00b7 '+(win.named?win.named+' student(s) reported (\u2212'+win.penalty.toFixed(2)+')':'nobody reported')+'</div>'
         +'<div class="sic">\u{1f3c5}</div></div>':'')
      +'<div class="tw"><table style="font-size:11px"><thead><tr>'
      +'<th class="c">#</th><th>Class</th><th class="c" title="Periods filled in, out of all seven a day">Filled in</th>'
      +PD_RATINGS.map(function(r){return '<th class="c" title="'+esc(r.v)+'">'+r.i+'</th>';}).join('')
-     +'<th class="c" title="Average of the teachers&#39; ratings">Conduct</th>'
+     +'<th class="c" title="Marks lost on the ratings themselves">Conduct</th>'
      +'<th class="c" title="Lessons no teacher filled in, and what they cost">Missing</th>'
      +'<th class="c" title="Students reported for disturbing a lesson">Named</th>'
-     +'<th class="c" title="Marks lost for those reports">Penalty</th>'
-     +'<th class="c">Score</th><th class="c">%</th></tr></thead><tbody>'
+     +'<th class="c" title="Every mark lost">Deducted</th>'
+     +'<th class="c">Score /'+PD_BASE_SCORE+'</th></tr></thead><tbody>'
      +rows.map(function(r,i){
        const isWin=win&&r.className===win.className&&g.id!=='other';
        const thinRow=r.periods<PD_MIN_PERIODS;
@@ -12995,14 +13009,13 @@ function pdBestRender(){
         +'<td><strong>'+esc(r.className)+'</strong>'+(thinRow&&g.id!=='other'?'<div style="font-size:9px;color:var(--tx3)">too few periods to win</div>':'')+'</td>'
         +'<td class="c">'+r.periods+'<div style="font-size:9px;color:var(--tx3)">of '+r.expected+' ('+r.perWeek+'/wk)</div></td>'
         +PD_RATINGS.map(function(x){return '<td class="c">'+(r.counts[x.v]||0)+'</td>';}).join('')
-        +'<td class="c">'+r.conduct.toFixed(2)+'</td>'
+        +'<td class="c"'+(r.conductDrop?' style="color:var(--dg)"':'')+'>'+(r.conductDrop?'\u2212'+r.conductDrop.toFixed(2):'\u2014')+'</td>'
         +'<td class="c"'+(r.missing?' style="color:var(--dg);font-weight:600"':'')+'>'+(r.missing?r.missing:'\u2014')
           +(r.missing?'<div style="font-size:9px;color:var(--tx3);font-weight:400">\u2212'+r.missPenalty.toFixed(2)+'</div>':'')+'</td>'
         +'<td class="c"'+(r.named?' style="color:var(--dn);font-weight:600"':'')+'>'+r.named
-          +(r.reports?'<div style="font-size:9px;color:var(--tx3);font-weight:400">in '+r.reports+' period(s)</div>':'')+'</td>'
-        +'<td class="c"'+(r.penalty?' style="color:var(--dn)"':'')+'>'+(r.penalty?'\u2212'+r.penalty.toFixed(2):'\u2014')+'</td>'
-        +'<td class="c"><strong>'+r.avg.toFixed(2)+'</strong></td>'
-        +'<td class="c">'+r.pct+'%</td></tr>';
+          +(r.penalty?'<div style="font-size:9px;color:var(--tx3);font-weight:400">\u2212'+r.penalty.toFixed(2)+'</div>':'')+'</td>'
+        +'<td class="c"'+(r.deducted?' style="color:var(--dn)"':'')+'>'+(r.deducted?'\u2212'+r.deducted.toFixed(2):'\u2014')+'</td>'
+        +'<td class="c"><strong>'+r.avg.toFixed(2)+'</strong></td></tr>';
      }).join('')+'</tbody></table></div>'
      +(thin&&g.id!=='other'?'<div style="font-size:10px;color:var(--tx3);margin-top:4px">'+thin+' class(es) had fewer than '+PD_MIN_PERIODS+' periods recorded, so they are listed but cannot win.</div>':'')
      +'</div>';
@@ -13041,35 +13054,36 @@ function pdBestPDF(){
      if(win&&g.id!=='other'){
        out+='<div class="banner"><div style="font-size:10px;letter-spacing:2px;color:#166534">BEST CLASS \u2014 '+esc(g.name.toUpperCase())+'</div>'
         +'<div class="cls">'+esc(win.className)+'</div>'
-        +'<div style="font-size:11px;color:#166534">'+win.avg.toFixed(2)+' out of 4 &nbsp;\u00b7&nbsp; '+win.pct+'% &nbsp;\u00b7&nbsp; '
+        +'<div style="font-size:11px;color:#166534">'+win.avg.toFixed(2)+' out of '+PD_BASE_SCORE+' &nbsp;\u00b7&nbsp; '
         +win.periods+' of '+win.expected+' periods filled in &nbsp;\u00b7&nbsp; '
         +(win.named?win.named+' student(s) reported':'no student reported')+'</div></div>';
      }
      out+='<table><thead><tr><th class="c">#</th><th>Class</th><th class="c">Filled In</th>'
       +PD_RATINGS.map(function(r){return '<th class="c">'+esc(r.v)+'</th>';}).join('')
-      +'<th class="c">Conduct /4</th><th class="c">Missing</th><th class="c">Students Named</th><th class="c">Deductions</th>'
-      +'<th class="c">Score /4</th><th class="c">%</th></tr></thead><tbody>'
+      +'<th class="c">Ratings Cost</th><th class="c">Missing</th><th class="c">Students Named</th><th class="c">Total Deducted</th>'
+      +'<th class="c">Score /'+PD_BASE_SCORE+'</th></tr></thead><tbody>'
       +rows.map(function(r,i){
         const isWin=win&&r.className===win.className&&g.id!=='other';
         return '<tr'+(isWin?' class="win"':'')+'><td class="c">'+(i+1)+'</td>'
          +'<td>'+esc(r.className)+((r.periods<PD_MIN_PERIODS&&g.id!=='other')?' <span style="font-size:9px;color:#888">(too few periods to win)</span>':'')+'</td>'
          +'<td class="c">'+r.periods+' / '+r.expected+'</td>'
          +PD_RATINGS.map(function(x){return '<td class="c">'+(r.counts[x.v]||0)+'</td>';}).join('')
-         +'<td class="c">'+r.conduct.toFixed(2)+'</td>'
+         +'<td class="c">'+(r.conductDrop?'\u2212'+r.conductDrop.toFixed(2):'\u2014')+'</td>'
          +'<td class="c">'+(r.missing?r.missing+' (\u2212'+r.missPenalty.toFixed(2)+')':'\u2014')+'</td>'
-         +'<td class="c">'+r.named+(r.reports?' (in '+r.reports+')':'')+'</td>'
-         +'<td class="c">'+((r.missPenalty+r.penalty)?'\u2212'+(r.missPenalty+r.penalty).toFixed(2):'\u2014')+'</td>'
-         +'<td class="c">'+r.avg.toFixed(2)+'</td><td class="c">'+r.pct+'%</td></tr>';
+         +'<td class="c">'+r.named+(r.penalty?' (\u2212'+r.penalty.toFixed(2)+')':'')+'</td>'
+         +'<td class="c">'+(r.deducted?'\u2212'+r.deducted.toFixed(2):'\u2014')+'</td>'
+         +'<td class="c"><strong>'+r.avg.toFixed(2)+'</strong></td></tr>';
       }).join('')+'</tbody></table>';
      return out;
    }).join('')
    +'<div class="note"><strong>Groups:</strong> '+PD_GROUPS.map(function(g){return g.name+' \u2014 '+g.label;}).join(' &nbsp;\u00b7&nbsp; ')+'. Each group is judged on its own.</div>'
-   +'<div class="note"><strong>How the score works:</strong> every period a teacher recorded is worth Excellent 4, V. Good 3, Good 2, Bad 0, '
-   +'and the conduct mark is the average across the periods that were filled in. '
+   +'<div class="note"><strong>How the score works:</strong> every class starts on <strong>'+PD_BASE_SCORE+'</strong> and loses marks. '
+   +'An <strong>Excellent</strong> period costs nothing, <strong>V. Good</strong> costs '+PD_RATING_DROP['V. Good'].toFixed(2)+', '
+   +'<strong>Good</strong> '+PD_RATING_DROP['Good'].toFixed(2)+' and <strong>Bad</strong> '+PD_RATING_DROP['Bad'].toFixed(2)+'. '
    +'A class is then measured against its own timetable — '
    +PD_TIMETABLE.map(function(t){return '<strong>'+t.perWeek+' periods a week</strong> for grades '+t.grades[0]+' to '+t.grades[t.grades.length-1];}).join(', ')
    +' — losing <strong>'+PD_MISS_PENALTY.toFixed(2)+'</strong> for every lesson no teacher filled in and <strong>'+PD_NAMED_PENALTY.toFixed(2)+'</strong> for every student reported for disturbing a lesson. '
-   +'<strong>Score = conduct − (missing × '+PD_MISS_PENALTY.toFixed(2)+') − (students reported × '+PD_NAMED_PENALTY.toFixed(2)+')</strong>, never below zero. '
+   +'<strong>Score = '+PD_BASE_SCORE+' − ratings cost − (missing × '+PD_MISS_PENALTY.toFixed(2)+') − (students reported × '+PD_NAMED_PENALTY.toFixed(2)+')</strong>, never below zero. '
    +'Classes level on score are separated by the number of Excellent periods, then V. Good, then Good, then the fewest Bad. '
    +'A day on which the school recorded nothing at all is treated as a holiday and is not counted against anyone. '
    +'A class needs at least '+PD_MIN_PERIODS+' recorded periods to be eligible to win.</div>'
@@ -13097,13 +13111,12 @@ function pdCertSheet(win,runnerUp,w,group){
    +'<div class="week">'+esc(w.label)+' &nbsp;\u00b7&nbsp; '+esc(w.from)+' to '+esc(w.to)+'</div>'
    +'<div class="cite">For the finest classroom conduct in '+esc(group.label.toLowerCase())+' this week, as reported by their teachers at the end of every period'
    +(win.named?'':', with not one student reported for disturbing a lesson')+'.'
-   +(runnerUp?'<br>Runner-up: <strong>'+esc(runnerUp.className)+'</strong> ('+runnerUp.avg.toFixed(2)+' out of 4).':'')+'</div>'
+   +(runnerUp?'<br>Runner-up: <strong>'+esc(runnerUp.className)+'</strong> ('+runnerUp.avg.toFixed(2)+' out of '+PD_BASE_SCORE+').':'')+'</div>'
    +'<div class="score">'
-   +'<div><div class="n">'+win.avg.toFixed(2)+'</div><div class="l">Score out of 4</div></div>'
-   +'<div><div class="n">'+win.pct+'%</div><div class="l">Rating</div></div>'
+   +'<div><div class="n">'+win.avg.toFixed(2)+'</div><div class="l">Score out of '+PD_BASE_SCORE+'</div></div>'
+   +'<div><div class="n">'+((win.counts['Excellent']||0))+'</div><div class="l">Excellent periods</div></div>'
    +'<div><div class="n">'+win.periods+'</div><div class="l">Periods judged</div></div>'
    +'<div><div class="n">'+win.periods+'/'+win.expected+'</div><div class="l">Timetable filled in</div></div>'
-   +'<div><div class="n">'+((win.counts['Excellent']||0))+'</div><div class="l">Excellent periods</div></div>'
    +'<div><div class="n">'+win.named+'</div><div class="l">Students reported</div></div>'
    +'</div>'
    +'<div class="sigs"><div class="sig">Vice Principal</div><div class="sig">Principal</div></div>'
@@ -13203,9 +13216,9 @@ function pdSummaryData(from,to){
     const cell=cells[key];
     cell.n++;cell.points+=pts;cell.named+=named;
     cell.ratings.push(r.rating);cell.days.push(r.date);
-    if(!classes[c])classes[c]={className:c,n:0,points:0,named:0,counts:{}};
+    if(!classes[c])classes[c]={className:c,n:0,points:0,drop:0,named:0,counts:{}};
     const cl=classes[c];
-    cl.n++;cl.points+=pts;cl.named+=named;
+    cl.n++;cl.points+=pts;cl.named+=named;cl.drop+=pdRatingDrop(r.rating);
     cl.counts[r.rating]=(cl.counts[r.rating]||0)+1;
     if(periodTot[p]){
       periodTot[p].n++;periodTot[p].points+=pts;periodTot[p].named+=named;
@@ -13225,7 +13238,9 @@ function pdSummaryData(from,to){
     cl.missing=Math.max(0,cl.expected-cl.n);
     cl.missPenalty=pdMissPenalty(cl.missing);
     cl.penalty=pdNamedPenalty(cl.named);
-    cl.score=Math.max(0,cl.avg-cl.missPenalty-cl.penalty);
+    cl.conductDrop=cl.drop||0;
+    cl.deducted=cl.conductDrop+cl.missPenalty+cl.penalty;
+    cl.score=Math.max(0,PD_BASE_SCORE-cl.deducted);
   });
   PD_PERIODS.forEach(function(p){
     const t=periodTot[p];t.avg=t.n?t.points/t.n:0;
@@ -13371,7 +13386,8 @@ function pdSummaryPDF(){
    +'<span class="key" style="background:#eef4fb;color:#1a5f7a">2.50 – 3.49</span>'
    +'<span class="key" style="background:#fff8e1;color:#8a6100">1.50 – 2.49</span>'
    +'<span class="key" style="background:#fdecec;color:#a52424">below 1.50</span>'
-   +'<br><strong>Score</strong> is the class conduct average less '+PD_MISS_PENALTY.toFixed(2)+' for every lesson no teacher filled in and '+PD_NAMED_PENALTY.toFixed(2)+' for every student reported. '
+   +'<br><strong>Score</strong> starts at '+PD_BASE_SCORE+' and loses '+PD_RATING_DROP['V. Good'].toFixed(2)+' a V. Good period, '+PD_RATING_DROP['Good'].toFixed(2)+' a Good one and '+PD_RATING_DROP['Bad'].toFixed(2)+' a Bad one, '
+   +'then '+PD_MISS_PENALTY.toFixed(2)+' for every lesson no teacher filled in and '+PD_NAMED_PENALTY.toFixed(2)+' for every student reported. '
    +'A class owes '+PD_TIMETABLE.map(function(t){return t.perWeek+' periods a week in grades '+t.grades[0]+'-'+t.grades[t.grades.length-1];}).join(' and ')+'.'
    +'<br><strong>All classes</strong> shows how each period went across the school — a low figure means that period is a problem everywhere, not just in one room.'
    +'</div></body></html>');
@@ -13386,14 +13402,14 @@ function pdSummaryXlsx(){
   if(!d.clsList.length){toast('Nothing was recorded in these dates','danger');return;}
   // Sheet 1 — the grid
   const grid=[['Class'].concat(PD_PERIODS.map(function(p){return 'P'+p;}))
-    .concat(['Periods','Students Named','Conduct /4','Penalty','Score /4'])];
+    .concat(['Periods Filled In','Expected','Missing','Students Named','Total Deducted','Score /'+PD_BASE_SCORE])];
   d.clsList.forEach(function(c){
     const cl=d.classes[c];
     grid.push([c].concat(PD_PERIODS.map(function(p){
       const cell=d.cells[c+'|'+p];
       if(!cell||!cell.n)return '';
       return d.singleDay||cell.n===1?(cell.ratings[0]||''):(cell.points/cell.n).toFixed(2);
-    })).concat([cl.n,cl.named,cl.avg.toFixed(2),cl.penalty?('-'+cl.penalty.toFixed(2)):'',cl.score.toFixed(2)]));
+    })).concat([cl.n,cl.expected,cl.missing||'',cl.named,cl.deducted?('-'+cl.deducted.toFixed(2)):'',cl.score.toFixed(2)]));
   });
   grid.push([]);
   grid.push(['All classes'].concat(PD_PERIODS.map(function(p){
@@ -13402,7 +13418,7 @@ function pdSummaryXlsx(){
   grid.push(['Records per period'].concat(PD_PERIODS.map(function(p){return d.periodTot[p].n;})).concat(['','','','','']));
   grid.push(['Students named per period'].concat(PD_PERIODS.map(function(p){return d.periodTot[p].named;})).concat(['','','','','']));
   // Sheet 2 — how many of each rating, per class
-  const counts=[['Class'].concat(PD_RATINGS.map(function(x){return x.v;})).concat(['Periods','Students Named','Score /4'])];
+  const counts=[['Class'].concat(PD_RATINGS.map(function(x){return x.v;})).concat(['Periods','Students Named','Score /'+PD_BASE_SCORE])];
   d.clsList.forEach(function(c){
     const cl=d.classes[c];
     counts.push([c].concat(PD_RATINGS.map(function(x){return cl.counts[x.v]||0;}))
