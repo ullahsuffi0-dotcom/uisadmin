@@ -13304,16 +13304,161 @@ function pdSummaryXlsx(){
       (x.students||[]).map(function(s){return s.name;}).join('; '),(x.students||[]).length,
       (x.behaviours||[]).join('; '),x.note||'',x.teacherName||'']);
   });
+  // Sheet 4 — anyone named more than once in this range
+  const rep=pdRepeatMap(d.rows);
+  const repList=Object.keys(rep).map(function(k){return rep[k];})
+    .filter(function(m){return m.repeated;})
+    .sort(function(a,b){return b.count-a.count||String(a.name).localeCompare(String(b.name));});
+  const repeats=[['Student','On The Roll','Times Named','Days','Classes','Class Count','Periods','Most Common Behaviour','Last Named']];
+  repList.forEach(function(m){
+    repeats.push([m.name||'',m.id?'Yes':'No',m.count,m.days,m.classList.join('; '),m.classCount,
+      m.periodList.map(function(p){return 'P'+p;}).join(' '),m.topBehaviour||'',m.last||'']);
+  });
+  if(repList.length===0)repeats.push(['Nobody was named more than once in these dates']);
   xlsxDownload([
     {name:'Class x Period',rows:grid},
     {name:'Ratings by Class',rows:counts},
+    {name:'Repeat Students',rows:repeats},
     {name:'All Records',rows:detail}
   ],'discipline_summary_'+r.from+'_to_'+r.to+'.xlsx');
   logA('Exported the period discipline summary for '+r.from+' to '+r.to);
 }
 
+
+// ═══════════════════════════════════════════════════════════
+// REPEAT STUDENTS
+// The same boy named again and again — in one class or across
+// several — is the signal worth acting on, so it is shown on
+// every record rather than left for someone to notice.
+// ═══════════════════════════════════════════════════════════
+const PD_REPEAT_MIN=2;      // named this often counts as repeated
+const PD_REPEAT_SERIOUS=3;  // and this often is worth chasing
+
+// Prefer the roll id; a name typed by hand is keyed on the name itself.
+function pdStudentKey(st){
+  if(!st)return '';
+  if(st.id)return 'id:'+st.id;
+  const n=normDutyName(st.name||'');
+  return n?'nm:'+n:'';
+}
+
+function pdRepeatMap(rows){
+  const map={};
+  (rows||[]).forEach(function(r){
+    (r.students||[]).forEach(function(st){
+      const k=pdStudentKey(st);
+      if(!k)return;
+      if(!map[k])map[k]={key:k,id:st.id||'',name:st.name||'',count:0,
+        classes:{},periods:{},behaviours:{},dates:[],last:'',infractions:0};
+      const m=map[k];
+      m.count++;
+      if(!m.name&&st.name)m.name=st.name;
+      if(!m.id&&st.id)m.id=st.id;
+      if(st.infractionId)m.infractions++;
+      if(r.className)m.classes[r.className]=(m.classes[r.className]||0)+1;
+      const p=r.periodNumber||r.period;
+      if(p)m.periods[p]=(m.periods[p]||0)+1;
+      (r.behaviours||[]).forEach(function(b){m.behaviours[b]=(m.behaviours[b]||0)+1;});
+      if(r.date){m.dates.push(r.date);if(r.date>m.last)m.last=r.date;}
+    });
+  });
+  Object.keys(map).forEach(function(k){
+    const m=map[k];
+    m.classList=Object.keys(m.classes).sort();
+    m.classCount=m.classList.length;
+    m.periodList=Object.keys(m.periods).sort(function(a,b){return a-b;});
+    m.days=Array.from(new Set(m.dates)).length;
+    m.topBehaviour=Object.keys(m.behaviours).sort(function(a,b){return m.behaviours[b]-m.behaviours[a];})[0]||'';
+    m.repeated=m.count>=PD_REPEAT_MIN;
+  });
+  return map;
+}
+
+// Recomputed once per render; cleared whenever a record changes.
+function pdRepeatAll(){
+  if(!window._pdRepeat)window._pdRepeat=pdRepeatMap(pdVisible());
+  return window._pdRepeat;
+}
+function clearRepeatCache(){window._pdRepeat=null;}
+
+function pdRepeatInfo(st){return pdRepeatAll()[pdStudentKey(st)]||null;}
+
+function pdRepeatBadge(st){
+  const m=pdRepeatInfo(st);
+  if(!m||!m.repeated)return '';
+  const serious=m.count>=PD_REPEAT_SERIOUS;
+  const across=m.classCount>1;
+  const title=m.name+' has been named '+m.count+' time(s) on '+m.days+' day(s)'
+   +(across?', in '+m.classList.join(', '):'')
+   +(m.topBehaviour?' · most often: '+m.topBehaviour:'');
+  return '<span class="badge '+(serious?'brd':'bgo')+'" style="font-size:9px" title="'+esc(title)+'">'
+   +'\u{1f501} '+m.count+'×'+(across?' · '+m.classCount+' classes':'')+'</span>';
+}
+
+// The card on the page: everyone named more than once, worst first.
+function pdRepeatCard(){
+  const map=pdRepeatAll();
+  const list=Object.keys(map).map(function(k){return map[k];})
+    .filter(function(m){return m.repeated;})
+    .sort(function(a,b){
+      return b.count-a.count||b.classCount-a.classCount||(b.last||'').localeCompare(a.last||'')
+        ||String(a.name).localeCompare(String(b.name));
+    });
+  if(!list.length)return '';
+  const canInf=canDo('infractions')!=='disabled';
+  const across=list.filter(function(m){return m.classCount>1;}).length;
+  const q=String.fromCharCode(39);
+  return '<div class="card" style="margin-bottom:13px">'
+   +'<div class="sh2"><h3>\u{1f501} Repeat Students ('+list.length+')</h3>'
+   +'<button class="btn bg2 bsm" onclick="pdRepeatExport()">\u{1f4ca} Export</button></div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Named in more than one period. '
+   +(across?'<strong>'+across+'</strong> of them in more than one class — that is a habit rather than one bad lesson.':'None of them in more than one class yet.')+'</div>'
+   +'<div class="tw" style="max-height:260px;overflow:auto"><table style="font-size:11px"><thead><tr>'
+   +'<th>Student</th><th class="c">Times</th><th class="c">Days</th><th>Classes</th><th>Periods</th>'
+   +'<th>Most often</th><th class="c">Last</th>'+(canInf?'<th></th>':'')+'</tr></thead><tbody>'
+   +list.map(function(m){
+     const serious=m.count>=PD_REPEAT_SERIOUS;
+     return '<tr'+(serious?' style="background:var(--dnbg)"':'')+'>'
+      +'<td><strong>'+esc(m.name||'—')+'</strong>'
+        +(m.id?'':'<div style="font-size:9px;color:var(--tx3)">typed by hand — not on the roll</div>')
+        +(m.infractions?'<div style="font-size:9px;color:var(--su)">'+m.infractions+' infraction(s) filed</div>':'')+'</td>'
+      +'<td class="c"><strong style="'+(serious?'color:var(--dn)':'')+'">'+m.count+'</strong></td>'
+      +'<td class="c">'+m.days+'</td>'
+      +'<td>'+esc(m.classList.join(', '))+(m.classCount>1?' <span class="badge bgo" style="font-size:9px">'+m.classCount+' classes</span>':'')+'</td>'
+      +'<td style="font-size:10px;color:var(--tx3)">'+esc(m.periodList.map(function(p){return 'P'+p;}).join(' '))+'</td>'
+      +'<td style="font-size:10px;color:var(--tx2)">'+esc(m.topBehaviour||'—')+'</td>'
+      +'<td class="c mono" style="font-size:10px">'+esc(m.last||'')+'</td>'
+      +(canInf?'<td>'+(m.id?'<button class="btn bd3 bxs" onclick="pdRepeatInfraction('+q+escJs(m.id)+q+')">⚠️ Infraction</button>':'')+'</td>':'')
+      +'</tr>';
+   }).join('')+'</tbody></table></div></div>';
+}
+
+// Raise an infraction from the repeat list, against the most recent record.
+function pdRepeatInfraction(sid){
+  const rows=pdVisible().filter(function(r){
+    return (r.students||[]).some(function(st){return st.id===sid;});
+  }).sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+  if(!rows.length){toast('No record found for this student','danger');return;}
+  pdInfraction(rows[0].id,sid);
+}
+
+function pdRepeatExport(){
+  const map=pdRepeatAll();
+  const list=Object.keys(map).map(function(k){return map[k];})
+    .filter(function(m){return m.repeated;})
+    .sort(function(a,b){return b.count-a.count||String(a.name).localeCompare(String(b.name));});
+  if(!list.length){toast('Nobody has been named more than once','info');return;}
+  expCSV(['Student','On The Roll','Times Named','Days','Classes','Class Count','Periods','Most Common Behaviour','Infractions Filed','Last Named'],
+    list.map(function(m){
+      return [m.name||'',m.id?'Yes':'No',m.count,m.days,m.classList.join('; '),m.classCount,
+        m.periodList.map(function(p){return 'P'+p;}).join(' '),m.topBehaviour||'',m.infractions,m.last||''];
+    }),'repeat_students_'+ymd(new Date()));
+  logA('Exported repeat students ('+list.length+')');
+}
+
 // ── The page ──────────────────────────────────────────────
 function rPeriodDiscipline(){
+  clearRepeatCache();
   const perm=canDo('period_discipline');
   if(perm==='disabled'){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">\u{1f512}</div><p>Access restricted</p></div>';return;}
   const canAdd=perm==='full';
@@ -13342,6 +13487,7 @@ function rPeriodDiscipline(){
    +'<div class="stat rd"><div class="sl2">Rated Bad</div><div class="sv">'+bad+'</div><div class="sb3">need attention</div><div class="sic">\u{1f61f}</div></div>'
    +'<div class="stat go"><div class="sl2">Students Named</div><div class="sv">'+flagged+'</div><div class="sb3">on '+esc(sel)+'</div><div class="sic">⚠️</div></div>'
    +'</div>'
+   +pdRepeatCard()
    +pdGridCard(sel,todayRows,canAdd)
    +pdListCard(rows,sel);
 }
@@ -13392,7 +13538,8 @@ function pdRowsHTML(list,canInf){
       +'<td><span class="badge '+rt.bg+'">'+rt.i+' '+esc(r.rating||'')+'</span></td>'
       +'<td>'+((r.students||[]).length
          ?(r.students||[]).map(function(st){
-            return '<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px"><span>'+esc(st.name||'')+'</span>'
+            return '<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;flex-wrap:wrap"><span>'+esc(st.name||'')+'</span>'
+             +pdRepeatBadge(st)
              +(canInf&&st.id?'<button class="btn bd3 bxs" title="Record a formal infraction for this student" onclick="pdInfraction('+q+escJs(r.id)+q+','+q+escJs(st.id)+q+')">⚠️ Infraction</button>':'')
              +(st.infractionId?'<span class="badge bgr" style="font-size:9px">✓ infraction filed</span>':'')+'</div>';
            }).join('')
@@ -13486,10 +13633,13 @@ function pdRenderStudents(){
   const qq=String.fromCharCode(39);
   if(box)box.innerHTML=list.length?list.slice(0,60).map(function(s){
     const on=f.picked.some(function(p){return p.id===s.id;});
+    const rp=pdRepeatInfo({id:s.id,name:fN(s)});
     return '<label style="display:flex;align-items:center;gap:8px;padding:6px 9px;border-bottom:1px solid var(--bd);cursor:pointer;background:'+(on?'var(--ac2)':'transparent')+'">'
      +'<input type="checkbox" '+(on?'checked':'')+' onchange="pdToggleStu('+qq+escJs(s.id)+qq+')" style="width:15px;height:15px;cursor:pointer">'
      +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+esc(fN(s))+'</div>'
-     +'<div style="font-size:10px;color:var(--tx3)">SN '+esc(String(s.sn||''))+'</div></div></label>';
+     +'<div style="font-size:10px;color:var(--tx3)">SN '+esc(String(s.sn||''))
+       +((rp&&rp.repeated)?' \u00b7 <span style="color:'+(rp.count>=PD_REPEAT_SERIOUS?'var(--dn)':'var(--gd)')+'">\u{1f501} named '+rp.count+'\u00d7 before</span>':'')
+       +'</div></div></label>';
   }).join(''):'<div class="emp" style="padding:12px"><div class="ei">\u{1f50d}</div><p style="font-size:11px">No students match in '+esc(f.cls)+'</p></div>';
   const chips=document.getElementById('pd-f-chips');
   if(chips)chips.innerHTML=f.picked.length?f.picked.map(function(p,i){
@@ -13552,7 +13702,7 @@ function pdSave(){
   }else{
     list.push(Object.assign({id:nid('pdi')},body,{created:now}));
   }
-  DB.set('period_discipline',list);
+  DB.set('period_discipline',list);clearRepeatCache();
   window._pdClass=cls;
   void 0;
   logA((i>=0?'Updated':'Recorded')+' period discipline for '+cls+' period '+period+' on '+date+' ('+f.rating+')');
@@ -13563,7 +13713,7 @@ function pdDelete(id){
   const r=getPeriodDiscipline().find(function(x){return x.id===id;});
   if(!r)return;
   if(!confirm('Delete the record for '+r.className+' period '+r.period+' on '+r.date+'?'))return;
-  DB.set('period_discipline',getPeriodDiscipline().filter(function(x){return x.id!==id;}));
+  DB.set('period_discipline',getPeriodDiscipline().filter(function(x){return x.id!==id;}));clearRepeatCache();
   logA('Deleted period discipline for '+r.className+' period '+r.period);
   toast('Deleted','danger');rPeriodDiscipline();
 }
@@ -13584,9 +13734,15 @@ function pdViewM(id){
     ?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:5px">Students named</div>'
      +'<div style="border:1px solid var(--bd);border-radius:var(--rs);margin-bottom:12px">'
      +(r.students||[]).map(function(st){
-        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--bd)">'
+        const rp=pdRepeatInfo(st);
+        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--bd);flex-wrap:wrap">'
          +'<div style="flex:1;min-width:0;font-size:12px;font-weight:600">'+esc(st.name||'')
-         +(st.id?'':'<span style="font-size:10px;color:var(--tx3)"> · not linked to the roll</span>')+'</div>'
+         +(st.id?'':'<span style="font-size:10px;color:var(--tx3)"> · not linked to the roll</span>')
+         +((rp&&rp.repeated)?'<div style="font-size:10px;color:'+(rp.count>=PD_REPEAT_SERIOUS?'var(--dn)':'var(--gd)')+';font-weight:400">'
+            +'\u{1f501} named '+rp.count+' time(s) on '+rp.days+' day(s)'
+            +(rp.classCount>1?' across '+esc(rp.classList.join(', ')):'')
+            +(rp.topBehaviour?' · most often '+esc(rp.topBehaviour):'')+'</div>':'')
+         +'</div>'
          +(st.infractionId?'<span class="badge bgr">✓ infraction filed</span>'
            :(canInf&&st.id?'<button class="btn bd3 bxs" onclick="pdInfraction('+q+escJs(r.id)+q+','+q+escJs(st.id)+q+')">⚠️ Record Infraction</button>':''))
          +'</div>';
