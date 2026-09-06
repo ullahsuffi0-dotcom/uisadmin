@@ -13072,6 +13072,246 @@ function pdCertificate(groupId){
     +sheets.map(function(x){return x.group+' \u2014 '+x.cls;}).join(', '));
 }
 
+
+// ═══════════════════════════════════════════════════════════
+// PERIOD DISCIPLINE SUMMARY
+// A class-by-period grid for any stretch of days, on paper or in
+// a spreadsheet. Over a single day each cell is that period's
+// rating; over a longer range it is the class's average for that
+// period, so a weak period across the school stands out.
+// ═══════════════════════════════════════════════════════════
+function pdSummaryData(from,to){
+  const rows=pdVisible().filter(function(r){
+    return r.date&&r.date>=from&&r.date<=to&&r.className;
+  });
+  const cells={},classes={},periodTot={};
+  PD_PERIODS.forEach(function(p){periodTot[p]={n:0,points:0,named:0,counts:{}};});
+  rows.forEach(function(r){
+    const c=r.className,p=r.periodNumber||r.period;
+    const named=((r.students||[]).length);
+    const pts=pdPoints(r.rating);
+    const key=c+'|'+p;
+    if(!cells[key])cells[key]={n:0,points:0,named:0,ratings:[],days:[]};
+    const cell=cells[key];
+    cell.n++;cell.points+=pts;cell.named+=named;
+    cell.ratings.push(r.rating);cell.days.push(r.date);
+    if(!classes[c])classes[c]={className:c,n:0,points:0,named:0,counts:{}};
+    const cl=classes[c];
+    cl.n++;cl.points+=pts;cl.named+=named;
+    cl.counts[r.rating]=(cl.counts[r.rating]||0)+1;
+    if(periodTot[p]){
+      periodTot[p].n++;periodTot[p].points+=pts;periodTot[p].named+=named;
+      periodTot[p].counts[r.rating]=(periodTot[p].counts[r.rating]||0)+1;
+    }
+  });
+  const clsList=Object.keys(classes).sort(function(a,b){
+    return (pdGradeOf(a)||99)-(pdGradeOf(b)||99)||a.localeCompare(b);
+  });
+  clsList.forEach(function(c){
+    const cl=classes[c];
+    cl.avg=cl.n?cl.points/cl.n:0;
+    cl.penalty=pdNamedPenalty(cl.named,cl.n);
+    cl.score=Math.max(0,cl.avg-cl.penalty);
+  });
+  PD_PERIODS.forEach(function(p){
+    const t=periodTot[p];t.avg=t.n?t.points/t.n:0;
+  });
+  const days=Array.from(new Set(rows.map(function(r){return r.date;}))).sort();
+  return {from:from,to:to,rows:rows,cells:cells,classes:classes,clsList:clsList,
+    periodTot:periodTot,days:days,singleDay:days.length<=1,
+    totalPeriods:rows.length,
+    totalNamed:rows.reduce(function(n,r){return n+((r.students||[]).length);},0)};
+}
+
+function pdCellLabel(cell,singleDay){
+  if(!cell||!cell.n)return '';
+  if(singleDay||cell.n===1)return cell.ratings[0]||'';
+  return (cell.points/cell.n).toFixed(2)+' ('+cell.n+')';
+}
+function pdCellColour(cell){
+  if(!cell||!cell.n)return null;
+  const a=cell.points/cell.n;
+  if(a>=3.5)return {bg:'#e8f7ee',fg:'#15803d'};
+  if(a>=2.5)return {bg:'#eef4fb',fg:'#1a5f7a'};
+  if(a>=1.5)return {bg:'#fff8e1',fg:'#8a6100'};
+  return {bg:'#fdecec',fg:'#a52424'};
+}
+
+// The grid, shared by the on-screen preview and the printed sheet.
+function pdSummaryTableHTML(d,forPrint){
+  if(!d.clsList.length)return '<div style="padding:14px;font-size:12px;color:#888">Nothing was recorded in these dates.</div>';
+  const bd=forPrint?'1px solid #ddd':'1px solid var(--bd)';
+  const th=forPrint?'background:#1a5f7a;color:#fff;padding:6px 8px;font-size:10px;text-transform:uppercase'
+                   :'background:var(--ac);color:#fff;padding:6px 8px;font-size:10px;text-transform:uppercase';
+  let h='<table style="width:100%;border-collapse:collapse;font-size:11px">'
+   +'<thead><tr><th style="'+th+';text-align:left">Class</th>'
+   +PD_PERIODS.map(function(p){return '<th style="'+th+';text-align:center">P'+p+'</th>';}).join('')
+   +'<th style="'+th+';text-align:center">Periods</th>'
+   +'<th style="'+th+';text-align:center">Named</th>'
+   +'<th style="'+th+';text-align:center">Score</th></tr></thead><tbody>';
+  d.clsList.forEach(function(c){
+    const cl=d.classes[c];
+    h+='<tr><td style="border:'+bd+';padding:5px 8px"><strong>'+esc(c)+'</strong></td>';
+    PD_PERIODS.forEach(function(p){
+      const cell=d.cells[c+'|'+p];
+      const col=pdCellColour(cell);
+      h+='<td style="border:'+bd+';padding:5px 6px;text-align:center'
+        +(col?';background:'+col.bg+';color:'+col.fg+';font-weight:600':';color:#bbb')+'">'
+        +(cell?esc(pdCellLabel(cell,d.singleDay))+(cell.named?'<div style="font-size:8px;font-weight:400">'+cell.named+' named</div>':''):'·')
+        +'</td>';
+    });
+    h+='<td style="border:'+bd+';padding:5px 6px;text-align:center">'+cl.n+'</td>'
+     +'<td style="border:'+bd+';padding:5px 6px;text-align:center'+(cl.named?';color:#a52424;font-weight:600':'')+'">'+cl.named+'</td>'
+     +'<td style="border:'+bd+';padding:5px 6px;text-align:center"><strong>'+cl.score.toFixed(2)+'</strong></td></tr>';
+  });
+  // What every period looked like across the school
+  h+='<tr><td style="border:'+bd+';padding:5px 8px;font-weight:700;background:'+(forPrint?'#f0f4f8':'var(--sf3)')+'">All classes</td>';
+  PD_PERIODS.forEach(function(p){
+    const t=d.periodTot[p];
+    h+='<td style="border:'+bd+';padding:5px 6px;text-align:center;font-weight:700;background:'+(forPrint?'#f0f4f8':'var(--sf3)')+'">'
+     +(t.n?t.avg.toFixed(2):'·')+(t.n?'<div style="font-size:8px;font-weight:400">'+t.n+' rec</div>':'')+'</td>';
+  });
+  h+='<td style="border:'+bd+';padding:5px 6px;text-align:center;font-weight:700;background:'+(forPrint?'#f0f4f8':'var(--sf3)')+'">'+d.totalPeriods+'</td>'
+   +'<td style="border:'+bd+';padding:5px 6px;text-align:center;font-weight:700;background:'+(forPrint?'#f0f4f8':'var(--sf3)')+'">'+d.totalNamed+'</td>'
+   +'<td style="border:'+bd+';padding:5px 6px;background:'+(forPrint?'#f0f4f8':'var(--sf3)')+'"></td></tr>';
+  return h+'</tbody></table>';
+}
+
+function pdSummaryM(){
+  const cur=pdCurrentWeek();
+  const st=window._pdSum||(window._pdSum={
+    from:cur?cur.from:ymd(new Date()),to:cur?cur.to:ymd(new Date())});
+  const opts=pdWeekOptions();
+  openM('<div class="mh"><h3>\u{1f4c8} Discipline Summary</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Every class against every period. Over a single day each cell is that period’s rating; over a longer stretch it is the class’s average for that period, so a period that goes wrong across the school stands out.</div>'
+  +(opts.length?'<div class="fg"><label>Quick pick a week</label><select id="pds-w" onchange="pdSummaryWeek()">'
+     +'<option value="">— choose a week —</option>'
+     +opts.map(function(w,i){return '<option value="'+i+'"'+((w.from===st.from&&w.to===st.to)?' selected':'')+'>'+esc(w.label)+' ('+esc(w.from)+' → '+esc(w.to)+')</option>';}).join('')
+     +'</select></div>':'')
+  +'<div class="fr f2"><div class="fg"><label>From *</label><input type="date" id="pds-from" value="'+esc(st.from)+'" onchange="pdSummaryRender()"></div>'
+  +'<div class="fg"><label>To *</label><input type="date" id="pds-to" value="'+esc(st.to)+'" onchange="pdSummaryRender()"></div></div>'
+  +'<div id="pds-body"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bs" onclick="pdSummaryXlsx()">\u{1f4ca} Excel</button>'
+  +'<button class="btn bp" onclick="pdSummaryPDF()">\u{1f4c4} PDF</button></div>',true);
+  pdSummaryRender();
+}
+
+function pdSummaryWeek(){
+  const i=parseInt((document.getElementById('pds-w')||{}).value||'-1',10);
+  const w=pdWeekOptions()[i];
+  if(!w)return;
+  document.getElementById('pds-from').value=w.from;
+  document.getElementById('pds-to').value=w.to;
+  pdSummaryRender();
+}
+
+function pdSummaryRange(){
+  const from=(document.getElementById('pds-from')||{}).value||'';
+  const to=(document.getElementById('pds-to')||{}).value||'';
+  return {from:from,to:to};
+}
+
+function pdSummaryRender(){
+  const box=document.getElementById('pds-body');
+  if(!box)return;
+  const r=pdSummaryRange();
+  if(!r.from||!r.to){box.innerHTML='<div class="al aw">Choose both dates.</div>';return;}
+  if(r.to<r.from){box.innerHTML='<div class="al ad">The end date is before the start date.</div>';return;}
+  window._pdSum={from:r.from,to:r.to};
+  const d=pdSummaryData(r.from,r.to);
+  box.innerHTML='<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">'
+   +'<strong>'+d.clsList.length+'</strong> class(es) · <strong>'+d.totalPeriods+'</strong> period(s) recorded · '
+   +'<strong>'+d.totalNamed+'</strong> student report(s) · '+d.days.length+' day(s)'
+   +(d.singleDay?' — each cell is that period’s rating':' — each cell is the average for that class and period, with how many were recorded')
+   +'</div>'
+   +'<div class="tw" style="max-height:330px;overflow:auto">'+pdSummaryTableHTML(d,false)+'</div>';
+}
+
+function pdSummaryPDF(){
+  const r=pdSummaryRange();
+  if(!r.from||!r.to||r.to<r.from){toast('Choose a valid date range','danger');return;}
+  const d=pdSummaryData(r.from,r.to);
+  if(!d.clsList.length){toast('Nothing was recorded in these dates','danger');return;}
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to open the PDF','danger');return;}
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Discipline Summary '+esc(r.from)+' to '+esc(r.to)+'</title><style>'
+   +'@page{size:A4 landscape;margin:12mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:11px}'
+   +'h2{font-size:13px;margin:16px 0 6px}'
+   +'table{width:100%;border-collapse:collapse}'
+   +'.legend{margin-top:10px;font-size:10px;color:#555;line-height:1.7}'
+   +'.key{display:inline-block;padding:1px 7px;border-radius:3px;margin-right:4px;font-weight:600}'
+   +'@media print{button{display:none}}</style></head><body>'
+   +pdfHeaderHTML({subtitle:'Class Discipline — Period Summary'})
+   +'<button onclick="window.print()" style="margin-bottom:10px;padding:7px 15px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">\u{1f5a8}️ Print / Save as PDF</button>'
+   +'<div style="font-size:13px;font-weight:bold">'+esc(r.from)+' to '+esc(r.to)+'</div>'
+   +'<div style="font-size:11px;color:#555;margin-bottom:8px">'+d.clsList.length+' class(es) · '+d.totalPeriods+' period(s) recorded · '
+   +d.totalNamed+' student report(s) · '+d.days.length+' day(s)</div>'
+   +pdSummaryTableHTML(d,true)
+   +'<div class="legend">'
+   +(d.singleDay?'<strong>Each cell</strong> is the rating a teacher gave that class in that period.'
+     :'<strong>Each cell</strong> is the class’s average for that period across the range, with the number of records in brackets. Ratings count Excellent 4, V. Good 3, Good 2, Bad 0.')
+   +'<br><span class="key" style="background:#e8f7ee;color:#15803d">3.50 and above</span>'
+   +'<span class="key" style="background:#eef4fb;color:#1a5f7a">2.50 – 3.49</span>'
+   +'<span class="key" style="background:#fff8e1;color:#8a6100">1.50 – 2.49</span>'
+   +'<span class="key" style="background:#fdecec;color:#a52424">below 1.50</span>'
+   +'<br><strong>Score</strong> is the class conduct average less '+PD_NAMED_PENALTY.toFixed(2)+' per student reported per period, capped at '+PD_NAMED_CAP.toFixed(2)+'.'
+   +'<br><strong>All classes</strong> shows how each period went across the school — a low figure means that period is a problem everywhere, not just in one room.'
+   +'</div></body></html>');
+  w.document.close();
+  logA('Generated the period discipline summary for '+r.from+' to '+r.to);
+}
+
+function pdSummaryXlsx(){
+  const r=pdSummaryRange();
+  if(!r.from||!r.to||r.to<r.from){toast('Choose a valid date range','danger');return;}
+  const d=pdSummaryData(r.from,r.to);
+  if(!d.clsList.length){toast('Nothing was recorded in these dates','danger');return;}
+  // Sheet 1 — the grid
+  const grid=[['Class'].concat(PD_PERIODS.map(function(p){return 'P'+p;}))
+    .concat(['Periods','Students Named','Conduct /4','Penalty','Score /4'])];
+  d.clsList.forEach(function(c){
+    const cl=d.classes[c];
+    grid.push([c].concat(PD_PERIODS.map(function(p){
+      const cell=d.cells[c+'|'+p];
+      if(!cell||!cell.n)return '';
+      return d.singleDay||cell.n===1?(cell.ratings[0]||''):(cell.points/cell.n).toFixed(2);
+    })).concat([cl.n,cl.named,cl.avg.toFixed(2),cl.penalty?('-'+cl.penalty.toFixed(2)):'',cl.score.toFixed(2)]));
+  });
+  grid.push([]);
+  grid.push(['All classes'].concat(PD_PERIODS.map(function(p){
+    const t=d.periodTot[p];return t.n?t.avg.toFixed(2):'';
+  })).concat([d.totalPeriods,d.totalNamed,'','','']));
+  grid.push(['Records per period'].concat(PD_PERIODS.map(function(p){return d.periodTot[p].n;})).concat(['','','','','']));
+  grid.push(['Students named per period'].concat(PD_PERIODS.map(function(p){return d.periodTot[p].named;})).concat(['','','','','']));
+  // Sheet 2 — how many of each rating, per class
+  const counts=[['Class'].concat(PD_RATINGS.map(function(x){return x.v;})).concat(['Periods','Students Named','Score /4'])];
+  d.clsList.forEach(function(c){
+    const cl=d.classes[c];
+    counts.push([c].concat(PD_RATINGS.map(function(x){return cl.counts[x.v]||0;}))
+      .concat([cl.n,cl.named,cl.score.toFixed(2)]));
+  });
+  // Sheet 3 — every record behind the numbers
+  const detail=[['Date','Day','Period','Class','Discipline','Students Named','Count','What Happened','Note','Teacher']];
+  d.rows.slice().sort(function(a,b){
+    return (a.date||'').localeCompare(b.date||'')
+      ||((a.periodNumber||a.period||0)-(b.periodNumber||b.period||0))
+      ||(a.className||'').localeCompare(b.className||'');
+  }).forEach(function(x){
+    detail.push([x.date||'',getDayOfWeek(x.date)||'',x.periodNumber||x.period||'',x.className||'',x.rating||'',
+      (x.students||[]).map(function(s){return s.name;}).join('; '),(x.students||[]).length,
+      (x.behaviours||[]).join('; '),x.note||'',x.teacherName||'']);
+  });
+  xlsxDownload([
+    {name:'Class x Period',rows:grid},
+    {name:'Ratings by Class',rows:counts},
+    {name:'All Records',rows:detail}
+  ],'discipline_summary_'+r.from+'_to_'+r.to+'.xlsx');
+  logA('Exported the period discipline summary for '+r.from+' to '+r.to);
+}
+
 // ── The page ──────────────────────────────────────────────
 function rPeriodDiscipline(){
   const perm=canDo('period_discipline');
@@ -13090,6 +13330,7 @@ function rPeriodDiscipline(){
    +'<label style="font-size:11px;color:var(--tx3)">Date:</label>'
    +'<input type="date" id="pd-date" value="'+esc(sel)+'" onchange="window._pdDate=this.value;rPeriodDiscipline()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'
    +(canAdd?'<button class="btn bp bsm" onclick="pdEntryM()">+ Record a Period</button>':'')
+   +'<button class="btn bs bsm" onclick="pdSummaryM()">\u{1f4c8} Summary</button>'
    +'<button class="btn bs bsm" onclick="pdBestM()">\u{1f3c6} Best Class</button>'
    +'<button class="btn bg2 bsm" onclick="pdQrM()">\u{1f4f1} Class QR Poster</button>'
    +'<button class="btn bg2 bsm" onclick="pdExport()">\u{1f4ca} Export</button>'
