@@ -4686,17 +4686,15 @@ function attClassBreakdown(date){
 
 function expAttClassSummaryPDF(){
   const date=window._attDate||new Date().toISOString().split('T')[0];
-  const all=attClassBreakdown(date);
-  if(!all.length){toast('No students to summarise','danger');return;}
-  // Only classes with someone absent — the point of the sheet
-  const rows=all.filter(function(r){return r.absent.length>0;});
-  if(!rows.length){toast('No absences recorded for '+date,'info');return;}
+  // Every class appears, so a class with full attendance is visibly accounted
+  // for rather than missing. Only the absent students are named inside a class.
+  const rows=attClassBreakdown(date);
+  if(!rows.length){toast('No students to summarise','danger');return;}
   const s=DB.get('settings')||{};
   const day=getDayOfWeek(date)||'';
   const tot={students:0,absent:0,late:0};
-  all.forEach(function(r){tot.students+=r.total;tot.absent+=r.absent.length;tot.late+=r.late.length;});
-  const shown={students:0,absent:0,late:0};
-  rows.forEach(function(r){shown.students+=r.total;shown.absent+=r.absent.length;shown.late+=r.late.length;});
+  rows.forEach(function(r){tot.students+=r.total;tot.absent+=r.absent.length;tot.late+=r.late.length;});
+  const clean=rows.filter(function(r){return r.absent.length===0;}).length;
   const pct=function(n,d){return d?Math.round(n/d*1000)/10:0;};
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to generate the summary','danger');return;}
@@ -4708,6 +4706,7 @@ function expAttClassSummaryPDF(){
   +'td{padding:5px 8px;border:1px solid #d6e3ec;vertical-align:top}'
   +'td.c{text-align:center}tr:nth-child(even) td{background:#f7fafc}'
   +'.tot td{background:#D9EAF7;font-weight:bold}'
+  +'.clean td{background:#eefaf1!important;color:#15803d}'
   +'.names{font-size:10px;color:#444}'
   +'.cards{display:flex;gap:10px;margin-bottom:12px}'
   +'.card{flex:1;border:1px solid #d6e3ec;border-radius:5px;padding:9px;text-align:center}'
@@ -4723,7 +4722,8 @@ function expAttClassSummaryPDF(){
   +'<div class="card"><div class="l">Late</div><div class="n">'+tot.late+'</div></div>'
   +'<div class="card"><div class="l">Absent %</div><div class="n">'+pct(tot.absent,tot.students)+'%</div></div>'
   +'</div>'
-  +'<div style="font-size:11px;color:#555;margin-bottom:6px">Showing the '+rows.length+' class(es) with absences'+(all.length>rows.length?' — '+(all.length-rows.length)+' class(es) had full attendance':'')+'.</div>'
+  +'<div style="font-size:11px;color:#555;margin-bottom:6px">All '+rows.length+' class(es)'
+  +(clean?' — '+clean+' with full attendance, shaded green':'')+'. Only absent students are named.</div>'
   +'<table><thead><tr><th style="width:70px">Class</th><th style="width:52px">Total</th><th style="width:60px">Present</th>'
   +'<th style="width:56px">Absent</th><th style="width:48px">Late</th><th style="width:60px">Absent %</th><th>Absent Students</th></tr></thead><tbody>'
   +rows.map(function(r){
@@ -4731,16 +4731,17 @@ function expAttClassSummaryPDF(){
       const exc=excusedFor(st.id,date);
       return esc(fN(st))+(exc?' <em>(excused)</em>':'');
     }).join(', ');
-    return '<tr><td><strong>'+esc(r.cls)+'</strong></td>'
+    const none=r.absent.length===0;
+    return '<tr'+(none?' class="clean"':'')+'><td><strong>'+esc(r.cls)+'</strong></td>'
      +'<td class="c">'+r.total+'</td>'
      +'<td class="c">'+(r.total-r.absent.length)+'</td>'
-     +'<td class="c"><strong>'+r.absent.length+'</strong></td>'
+     +'<td class="c">'+(none?'0':'<strong>'+r.absent.length+'</strong>')+'</td>'
      +'<td class="c">'+r.late.length+'</td>'
      +'<td class="c">'+pct(r.absent.length,r.total)+'%</td>'
-     +'<td class="names">'+(names||'—')+'</td></tr>';
+     +'<td class="names">'+(none?'<em>Full attendance</em>':names)+'</td></tr>';
   }).join('')
-  +'<tr class="tot"><td>TOTAL</td><td class="c">'+shown.students+'</td><td class="c">'+(shown.students-shown.absent)+'</td>'
-  +'<td class="c">'+shown.absent+'</td><td class="c">'+shown.late+'</td><td class="c">'+pct(shown.absent,shown.students)+'%</td><td></td></tr>'
+  +'<tr class="tot"><td>TOTAL</td><td class="c">'+tot.students+'</td><td class="c">'+(tot.students-tot.absent)+'</td>'
+  +'<td class="c">'+tot.absent+'</td><td class="c">'+tot.late+'</td><td class="c">'+pct(tot.absent,tot.students)+'%</td><td></td></tr>'
   +'</tbody></table>'
   +'<div style="margin-top:18px;font-size:10px;color:#555">Prepared by: '+esc(CU?((CU.firstName||'')+' '+(CU.lastName||'')).trim():'')
   +' &nbsp;·&nbsp; Generated: '+new Date().toLocaleString()+'</div>'
@@ -4751,14 +4752,13 @@ function expAttClassSummaryPDF(){
 
 function expAttClassSummaryCSV(){
   const date=window._attDate||new Date().toISOString().split('T')[0];
-  const all=attClassBreakdown(date);
-  if(!all.length){toast('No students to summarise','danger');return;}
-  const rows=all.filter(function(r){return r.absent.length>0;});
-  if(!rows.length){toast('No absences recorded for '+date,'info');return;}
+  // Every class is listed; only the absent students are named.
+  const rows=attClassBreakdown(date);
+  if(!rows.length){toast('No students to summarise','danger');return;}
   const out=rows.map(function(r){
     return [r.cls,r.total,r.total-r.absent.length,r.absent.length,r.late.length,
       (r.total?Math.round(r.absent.length/r.total*1000)/10:0)+'%',
-      r.absent.map(function(st){return fN(st);}).join('; ')];
+      r.absent.length?r.absent.map(function(st){return fN(st);}).join('; '):'Full attendance'];
   });
   const tot=rows.reduce(function(a,r){a.s+=r.total;a.a+=r.absent.length;a.l+=r.late.length;return a;},{s:0,a:0,l:0});
   out.push(['TOTAL',tot.s,tot.s-tot.a,tot.a,tot.l,(tot.s?Math.round(tot.a/tot.s*1000)/10:0)+'%','']);
