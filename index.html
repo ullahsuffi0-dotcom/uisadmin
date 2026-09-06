@@ -1538,7 +1538,12 @@ function sOpts(roles=null){return(DB.get('accounts')||[]).filter(a=>a.active&&a.
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function nextCN(){const c=DB.get('complaints')||[];const n=c.map(x=>parseInt((x.trackNo||'CMP-0').replace('CMP-',''))||0);return'CMP-'+String(n.length?Math.max(...n)+1:1).padStart(3,'0');}
 function sw(fn,iid,did){return'<div style="position:relative"><input id="'+iid+'" placeholder="'+T('select_student')+'" autocomplete="off" oninput="ssearch(this.value,\''+did+'\',\''+fn+'\')" onblur="setTimeout(()=>{const d=document.getElementById(\''+did+'\');if(d)d.style.display=\'none\'},200)" style="width:100%;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;font-family:inherit"><div id="'+did+'" class="sd"></div></div>';}
-function ssearch(q,did,fn){const d=document.getElementById(did);if(!d)return;if(!q.trim()){d.style.display='none';return;}const students=DB.get('students')||[];const found=students.filter(s=>{const fl=fN(s).toLowerCase(),ql=q.toLowerCase();return fl.includes(ql)||s.grade.includes(ql)||(s.section||'').toLowerCase().includes(ql)||(s.sn+'').startsWith(q);}).slice(0,9);if(!found.length){d.style.display='none';return;}d.style.display='block';d.innerHTML=found.map(s=>'<div class="sdi" onmousedown="'+fn+'(\''+s.id+'\')"><strong>'+fN(s)+'</strong> <span style="color:var(--tx3)">Gr '+grSec(s.grade,s.section)+' · SN:'+s.sn+' · '+(s.nationality||'—')+'</span></div>').join('');}
+function ssearch(q,did,fn){const d=document.getElementById(did);if(!d)return;if(!q.trim()){d.style.display='none';return;}const students=DB.get('students')||[];const ql=q.toLowerCase().trim();const found=students.filter(s=>{
+  // name, grade, section, a class like 5-A or 5A, or the serial number
+  const cls=String(grSec(s.grade,s.section)||'').toLowerCase();
+  return fN(s).toLowerCase().includes(ql)||String(s.grade||'')===ql||String(s.section||'').toLowerCase()===ql
+    ||cls.includes(ql)||cls.replace(/[^a-z0-9]/g,'')===ql.replace(/[^a-z0-9]/g,'')||(s.sn+'').startsWith(q);
+}).slice(0,9);if(!found.length){d.style.display='none';return;}d.style.display='block';d.innerHTML=found.map(s=>'<div class="sdi" onmousedown="'+fn+'(\''+s.id+'\')"><strong>'+fN(s)+'</strong> <span style="color:var(--tx3)">Gr '+grSec(s.grade,s.section)+' · SN:'+s.sn+' · '+(s.nationality||'—')+'</span></div>').join('');}
 function expCSV(h,r,fn){const csv=[h.join(','),...r.map(row=>row.map(c=>'"'+(c||'').toString().replace(/"/g,'""')+'"').join(','))].join('\n');const b=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=fn+'.csv';a.click();toast(T('export_excel')+' ✓','success');}
 function expPDF(title,h,r){const s=DB.get('settings')||{};const w=window.open('','_blank');w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+title+'</title><style>body{font-family:Arial,sans-serif;padding:20px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#1a5f7a;color:#fff;padding:7px;text-align:left}td{padding:6px 7px;border-bottom:1px solid #ddd}@media print{button{display:none}}</style></head><body>'+pdfHeaderHTML({subtitle:title})+'<button onclick="window.print()" style="margin-bottom:10px;padding:6px 14px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">🖨️ Print</button><table><thead><tr>'+h.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+r.map(row=>'<tr>'+row.map(c=>'<td>'+(c||'—')+'</td>').join('')+'</tr>').join('')+'</tbody></table></body></html>');w.document.close();toast(T('export_pdf')+' ✓','success');}
 function dfilt(list,field,from,to){return list.filter(item=>{const d=(item[field]||'').split('T')[0];if(from&&d<from)return false;if(to&&d>to)return false;return true;});}
@@ -2102,8 +2107,70 @@ function expAllAccountCards(){
 }
 function rStudents(){
   const students=vpFilter(DB.get('students')||[]);const canEdit=['superadmin','principal'].includes(CU.role);
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;gap:8px;flex:1"><input id="stq" placeholder="🔍 '+T('search')+'…" oninput="fltStu()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="stgf" onchange="fltStu()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+g+'">Gr '+g+'</option>').join('')+'</select></div>'+(canEdit?'<div style="display:flex;gap:6px;margin-left:8px;flex-wrap:wrap">'+(CU.role==='superadmin'?'<button class="btn bg2 bsm" onclick="bulkStuM()" title="Super Admin: bulk delete or replace all students">⚙️ Bulk</button>':'')+'<button class="btn bg2 bsm" onclick="impStuM()">📥 CSV</button><button class="btn bp bsm" onclick="addStuM()">+ Add</button></div>':'')+'</div></div><div class="card" id="stw">'+buildStuTbl(students)+'</div>';
-  window.fltStu=function(){const q=document.getElementById('stq').value.toLowerCase(),gr=document.getElementById('stgf').value;let list=vpFilter(DB.get('students')||[]);if(q)list=list.filter(s=>fN(s).toLowerCase().includes(q)||s.grade.includes(q)||(s.section||'').toLowerCase().includes(q)||(s.nationality||'').toLowerCase().includes(q));if(gr)list=list.filter(s=>s.grade===gr);document.getElementById('stw').innerHTML=buildStuTbl(list);};
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;gap:8px;flex:1"><input id="stq" placeholder="🔍 '+T('search')+'…" oninput="fltStu()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="stgf" onchange="fltStuGrade()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>String(s.grade)))].sort(function(a,b){return (parseInt(a)||0)-(parseInt(b)||0)||a.localeCompare(b);}).map(g=>'<option value="'+esc(g)+'">Gr '+esc(g)+'</option>').join('')+'</select>'
+  +'<select id="stsf" onchange="fltStu()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)">'+stuSectionOpts(students,'','')+'</select></div>'+(canEdit?'<div style="display:flex;gap:6px;margin-left:8px;flex-wrap:wrap">'+(CU.role==='superadmin'?'<button class="btn bg2 bsm" onclick="bulkStuM()" title="Super Admin: bulk delete or replace all students">⚙️ Bulk</button>':'')+'<button class="btn bg2 bsm" onclick="impStuM()">📥 CSV</button><button class="btn bp bsm" onclick="addStuM()">+ Add</button></div>':'')+'</div><div id="stcount" style="font-size:11px;color:var(--tx3);margin-top:6px"></div></div><div class="card" id="stw">'+buildStuTbl(students)+'</div>';
+  window.fltStu=function(){
+    const q=(document.getElementById('stq').value||'').toLowerCase().trim();
+    const gr=document.getElementById('stgf').value;
+    const sec=(document.getElementById('stsf')||{}).value||'';
+    const all=vpFilter(DB.get('students')||[]);
+    let list=all;
+    if(q)list=list.filter(function(s){return stuMatches(s,q);});
+    if(gr)list=list.filter(function(s){return String(s.grade)===gr;});
+    if(sec)list=list.filter(function(s){return String(s.section||'')===sec;});
+    document.getElementById('stw').innerHTML=buildStuTbl(list);
+    const el=document.getElementById('stcount');
+    if(el){
+      const bits=[];
+      if(gr)bits.push('Grade '+esc(gr));
+      if(sec)bits.push('Section '+esc(sec));
+      if(q)bits.push('“'+esc(q)+'”');
+      el.innerHTML=list.length===all.length&&!bits.length
+        ? all.length+' student(s)'
+        : '<strong>'+list.length+'</strong> of '+all.length+' student(s)'+(bits.length?' · '+bits.join(' · '):'')
+          +' <button class="btn bg2 bxs" onclick="fltStuClear()">Clear</button>';
+    }
+  };
+  // Changing the grade narrows the section list to the sections that exist in it
+  window.fltStuGrade=function(){
+    const gr=document.getElementById('stgf').value;
+    const sel=document.getElementById('stsf');
+    const keep=sel?sel.value:'';
+    if(sel)sel.innerHTML=stuSectionOpts(vpFilter(DB.get('students')||[]),gr,keep);
+    fltStu();
+  };
+  window.fltStuClear=function(){
+    document.getElementById('stq').value='';
+    document.getElementById('stgf').value='';
+    fltStuGrade();
+  };
+  fltStu();
+}
+
+// The sections actually on the roll, narrowed to one grade when asked.
+function stuSectionOpts(students,grade,keep){
+  const secs=[...new Set((students||[])
+    .filter(function(s){return !grade||String(s.grade)===String(grade);})
+    .map(function(s){return String(s.section||'').trim();})
+    .filter(Boolean))].sort();
+  return '<option value="">All Sections</option>'
+   +secs.map(function(x){return '<option value="'+esc(x)+'"'+(x===keep?' selected':'')+'>Sec '+esc(x)+'</option>';}).join('');
+}
+
+// A free-text query may be a name, a grade, a section, a class like 5-A or 5A,
+// a serial number or a nationality.
+function stuMatches(s,q){
+  if(!q)return true;
+  const cls=String(grSec(s.grade,s.section)||'').toLowerCase();
+  const flat=cls.replace(/[^a-z0-9]/g,'');
+  const qflat=q.replace(/[^a-z0-9]/g,'');
+  return fN(s).toLowerCase().includes(q)
+    ||String(s.grade||'').toLowerCase()===q
+    ||String(s.section||'').toLowerCase()===q
+    ||cls.includes(q)
+    ||(!!qflat&&flat===qflat)
+    ||String(s.sn||'').toLowerCase()===q
+    ||String(s.nationality||'').toLowerCase().includes(q);
 }
 function buildStuTbl(students){
   if(!students.length)return'<div class="emp"><div class="ei">👨‍🎓</div><p>'+T('no_records')+'</p></div>';
