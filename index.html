@@ -8037,11 +8037,19 @@ async function syncDownAll(){
 
 async function syncUpAll(){
   if(!window.__FB)return;
-  const{db,ref,set}=window.__FB;
+  const{db,ref,set,get}=window.__FB;
   try{
     const data={};
+    const appendOnly=[];
     const rawGet=DB._raw_get||DB.get.bind(DB);
-    SYNC_KEYS.forEach(k=>{const v=rawGet(k);if(v!==null&&v!==undefined)data[k]=toFbValue(v);});
+    SYNC_KEYS.forEach(k=>{
+      const v=rawGet(k);
+      if(v===null||v===undefined)return;
+      // This writes the whole school node from one device. An append-only
+      // collection must never take part, or a thin local copy erases the lot.
+      if(isAppendOnlyKey(k)){appendOnly.push([k,v]);return;}
+      data[k]=toFbValue(v);
+    });
     for(let i=0;i<localStorage.length;i++){
       const lkey=localStorage.key(i);
       if(!lkey||!lkey.startsWith(DB._pfx))continue;
@@ -8049,7 +8057,15 @@ async function syncUpAll(){
       if(isSessionScopedKey(k)){const v=rawGet(k);if(v!==null&&v!==undefined)data[k]=toFbValue(v);}
     }
     const fbPath=getFirebaseSchoolPath();
+    // Merge rather than replace, so the node keeps anything this device lacks
+    const existing=await get(ref(db,fbPath)).then(sn=>sn.exists()?sn.val():null).catch(()=>null);
+    if(existing&&typeof existing==='object'){
+      APPEND_ONLY_KEYS.forEach(function(k){
+        if(existing[k]!==undefined&&existing[k]!==null)data[k]=existing[k];
+      });
+    }
     await set(ref(db,fbPath),data);
+    for(const pair of appendOnly)await pushAppendOnly(pair[0],pair[1]);
   }catch(e){console.error('[Sync] Upload failed:',e);}
 }
 
@@ -8074,6 +8090,32 @@ function fbReady(){
 // collection would therefore look like a missing key and get healed back from
 // a stale local copy. Push an explicit marker so an emptied collection is
 // unambiguous and propagates as a real deletion.
+// Collections written a record at a time by many people at once. A whole-array
+// push for one of these can only ever destroy what the writer had not seen, so
+// the sync layer upserts the records instead and never removes on a bulk write.
+const APPEND_ONLY_KEYS=['period_discipline'];
+function isAppendOnlyKey(k){return APPEND_ONLY_KEYS.indexOf(k)>=0;}
+
+// Upsert each record under its own key. Concurrent writers touch different
+// keys, so no submission can overwrite another.
+function pushAppendOnly(k,list){
+  if(!fbReady()||!CURRENT_SCHOOL_ID)return Promise.resolve(false);
+  const arr=Array.isArray(list)?list.filter(function(r){return r&&r.id;}):[];
+  if(!arr.length)return Promise.resolve(true);
+  const{db,ref,set}=window.__FB;
+  const base=getFirebaseSchoolPath()+k;
+  return Promise.all(arr.map(function(r){
+    return set(ref(db,base+'/'+r.id),r).catch(function(){});
+  })).then(function(){return true;});
+}
+// The one way a record leaves the cloud.
+function removeAppendOnly(k,id){
+  if(!fbReady()||!CURRENT_SCHOOL_ID||!id)return Promise.resolve(false);
+  const{db,ref,set}=window.__FB;
+  return set(ref(db,getFirebaseSchoolPath()+k+'/'+id),null)
+    .then(function(){return true;}).catch(function(){return false;});
+}
+
 function toFbValue(v){return (Array.isArray(v)&&v.length===0)?{__empty:true}:v;}
 function isFbEmptyMarker(v){return !!(v&&typeof v==='object'&&!Array.isArray(v)&&v.__empty===true);}
 function fromFbValue(v){return isFbEmptyMarker(v)?[]:v;}
@@ -8112,7 +8154,9 @@ if(!DB._raw_set){
       SYNC_ECHO[k]=Date.now();
       addPendingWrite(k);
       const path=getFirebaseSchoolPath()+k;
-      set(ref(db,path),toFbValue(v)).then(()=>{
+      // Never replace an append-only collection wholesale — see above.
+      const write=isAppendOnlyKey(k)?pushAppendOnly(k,v):set(ref(db,path),toFbValue(v));
+      write.then(()=>{
         removePendingWrite(k);
         SYNC_ECHO[k]=Date.now();
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#1dcd6c';
@@ -8141,7 +8185,8 @@ if(!DB._raw_set){
       SYNC_ECHO[k]=Date.now();
       addPendingWrite(k);
       const path=getFirebaseSchoolPath()+k;
-      set(ref(db,path),toFbValue(v)).then(()=>{
+      const write=isAppendOnlyKey(k)?pushAppendOnly(k,v):set(ref(db,path),toFbValue(v));
+      write.then(()=>{
         removePendingWrite(k);
         SYNC_ECHO[k]=Date.now();
         const dot=document.getElementById('syncdot');if(dot)dot.style.background='#1dcd6c';
@@ -8177,6 +8222,7 @@ function subscribeToCollection(k){
         if(Array.isArray(local))local=applyTombstones(k,local);
         if(local&&(!Array.isArray(local)||local.length>0)){
           console.warn('[Sync] Firebase has no '+k+' — keeping local copy and re-pushing');
+          if(isAppendOnlyKey(k)){pushAppendOnly(k,local);return;}
           const{db:dbH,ref:refH,set:setH}=window.__FB;
           setH(refH(dbH,getFirebaseSchoolPath()+k),local).catch(()=>{});
           return;
@@ -13995,7 +14041,11 @@ function pdDelete(id){
   const r=getPeriodDiscipline().find(function(x){return x.id===id;});
   if(!r)return;
   if(!confirm('Delete the record for '+r.className+' period '+r.period+' on '+r.date+'?'))return;
-  DB.set('period_discipline',getPeriodDiscipline().filter(function(x){return x.id!==id;}));clearRepeatCache();
+  // Remove this record from the cloud explicitly; the local write below is a
+  // plain upsert and would otherwise leave it in place.
+  removeAppendOnly('period_discipline',id);
+  DB.set('period_discipline',getPeriodDiscipline().filter(function(x){return x.id!==id;}),{localOnly:true});
+  clearRepeatCache();
   logA('Deleted period discipline for '+r.className+' period '+r.period);
   toast('Deleted','danger');rPeriodDiscipline();
 }
