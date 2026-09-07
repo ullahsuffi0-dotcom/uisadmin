@@ -7979,6 +7979,7 @@ function waitForFirebase(maxMs){
 
 async function syncDownAll(){
   if(!window.__FB)return false;
+  window.__syncPullFailed=false;
   // Flush any pending local writes to Firebase BEFORE pulling,
   // so we never overwrite fresh local data with stale cloud data.
   await flushPendingWrites();
@@ -8030,12 +8031,50 @@ async function syncDownAll(){
       });
       return true;
     }else{return false;}
-  }catch(e){console.error('[Sync] Initial pull failed:',e);return false;}
+  }catch(e){
+    console.error('[Sync] Initial pull failed:',e);
+    // NOT the same as "this school has no data yet". Say so, or the caller
+    // uploads this device's storage over a school it simply could not read.
+    window.__syncPullFailed=true;
+    return false;
+  }
 }
 
 async function syncUpAll(){
   if(!window.__FB)return;
   const{db,ref,set,get}=window.__FB;
+  // This replaces the whole school node. It is only ever safe for a school that
+  // genuinely has nothing yet — if the read failed, or anything is already
+  // stored, uploading would erase whatever this device had not pulled.
+  if(window.__syncPullFailed){
+    console.warn('[Sync] Not uploading: the initial pull failed, so what is stored is unknown');
+    return;
+  }
+  try{
+    const guard=await get(ref(db,getFirebaseSchoolPath()))
+      .then(sn=>sn.exists()?sn.val():null).catch(()=>'unreadable');
+    if(guard==='unreadable'){
+      console.warn('[Sync] Not uploading: could not read the school first');
+      return;
+    }
+    if(guard&&typeof guard==='object'){
+      const populated=Object.keys(guard).filter(function(k){
+        if(k==='__snapshots'||!shouldSyncKey(k))return false;
+        const v=guard[k];
+        if(v===null||v===undefined||isFbEmptyMarker(v))return false;
+        if(Array.isArray(v))return v.length>0;
+        return typeof v==='object'?Object.keys(v).length>0:true;
+      });
+      if(populated.length){
+        console.warn('[Sync] Not uploading: the school already holds '+populated.length+
+          ' collection(s) — refusing to replace them ('+populated.slice(0,6).join(', ')+')');
+        return;
+      }
+    }
+  }catch(e){
+    console.warn('[Sync] Not uploading: safety check failed',e);
+    return;
+  }
   try{
     const data={};
     const appendOnly=[];
