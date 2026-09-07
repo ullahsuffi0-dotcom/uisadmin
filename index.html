@@ -8011,6 +8011,23 @@ async function syncDownAll(){
               set3(ref3(db3,fbPath+k),toFbValue(v)).catch(e=>console.warn('[Sync] Tombstone re-push failed for '+k,e));
             }
           }
+          // An append-only collection is merged, never replaced, and this
+          // device's copy is never pushed over the school's. Having fewer
+          // records than the cloud is normal here — it just means other people
+          // have written some — and must not be read as a pending delete.
+          if(isAppendOnlyKey(k)){
+            try{
+              const localRaw=localStorage.getItem(DB._pfx+k);
+              const localArr=localRaw!==null?fbToArrayShape(JSON.parse(localRaw)):[];
+              const merged=mergeById(Array.isArray(v)?v:[],Array.isArray(localArr)?localArr:[]);
+              localStorage.setItem(DB._pfx+k,JSON.stringify(merged));
+              // Anything this device holds that the cloud has not got yet
+              const cloudIds={};(Array.isArray(v)?v:[]).forEach(function(r){if(r&&r.id)cloudIds[r.id]=1;});
+              const missing=merged.filter(function(r){return !cloudIds[r.id];});
+              if(missing.length)pushAppendOnly(k,missing);
+            }catch(e){localStorage.setItem(DB._pfx+k,JSON.stringify(v));}
+            return;
+          }
           // A recent local write with FEWER items means a deletion happened here
           // that hasn't propagated to Firebase yet — keep local and re-push it
           try{
@@ -8146,6 +8163,26 @@ function fbToArrayShape(v){
     return keys.map(function(kk){return v[kk];});
   }
   return v;
+}
+
+// For an append-only collection neither side is ever the whole truth: the cloud
+// may not have a record this device just wrote, and this device may not have
+// records other people wrote. Replacing either with the other loses work, so
+// they are merged by id. A record, once written, is kept by both.
+function mergeById(a,b){
+  const seen={},out=[];
+  (Array.isArray(a)?a:[]).concat(Array.isArray(b)?b:[]).forEach(function(r){
+    if(!r||!r.id)return;
+    if(seen[r.id]){
+      // Same record from both sides — prefer the one edited most recently
+      const i=seen[r.id]-1;
+      const cur=out[i],stamp=function(x){return (x.updated||x.created||'');};
+      if(stamp(r)>stamp(cur))out[i]=r;
+      return;
+    }
+    out.push(r);seen[r.id]=out.length;
+  });
+  return out;
 }
 
 // Collections written a record at a time by many people at once. A whole-array
@@ -8297,10 +8334,20 @@ function subscribeToCollection(k){
         v=vt;
       }
     }
+    // An append-only collection is merged with what is already here, so an
+    // update that does not yet include this device's newest record cannot
+    // remove it from the screen.
+    if(isAppendOnlyKey(k)&&Array.isArray(v)){
+      try{
+        const localRaw=localStorage.getItem(_pfx+k);
+        const localArr=localRaw!==null?fbToArrayShape(JSON.parse(localRaw)):[];
+        v=mergeById(v,Array.isArray(localArr)?localArr:[]);
+      }catch(e){}
+    }
     // Reject stale incoming data: if local was written recently and incoming
     // has MORE items, it's likely a pre-delete echo from Firebase
     const localWriteTime=getLocalWriteTs(k);
-    if(localWriteTime&&Date.now()-localWriteTime<LWTS_WINDOW){
+    if(!isAppendOnlyKey(k)&&localWriteTime&&Date.now()-localWriteTime<LWTS_WINDOW){
       try{
         const local=JSON.parse(localStorage.getItem(_pfx+k)||'null');
         if(Array.isArray(local)&&Array.isArray(v)&&v.length>local.length){
@@ -12841,9 +12888,11 @@ function pdBehBadges(list){
 function pdRating(v){return PD_RATINGS.find(function(r){return r.v===v;})||{v:v||'',i:'',c:'var(--tx2)',bg:'bgr'};}
 function getPeriodDiscipline(){
   // A device that pulled the collection while it was stored keyed by record id
-  // would otherwise read it as empty and show the day as blank.
+  // would otherwise read it as empty and show the day as blank. Records marked
+  // deleted still travel between devices so the deletion sticks; they are
+  // filtered out here so nothing else in the app has to know.
   const a=fbToArrayShape(DB.get('period_discipline'));
-  return Array.isArray(a)?a.filter(Boolean):[];
+  return Array.isArray(a)?a.filter(function(r){return r&&!r.deleted;}):[];
 }
 function pdMyName(){return ((CU.firstName||'')+' '+(CU.lastName||'')).trim();}
 function pdIsMine(r){
@@ -14095,10 +14144,15 @@ function pdDelete(id){
   const r=getPeriodDiscipline().find(function(x){return x.id===id;});
   if(!r)return;
   if(!confirm('Delete the record for '+r.className+' period '+r.period+' on '+r.date+'?'))return;
-  // Remove this record from the cloud explicitly; the local write below is a
-  // plain upsert and would otherwise leave it in place.
-  removeAppendOnly('period_discipline',id);
-  DB.set('period_discipline',getPeriodDiscipline().filter(function(x){return x.id!==id;}),{localOnly:true});
+  // Mark it deleted rather than removing the key. Devices merge this collection
+  // rather than replacing it, so a record simply taken away would be put back by
+  // the next device that still had a copy. A marked record travels like any
+  // other and is filtered out on read, so the deletion sticks everywhere.
+  const gone=Object.assign({},r,{deleted:true,deletedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),
+    deletedAt:new Date().toISOString(),updated:new Date().toISOString()});
+  pushAppendOnly('period_discipline',[gone]);
+  const all=(DB.get('period_discipline')||[]).map(function(x){return x&&x.id===id?gone:x;});
+  DB.set('period_discipline',all,{localOnly:true});
   clearRepeatCache();
   logA('Deleted period discipline for '+r.className+' period '+r.period);
   toast('Deleted','danger');rPeriodDiscipline();
