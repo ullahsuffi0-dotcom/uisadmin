@@ -138,7 +138,7 @@ html.parent-url #lp, html.parent-url #app, html.pickup-url #lp, html.pickup-url 
 </style>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
-import { getDatabase, ref, set, get, onValue, child, onDisconnect, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
+import { getDatabase, ref, set, get, onValue, child, onDisconnect, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC6M7UWMUW5SpXLoncaLudrpni-uVuZZ64",
@@ -152,7 +152,7 @@ const firebaseConfig = {
 
 const fbApp = initializeApp(firebaseConfig);
 const fbDB = getDatabase(fbApp);
-window.__FB = { app: fbApp, db: fbDB, ref, set, get, onValue, child, onDisconnect, serverTimestamp, ready: false };
+window.__FB = { app: fbApp, db: fbDB, ref, set, get, onValue, child, onDisconnect, serverTimestamp, runTransaction, ready: false };
 
 const connRef = ref(fbDB, '.info/connected');
 onValue(connRef, (snap) => {
@@ -8094,9 +8094,12 @@ function markLocalWrite(k){
 }
 if(!DB._raw_set){
   const _origDBset=DB.set.bind(DB);
-  DB.set=function(k,v){
+  DB.set=function(k,v,opts){
     _origDBset(k,v);
     markLocalWrite(k);
+    // The caller has already committed this value to the cloud itself; pushing
+    // the whole array again here would undo anyone who wrote in between.
+    if(opts&&opts.localOnly)return;
     if(!SYNC_ENABLED){
       // Retry: if Firebase is available but SYNC_ENABLED was never set, auto-enable
       if(window.__FB&&window.__FB.db&&CURRENT_SCHOOL_ID){
@@ -8124,9 +8127,11 @@ if(!DB._raw_set){
   };
 }else{
   const _origRawSet=DB._raw_set;
-  DB._raw_set=function(k,v){
+  DB._raw_set=function(k,v,opts){
     _origRawSet(k,v);
     markLocalWrite(k);
+    // Already committed to the cloud by the caller — see DB.set above.
+    if(opts&&opts.localOnly)return;
     if(!SYNC_ENABLED&&window.__FB&&window.__FB.db&&CURRENT_SCHOOL_ID){
       console.warn('[Sync] Auto-enabling SYNC via _raw_set');
       SYNC_ENABLED=true;SYNC_INITIAL_LOAD=true;
@@ -8183,6 +8188,10 @@ function subscribeToCollection(k){
       const keys=Object.keys(v);
       if(keys.length>0&&keys.every(kk=>/^\d+$/.test(kk))){
         const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
+      }else if(keys.length>0&&keys.every(kk=>v[kk]&&typeof v[kk]==='object'&&!Array.isArray(v[kk])&&v[kk].id)){
+        // Records written one key at a time — see the per-record writes below.
+        // The keys are record ids, or a mix of ids and old numeric positions.
+        const arr=[];keys.forEach(kk=>arr.push(v[kk]));v=arr;
       }
     }
     // Never let the cloud resurrect something deleted here
@@ -9638,12 +9647,14 @@ function getAllSessions(){
     }
     return origGet(k);
   };
-  DB.set=function(k,v){
+  DB.set=function(k,v,opts){
+    // opts must survive the session rewrite, or a caller asking for a
+    // local-only write gets its whole array pushed to the cloud anyway.
     if(SESSION_SCOPED_KEYS.includes(k)){
       const sid=window.__activeSessionId||getActiveSessionId();
-      return origSet(k+'_'+sid,v);
+      return origSet(k+'_'+sid,v,opts);
     }
-    return origSet(k,v);
+    return origSet(k,v,opts);
   };
   DB._wrapped=true;
 })();
@@ -13968,11 +13979,16 @@ function pdSave(){
   }else{
     list.push(Object.assign({id:nid('pdi')},body,{created:now}));
   }
-  DB.set('period_discipline',list);clearRepeatCache();
+  const saving=(i>=0)?Object.assign({},list[i]):Object.assign({id:f.id||nid('pdi')},body,{created:now});
   window._pdClass=cls;
-  void 0;
-  logA((i>=0?'Updated':'Recorded')+' period discipline for '+cls+' period '+period+' on '+date+' ('+f.rating+')');
-  closeM();toast('Saved','success');rPeriodDiscipline();
+  closeM();
+  // Same protection as the wall-poster form: merge into whatever is stored
+  // rather than writing this device's copy of the whole list over the top.
+  appendPeriodDiscipline(saving).catch(function(){}).then(function(){
+    logA((i>=0?'Updated':'Recorded')+' period discipline for '+cls+' period '+period+' on '+date+' ('+f.rating+')');
+    toast('Saved','success');
+    if(typeof rPeriodDiscipline==='function'&&_page==='period_discipline')rPeriodDiscipline();
+  });
 }
 
 function pdDelete(id){
@@ -14267,41 +14283,113 @@ function pdpRemove(i){window._pdp.picked.splice(i,1);pdpRenderStudents();}
 
 // The portal renders before the cloud pull, so writing the whole array
 // from here would wipe the school's records. Read what is stored, then add.
-async function appendPeriodDiscipline(rec){
-  let remote=null;
-  if(typeof fbReady==='function'&&fbReady()&&CURRENT_SCHOOL_ID){
-    try{
-      const{db,ref,get}=window.__FB;
-      const snap=await get(ref(db,getFirebaseSchoolPath()+'period_discipline'));
-      const v=snap.exists()?fromFbValue(snap.val()):[];
-      if(Array.isArray(v))remote=v;
-    }catch(e){remote=null;}
+// The collection may arrive as an array, as Firebase's numeric-key object, or
+// as a map of record id to record once submissions are written one key at a
+// time. Read all three shapes.
+function pdListFromFb(v){
+  v=fromFbValue(v);
+  if(Array.isArray(v))return v.filter(Boolean);
+  if(v&&typeof v==='object'){
+    return Object.keys(v).map(function(k){return v[k];})
+      .filter(function(r){return r&&typeof r==='object'&&!Array.isArray(r);});
   }
+  return [];
+}
+
+// Fold one record into a list, keeping one entry per class per period per day
+// and never losing an infraction already filed against a named student.
+// Returns {list, replaced}.
+function pdMergeRecord(existing,local,rec){
   const seen={},merged=[];
-  (Array.isArray(remote)?remote:[]).concat(getPeriodDiscipline()).forEach(function(r){
+  (Array.isArray(existing)?existing:[]).concat(Array.isArray(local)?local:[]).forEach(function(r){
     if(!r||!r.id||seen[r.id])return;
     seen[r.id]=1;merged.push(r);
   });
   let replaced=null;
   if(rec){
-    // one record per class per period per day
     const i=merged.findIndex(function(r){
-      return r.date===rec.date&&r.period===rec.period&&r.className===rec.className;
+      return r.date===rec.date&&String(r.period)===String(rec.period)&&r.className===rec.className;
     });
+    const copy=Object.assign({},rec);
     if(i>=0){
       replaced=merged[i];
       const old=replaced.students||[];
-      rec.id=replaced.id;
-      rec.created=replaced.created||rec.created;
-      rec.students=(rec.students||[]).map(function(st){
+      copy.id=replaced.id;
+      copy.created=replaced.created||copy.created;
+      copy.students=(copy.students||[]).map(function(st){
         const prev=old.find(function(o){return (o.id&&o.id===st.id)||o.name===st.name;});
         return prev&&prev.infractionId?Object.assign({},st,{infractionId:prev.infractionId}):st;
       });
-      merged[i]=Object.assign({},replaced,rec,{updated:new Date().toISOString()});
-    }else merged.push(rec);
+      merged[i]=Object.assign({},replaced,copy,{updated:new Date().toISOString()});
+    }else merged.push(copy);
   }
-  DB.set('period_discipline',merged);
-  return replaced;
+  return {list:merged,replaced:replaced};
+}
+
+// Seven periods finish at once and every teacher submits within the same
+// minute. Reading the list, adding a row and writing the whole array back
+// loses whoever wrote in between — so the merge happens inside a Firebase
+// transaction, which re-runs on contention until it lands.
+async function appendPeriodDiscipline(rec){
+  const local=getPeriodDiscipline();
+  const online=typeof fbReady==='function'&&fbReady()&&CURRENT_SCHOOL_ID;
+  // Seven periods end together and the whole staffroom submits at once. Writing
+  // the entire list back would mean every teacher overwriting every other, so a
+  // submission goes to its own key under the collection — teachers never touch
+  // the same place and nothing can be lost, however many arrive together.
+  if(online&&rec){
+    try{
+      const{db,ref,set,get}=window.__FB;
+      const base=getFirebaseSchoolPath()+'period_discipline';
+      // Find any existing entry for this class and period so it is replaced,
+      // not duplicated. Read only — no lock on the collection.
+      let existing=null;
+      try{
+        const snap=await get(ref(db,base));
+        existing=pdListFromFb(snap.exists()?snap.val():null);
+      }catch(e){existing=null;}
+      const m=pdMergeRecord(existing,local,rec);
+      const saved=m.list.find(function(r){
+        return r.date===rec.date&&String(r.period)===String(rec.period)&&r.className===rec.className;
+      })||rec;
+      await set(ref(db,base+'/'+saved.id),saved);
+      DB.set('period_discipline',m.list,{localOnly:true});
+      if(typeof clearRepeatCache==='function')clearRepeatCache();
+      return m.replaced;
+    }catch(e){/* fall through to the whole-list write below */}
+  }
+  // Offline, or that write failed. Merge into whatever is stored and write the
+  // whole list — then read back and make sure it landed, retrying with a growing
+  // pause so a submission is never quietly dropped.
+  let last=null;
+  for(let attempt=0;attempt<6;attempt++){
+    let remote=null;
+    if(online){
+      try{
+        const{db,ref,get}=window.__FB;
+        const snap=await get(ref(db,getFirebaseSchoolPath()+'period_discipline'));
+        remote=pdListFromFb(snap.exists()?snap.val():null);
+      }catch(e){remote=null;}
+    }
+    const m=pdMergeRecord(remote,getPeriodDiscipline(),rec);
+    last=m;
+    DB.set('period_discipline',m.list);
+    if(typeof clearRepeatCache==='function')clearRepeatCache();
+    if(!online||!rec)break;
+    // Give the write a moment, then check the record is really there
+    await new Promise(function(r){setTimeout(r,120+attempt*180+Math.random()*120);});
+    let landed=false;
+    try{
+      const{db,ref,get}=window.__FB;
+      const snap=await get(ref(db,getFirebaseSchoolPath()+'period_discipline'));
+      const v=pdListFromFb(snap.exists()?snap.val():null);
+      landed=v.some(function(r2){
+        return r2&&r2.date===rec.date&&String(r2.period)===String(rec.period)&&r2.className===rec.className;
+      });
+    }catch(e){landed=true;}   // cannot check: do not spin
+    if(landed)break;
+  }
+  return last?last.replaced:null;
 }
 
 function pdpSubmit(){
