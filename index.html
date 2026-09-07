@@ -7946,7 +7946,10 @@ async function flushPendingWrites(){
       const raw=localStorage.getItem(DB._pfx+k);
       if(raw!==null){
         const v=JSON.parse(raw);
-        await set(ref(db,fbPath+k),toFbValue(v));
+        // Never replace an append-only collection with this device's copy —
+        // upsert its records instead, so nothing anyone else wrote is lost.
+        if(isAppendOnlyKey(k))await pushAppendOnly(k,v);
+        else await set(ref(db,fbPath+k),toFbValue(v));
         console.log('[Sync] Flushed pending write: '+k);
       }
       removePendingWrite(k);
@@ -7996,12 +7999,7 @@ async function syncDownAll(){
             localStorage.setItem(DB._pfx+k,'[]');
             return;
           }
-          if(v&&typeof v==='object'&&!Array.isArray(v)){
-            const keys=Object.keys(v);
-            if(keys.length>0&&keys.every(kk=>/^\d+$/.test(kk))){
-              const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
-            }
-          }
+          v=fbToArrayShape(v);
           // Never let the cloud resurrect something deleted here
           if(Array.isArray(v)){
             const vt=applyTombstones(k,v);
@@ -8090,6 +8088,27 @@ function fbReady(){
 // collection would therefore look like a missing key and get healed back from
 // a stale local copy. Push an explicit marker so an emptied collection is
 // unambiguous and propagates as a real deletion.
+// Firebase hands a collection back in one of three shapes: a real array, an
+// object with numeric keys (its own array encoding), or - once records are
+// written one key at a time - an object keyed by record id. Every reader must
+// understand all three, or a collection stored the third way reads as empty
+// and a whole day's work looks like it vanished.
+function fbToArrayShape(v){
+  if(!v||typeof v!=='object'||Array.isArray(v))return v;
+  const keys=Object.keys(v);
+  if(!keys.length)return v;
+  if(keys.every(function(kk){return /^\d+$/.test(kk);})){
+    const arr=[];keys.sort(function(a,b){return (+a)-(+b);}).forEach(function(kk){arr.push(v[kk]);});
+    return arr;
+  }
+  if(keys.every(function(kk){
+    return v[kk]&&typeof v[kk]==='object'&&!Array.isArray(v[kk])&&v[kk].id;
+  })){
+    return keys.map(function(kk){return v[kk];});
+  }
+  return v;
+}
+
 // Collections written a record at a time by many people at once. A whole-array
 // push for one of these can only ever destroy what the writer had not seen, so
 // the sync layer upserts the records instead and never removes on a bulk write.
@@ -8230,16 +8249,7 @@ function subscribeToCollection(k){
       }catch(e){}
       v=[];
     }
-    if(v&&typeof v==='object'&&!Array.isArray(v)){
-      const keys=Object.keys(v);
-      if(keys.length>0&&keys.every(kk=>/^\d+$/.test(kk))){
-        const arr=[];keys.sort((a,b)=>+a-+b).forEach(kk=>arr.push(v[kk]));v=arr;
-      }else if(keys.length>0&&keys.every(kk=>v[kk]&&typeof v[kk]==='object'&&!Array.isArray(v[kk])&&v[kk].id)){
-        // Records written one key at a time — see the per-record writes below.
-        // The keys are record ids, or a mix of ids and old numeric positions.
-        const arr=[];keys.forEach(kk=>arr.push(v[kk]));v=arr;
-      }
-    }
+    v=fbToArrayShape(v);
     // Never let the cloud resurrect something deleted here
     if(Array.isArray(v)){
       const vt=applyTombstones(k,v);
@@ -12790,7 +12800,12 @@ function pdBehBadges(list){
 }
 
 function pdRating(v){return PD_RATINGS.find(function(r){return r.v===v;})||{v:v||'',i:'',c:'var(--tx2)',bg:'bgr'};}
-function getPeriodDiscipline(){const a=DB.get('period_discipline');return Array.isArray(a)?a:[];}
+function getPeriodDiscipline(){
+  // A device that pulled the collection while it was stored keyed by record id
+  // would otherwise read it as empty and show the day as blank.
+  const a=fbToArrayShape(DB.get('period_discipline'));
+  return Array.isArray(a)?a.filter(Boolean):[];
+}
 function pdMyName(){return ((CU.firstName||'')+' '+(CU.lastName||'')).trim();}
 function pdIsMine(r){
   if(!CU)return false;
