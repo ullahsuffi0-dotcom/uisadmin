@@ -5829,6 +5829,19 @@ function expHealthCSV(){
 // ═══════════════════════════════════════════════════════════
 
 const REMEDIAL_TYPES=['Quiz 1','Quiz 2','1st Mid Term','2nd Mid Term'];
+// Schools sit exams the four defaults do not cover — a final, a unit test, a
+// retake. Any name typed on a plan joins the list, so the second time it is
+// there to pick.
+function remedialTypeOptions(){
+  const seen={},out=[];
+  REMEDIAL_TYPES.forEach(function(t){seen[t.toLowerCase()]=1;out.push(t);});
+  (DB.get('remedial_plans')||[]).forEach(function(p){
+    const t=(p&&p.type||'').trim();
+    if(!t||seen[t.toLowerCase()])return;
+    seen[t.toLowerCase()]=1;out.push(t);
+  });
+  return out;
+}
 const WEEK_DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
 function rRemedial(){
@@ -5841,7 +5854,7 @@ function rRemedial(){
   
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📚 '+T('remedial_plans')+'</h3><div style="display:flex;gap:6px;flex-wrap:wrap">'+(canEdit?'<button class="btn bp bsm" onclick="addRemedialM()">+ New Remedial Plan</button>':'')+'<button class="btn bg2 bsm" onclick="vRemedialByTeacher()">🔍 View by Teacher</button><button class="btn bg2 bsm" onclick="expRemedialMultiM()">📄 Multi-Teacher PDF</button></div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Assign academically weak students to teachers for remedial classes covering Quiz 1, Quiz 2, 1st Mid Term, and 2nd Mid Term assessments.</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Plans</div><div class="sv">'+plans.length+'</div><div class="sic">📚</div></div><div class="stat go"><div class="sl2">Students Enrolled</div><div class="sv">'+totalStudents+'</div><div class="sic">👨‍🎓</div></div><div class="stat gn"><div class="sl2">Assigned Teachers</div><div class="sv">'+teachers.length+'</div><div class="sic">👨‍🏫</div></div><div class="stat rd"><div class="sl2">Active Plans</div><div class="sv">'+plans.filter(p=>p.status!=='Completed').length+'</div><div class="sic">⏳</div></div></div>'
-  +'<div class="card"><div class="sh2"><h3>🔍 All Remedial Plans</h3></div><div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"><input id="rmq" placeholder="🔍 Search by class, subject, teacher…" oninput="fltRemedial()" style="flex:1;min-width:200px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="rmtf" onchange="fltRemedial()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Types</option>'+REMEDIAL_TYPES.map(t=>'<option>'+t+'</option>').join('')+'</select><select id="rmdf" onchange="fltRemedial()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Days</option>'+WEEK_DAYS.map(d=>'<option>'+d+'</option>').join('')+'</select></div><div id="rmlist">'+buildRemedialList(plans,canEdit)+'</div></div>';
+  +'<div class="card"><div class="sh2"><h3>🔍 All Remedial Plans</h3></div><div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"><input id="rmq" placeholder="🔍 Search by class, subject, teacher…" oninput="fltRemedial()" style="flex:1;min-width:200px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="rmtf" onchange="fltRemedial()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Types</option>'+remedialTypeOptions().map(t=>'<option>'+esc(t)+'</option>').join('')+'</select><select id="rmdf" onchange="fltRemedial()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Days</option>'+WEEK_DAYS.map(d=>'<option>'+d+'</option>').join('')+'</select></div><div id="rmlist">'+buildRemedialList(plans,canEdit)+'</div></div>';
   
   window.fltRemedial=function(){
     const q=document.getElementById('rmq').value.toLowerCase(),tf=document.getElementById('rmtf').value,df=document.getElementById('rmdf').value;
@@ -5889,7 +5902,7 @@ function renderRemedialForm(){
   +'<div class="al ai" style="margin-bottom:14px">📋 Build a remedial plan in 4 simple steps: <strong>1)</strong> Pick the type & class → <strong>2)</strong> Pick the subject → <strong>3)</strong> Assign teacher → <strong>4)</strong> Pick students & schedule.</div>'
   
   // STEP 1: Type + Class
-  +'<div style="background:var(--sf2);border-radius:var(--r);padding:12px;margin-bottom:12px;border-left:4px solid var(--ac)"><div style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:8px">Step 1 · Plan Type & Class</div><div class="fr f2"><div class="fg" style="margin-bottom:0"><label>Remedial Type *</label><select id="rm-type">'+REMEDIAL_TYPES.map(t=>'<option '+(data.type===t?'selected':'')+'>'+t+'</option>').join('')+'</select></div><div class="fg" style="margin-bottom:0"><label>Class (Grade-Section) *</label><select id="rm-class" onchange="onRemClassChange()"><option value="">— Select —</option>'+classes.map(c=>{const[g,sec]=c.split('-');return'<option value="'+c+'" '+(grSec(data.grade,data.section)===c?'selected':'')+'>'+g+sec+'</option>';}).join('')+'</select></div></div></div>'
+  +'<div style="background:var(--sf2);border-radius:var(--r);padding:12px;margin-bottom:12px;border-left:4px solid var(--ac)"><div style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;margin-bottom:8px">Step 1 · Plan Type & Class</div><div class="fr f2"><div class="fg" style="margin-bottom:0"><label>Exam / Remedial Type * <span style="font-weight:400;color:var(--tx3);font-size:10px">(pick one, or type another)</span></label><input id="rm-type" list="rm-type-list" autocomplete="off" value="'+esc(data.type||'')+'" placeholder="e.g. Quiz 1, Final Exam, Unit Test 3"><datalist id="rm-type-list">'+remedialTypeOptions().map(t=>'<option value="'+esc(t)+'"></option>').join('')+'</datalist></div><div class="fg" style="margin-bottom:0"><label>Class (Grade-Section) *</label><select id="rm-class" onchange="onRemClassChange()"><option value="">— Select —</option>'+classes.map(c=>{const[g,sec]=c.split('-');return'<option value="'+c+'" '+(grSec(data.grade,data.section)===c?'selected':'')+'>'+g+sec+'</option>';}).join('')+'</select></div></div></div>'
   
   // STEP 2: Subject
   +'<div style="background:var(--sf2);border-radius:var(--r);padding:12px;margin-bottom:12px;border-left:4px solid var(--gd)"><div style="font-size:11px;font-weight:700;color:var(--gd);text-transform:uppercase;margin-bottom:8px">Step 2 · Subject</div><div class="fg" style="margin-bottom:0"><label>Subject *</label><input id="rm-subject" value="'+esc(data.subject||'')+'" placeholder="e.g. Mathematics, English, Physics" oninput="onRemSubjectChange()"></div></div>'
@@ -5975,7 +5988,7 @@ function toggleRemDay(day,checked){
 function saveRemedial(){
   const data=window._remEdit;
   // Capture latest input values
-  data.type=document.getElementById('rm-type').value;
+  data.type=(document.getElementById('rm-type').value||'').trim();
   data.subject=document.getElementById('rm-subject').value.trim();
   data.teacherName=document.getElementById('rm-tch-i').value.trim();
   data.startTime=document.getElementById('rm-stime').value;
@@ -5984,7 +5997,7 @@ function saveRemedial(){
   data.status=document.getElementById('rm-status').value;
   data.notes=document.getElementById('rm-notes').value.trim();
 
-  if(!data.type||!data.grade||!data.subject||!data.teacherName){toast('Fill required fields: type, class, subject, teacher','danger');return;}
+  if(!data.type||!data.grade||!data.subject||!data.teacherName){toast('Fill required fields: exam type, class, subject, teacher','danger');return;}
   if(!data.duration){toast('Please enter the plan duration (e.g. 2 weeks)','danger');return;}
   if(!data.studentIds||!data.studentIds.length){toast('Select at least one student','danger');return;}
   if(!data.days||!data.days.length){toast('Select at least one day of the week','danger');return;}
