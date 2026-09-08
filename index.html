@@ -13851,7 +13851,9 @@ function pdRepeatCard(){
       +'<td style="font-size:10px;color:var(--tx3)">'+esc(m.periodList.map(function(p){return 'P'+p;}).join(' '))+'</td>'
       +'<td style="font-size:10px;color:var(--tx2)">'+esc(m.topBehaviour||'—')+'</td>'
       +'<td class="c mono" style="font-size:10px">'+esc(m.last||'')+'</td>'
-      +(canInf?'<td>'+(m.id?'<button class="btn bd3 bxs" onclick="pdRepeatInfraction('+q+escJs(m.id)+q+')">⚠️ Infraction</button>':'')+'</td>':'')
+      +'<td style="display:flex;gap:4px;flex-wrap:wrap">'
+        +'<button class="btn bg2 bxs" onclick="pdStudentReportM('+q+escJs(m.key)+q+')">📄 Report</button>'
+        +(canInf&&m.id?'<button class="btn bd3 bxs" onclick="pdRepeatInfraction('+q+escJs(m.id)+q+')">⚠️ Infraction</button>':'')+'</td>'
       +'</tr>';
    }).join('')+'</tbody></table></div></div>';
 }
@@ -13879,6 +13881,207 @@ function pdRepeatExport(){
   logA('Exported repeat students ('+list.length+')');
 }
 
+
+// ═══════════════════════════════════════════════════════════
+// ONE STUDENT'S CLASSROOM RECORD
+// Everything every teacher has reported about a boy, period by
+// period, on one sheet — for a parent meeting, a referral, or
+// deciding whether an infraction is warranted.
+// ═══════════════════════════════════════════════════════════
+
+// Everyone who has ever been named, worst first.
+function pdNamedStudents(){
+  const map=pdRepeatMap(pdVisible());
+  return Object.keys(map).map(function(k){return map[k];})
+    .sort(function(a,b){
+      return b.count-a.count||String(a.name||'').localeCompare(String(b.name||''));
+    });
+}
+
+// Every period in which this student was named, oldest first.
+function pdStudentHistory(key,from,to){
+  return pdVisible().filter(function(r){
+    if(from&&r.date<from)return false;
+    if(to&&r.date>to)return false;
+    return (r.students||[]).some(function(st){return pdStudentKey(st)===key;});
+  }).map(function(r){
+    const st=(r.students||[]).find(function(x){return pdStudentKey(x)===key;})||{};
+    return {date:r.date||'',period:r.periodNumber||r.period||'',className:r.className||'',
+      rating:r.rating||'',teacherName:r.teacherName||'',behaviours:r.behaviours||[],
+      note:r.note||'',infractionId:st.infractionId||'',recordId:r.id};
+  }).sort(function(a,b){
+    return (a.date||'').localeCompare(b.date||'')||(a.period||0)-(b.period||0);
+  });
+}
+
+function pdStudentSummary(key,rows){
+  const teachers={},classes={},periods={},behaviours={},ratings={},days={};
+  rows.forEach(function(r){
+    if(r.teacherName)teachers[r.teacherName]=(teachers[r.teacherName]||0)+1;
+    if(r.className)classes[r.className]=(classes[r.className]||0)+1;
+    if(r.period)periods[r.period]=(periods[r.period]||0)+1;
+    if(r.rating)ratings[r.rating]=(ratings[r.rating]||0)+1;
+    if(r.date)days[r.date]=1;
+    (r.behaviours||[]).forEach(function(b){behaviours[b]=(behaviours[b]||0)+1;});
+  });
+  const rank=function(o){return Object.keys(o).sort(function(a,b){return o[b]-o[a]||a.localeCompare(b);});};
+  return {times:rows.length,days:Object.keys(days).length,
+    teachers:rank(teachers),teacherCounts:teachers,
+    classes:rank(classes),periods:rank(periods).sort(function(a,b){return a-b;}),
+    periodCounts:periods,behaviours:rank(behaviours),behaviourCounts:behaviours,
+    ratings:ratings,infractions:rows.filter(function(r){return r.infractionId;}).length,
+    first:rows.length?rows[0].date:'',last:rows.length?rows[rows.length-1].date:''};
+}
+
+function pdStudentReportM(preKey){
+  const people=pdNamedStudents();
+  if(!people.length){toast('No student has been named yet','info');return;}
+  const cur=preKey||window._pdStuKey||people[0].key;
+  window._pdStuKey=cur;
+  const dates=pdVisible().map(function(r){return r.date;}).filter(Boolean).sort();
+  const st=window._pdStuRange||(window._pdStuRange={from:dates[0]||'',to:dates[dates.length-1]||''});
+  openM('<div class="mh"><h3>\u{1f464} Student Discipline Report</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Everything every teacher has reported about one boy, period by period — who reported him, in which class, what happened, and whether an infraction was filed.</div>'
+  +'<div class="fg"><label>Student</label><select id="pds-who" onchange="pdStudentRender()">'
+  +people.map(function(p){
+     return '<option value="'+esc(p.key)+'"'+(p.key===cur?' selected':'')+'>'+esc(p.name||'(no name)')
+      +' · named '+p.count+'×'+(p.classList.length>1?' in '+p.classCount+' classes':'')
+      +(p.id?'':' — not on the roll')+'</option>';
+   }).join('')+'</select></div>'
+  +'<div class="fr f2"><div class="fg"><label>From</label><input type="date" id="pds-from" value="'+esc(st.from)+'" onchange="pdStudentRender()"></div>'
+  +'<div class="fg"><label>To</label><input type="date" id="pds-to" value="'+esc(st.to)+'" onchange="pdStudentRender()"></div></div>'
+  +'<div id="pds-body"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bs" onclick="pdStudentCSV()">\u{1f4ca} Excel</button>'
+  +'<button class="btn bp" onclick="pdStudentPDF()">\u{1f4c4} PDF Report</button></div>',true);
+  pdStudentRender();
+}
+
+function pdStudentPick(){
+  return {key:(document.getElementById('pds-who')||{}).value||window._pdStuKey||'',
+    from:(document.getElementById('pds-from')||{}).value||'',
+    to:(document.getElementById('pds-to')||{}).value||''};
+}
+
+function pdStudentRender(){
+  const box=document.getElementById('pds-body');
+  if(!box)return;
+  const p=pdStudentPick();
+  window._pdStuKey=p.key;window._pdStuRange={from:p.from,to:p.to};
+  if(p.to&&p.from&&p.to<p.from){box.innerHTML='<div class="al ad">The end date is before the start date.</div>';return;}
+  const rows=pdStudentHistory(p.key,p.from,p.to);
+  if(!rows.length){box.innerHTML='<div class="emp" style="padding:16px"><div class="ei">\u{1f464}</div><p style="font-size:11px">Nothing reported in these dates.</p></div>';return;}
+  const s=pdStudentSummary(p.key,rows);
+  box.innerHTML='<div class="cg g4" style="margin-bottom:10px">'
+   +'<div class="stat rd"><div class="sl2">Times named</div><div class="sv">'+s.times+'</div><div class="sb3">on '+s.days+' day(s)</div><div class="sic">\u{1f501}</div></div>'
+   +'<div class="stat go"><div class="sl2">Teachers</div><div class="sv">'+s.teachers.length+'</div><div class="sb3">reported him</div><div class="sic">\u{1f9d1}‍\u{1f3eb}</div></div>'
+   +'<div class="stat bl"><div class="sl2">Classes</div><div class="sv">'+s.classes.length+'</div><div class="sb3">'+esc(s.classes.join(', '))+'</div><div class="sic">\u{1f3eb}</div></div>'
+   +'<div class="stat gn"><div class="sl2">Infractions</div><div class="sv">'+s.infractions+'</div><div class="sb3">already filed</div><div class="sic">⚠️</div></div>'
+   +'</div>'
+   +(s.behaviours.length?'<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Most often: '
+     +s.behaviours.slice(0,4).map(function(b){return esc(b)+' ('+s.behaviourCounts[b]+')';}).join(' · ')+'</div>':'')
+   +'<div class="tw" style="max-height:260px;overflow:auto"><table style="font-size:11px"><thead><tr>'
+   +'<th>Date</th><th class="c">P</th><th>Class</th><th>Class rated</th><th>Reported by</th><th>What happened</th></tr></thead><tbody>'
+   +rows.map(function(r){
+     const rt=pdRating(r.rating);
+     return '<tr'+(r.rating==='Bad'?' style="background:var(--dnbg)"':'')+'>'
+      +'<td class="mono">'+esc(r.date)+'</td><td class="c">'+esc(String(r.period))+'</td>'
+      +'<td><strong>'+esc(r.className)+'</strong></td>'
+      +'<td><span class="badge '+rt.bg+'" style="font-size:9px">'+rt.i+' '+esc(r.rating)+'</span></td>'
+      +'<td style="font-size:10px">'+esc(r.teacherName||'—')+'</td>'
+      +'<td style="font-size:10px;color:var(--tx2)">'+((r.behaviours||[]).length?esc(r.behaviours.join('; ')):'—')
+        +(r.note?'<div style="color:var(--tx3)">'+esc(r.note)+'</div>':'')
+        +(r.infractionId?'<div><span class="badge bgr" style="font-size:9px">✓ infraction filed</span></div>':'')+'</td></tr>';
+   }).join('')+'</tbody></table></div>';
+}
+
+function pdStudentPDF(){
+  const p=pdStudentPick();
+  const rows=pdStudentHistory(p.key,p.from,p.to);
+  if(!rows.length){toast('Nothing reported in these dates','danger');return;}
+  const person=pdNamedStudents().find(function(x){return x.key===p.key;})||{name:'',id:''};
+  const roll=person.id?gS(person.id):null;
+  const s=pdStudentSummary(p.key,rows);
+  const settings=DB.get('settings')||{};
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to open the report','danger');return;}
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Classroom Record — '+esc(person.name||'')+'</title><style>'
+   +'@page{size:A4;margin:14mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:11px}'
+   +'.title-bar{background:#1a5f7a;color:#fff;text-align:center;padding:9px;border-radius:5px;margin:10px 0;font-size:14px;font-weight:bold}'
+   +'.who{background:#f0f4f8;border-radius:6px;padding:11px 15px;margin-bottom:12px;font-size:13px}'
+   +'.who strong{font-size:17px;color:#1a5f7a}'
+   +'.cards{display:flex;gap:8px;margin-bottom:12px}'
+   +'.card{flex:1;border:1px solid #d6e3ec;border-radius:5px;padding:8px;text-align:center}'
+   +'.card .n{font-size:19px;font-weight:bold}.card .l{font-size:9px;color:#666;text-transform:uppercase}'
+   +'table{width:100%;border-collapse:collapse;margin-top:6px}'
+   +'th{background:#1a5f7a;color:#fff;padding:6px 7px;text-align:left;font-size:9px;text-transform:uppercase}'
+   +'td{padding:5px 7px;border:1px solid #d6e3ec;vertical-align:top}'
+   +'td.c{text-align:center}tr:nth-child(even) td{background:#f7fafc}'
+   +'tr.bad td{background:#fdecec}'
+   +'h2{font-size:12px;margin:16px 0 4px;border-bottom:2px solid #1a5f7a;padding-bottom:3px}'
+   +'.two{display:flex;gap:14px}.two>div{flex:1}'
+   +'.sign{display:flex;justify-content:space-between;margin-top:26px}'
+   +'.sign div{width:45%;border-top:1px solid #999;padding-top:4px;font-size:10px;color:#555}'
+   +'@media print{button{display:none}}</style></head><body>'
+   +'<button onclick="window.print()" style="margin-bottom:10px;padding:7px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">\u{1f5a8}️ Print / Save as PDF</button>'
+   +pdfHeaderHTML({subtitle:'Classroom Conduct — Student Record'})
+   +'<div class="title-bar">CLASSROOM DISCIPLINE RECORD</div>'
+   +'<div class="who"><strong>'+esc(person.name||'')+'</strong>'
+   +(roll?' &nbsp;·&nbsp; Grade '+esc(grSec(roll.grade,roll.section))+' &nbsp;·&nbsp; SN '+esc(String(roll.sn||'')):' &nbsp;·&nbsp; <em>name as written by the teacher — not matched to the roll</em>')
+   +'<div style="font-size:10px;color:#555;margin-top:3px">Period covered: '+esc(p.from||s.first)+' to '+esc(p.to||s.last)
+   +' &nbsp;·&nbsp; first reported '+esc(s.first)+', last '+esc(s.last)+'</div></div>'
+   +'<div class="cards">'
+   +'<div class="card"><div class="l">Times named</div><div class="n">'+s.times+'</div></div>'
+   +'<div class="card"><div class="l">Days</div><div class="n">'+s.days+'</div></div>'
+   +'<div class="card"><div class="l">Teachers</div><div class="n">'+s.teachers.length+'</div></div>'
+   +'<div class="card"><div class="l">Classes</div><div class="n">'+s.classes.length+'</div></div>'
+   +'<div class="card"><div class="l">Infractions</div><div class="n">'+s.infractions+'</div></div>'
+   +'</div>'
+   +'<div class="two">'
+   +'<div><h2>Reported by</h2><table><tbody>'
+     +s.teachers.map(function(t){return '<tr><td>'+esc(t)+'</td><td class="c" style="width:40px">'+s.teacherCounts[t]+'</td></tr>';}).join('')
+     +'</tbody></table></div>'
+   +'<div><h2>Most common behaviour</h2><table><tbody>'
+     +(s.behaviours.length?s.behaviours.slice(0,8).map(function(b){return '<tr><td>'+esc(b)+'</td><td class="c" style="width:40px">'+s.behaviourCounts[b]+'</td></tr>';}).join('')
+       :'<tr><td colspan="2" style="color:#888">Nothing specific was ticked</td></tr>')
+     +'</tbody></table></div>'
+   +'</div>'
+   +'<h2>Every report, in order</h2>'
+   +'<table><thead><tr><th style="width:66px">Date</th><th style="width:22px">P</th><th style="width:48px">Class</th>'
+   +'<th style="width:60px">Class rated</th><th style="width:90px">Reported by</th><th>What happened</th></tr></thead><tbody>'
+   +rows.map(function(r){
+     return '<tr'+(r.rating==='Bad'?' class="bad"':'')+'>'
+      +'<td>'+esc(r.date)+'</td><td class="c">'+esc(String(r.period))+'</td>'
+      +'<td>'+esc(r.className)+'</td><td>'+esc(r.rating)+'</td>'
+      +'<td>'+esc(r.teacherName||'—')+'</td>'
+      +'<td>'+((r.behaviours||[]).length?esc(r.behaviours.join('; ')):'—')
+        +(r.note?'<br><em>'+esc(r.note)+'</em>':'')
+        +(r.infractionId?'<br><strong>Infraction filed</strong>':'')+'</td></tr>';
+   }).join('')+'</tbody></table>'
+   +'<div class="sign"><div>Class Teacher</div><div>Vice Principal</div></div>'
+   +'<div style="margin-top:14px;font-size:9px;color:#777">Prepared by '
+   +esc(CU?((CU.firstName||'')+' '+(CU.lastName||'')).trim():'')+' on '+new Date().toLocaleString()
+   +' · built from what teachers recorded at the end of each period.</div>'
+   +'</body></html>');
+  w.document.close();
+  logA('Generated a classroom discipline record for '+(person.name||'a student'));
+}
+
+function pdStudentCSV(){
+  const p=pdStudentPick();
+  const rows=pdStudentHistory(p.key,p.from,p.to);
+  if(!rows.length){toast('Nothing reported in these dates','danger');return;}
+  const person=pdNamedStudents().find(function(x){return x.key===p.key;})||{name:''};
+  expCSV(['Date','Day','Period','Class','Class Rated','Reported By','What Happened','Note','Infraction Filed'],
+    rows.map(function(r){
+      return [r.date,getDayOfWeek(r.date)||'',String(r.period),r.className,r.rating,r.teacherName,
+        (r.behaviours||[]).join('; '),r.note||'',r.infractionId?'Yes':''];
+    }),'discipline_record_'+String(person.name||'student').replace(/[^A-Za-z0-9]+/g,'_'));
+  logA('Exported a classroom discipline record for '+(person.name||'a student'));
+}
+
 // ── The page ──────────────────────────────────────────────
 function rPeriodDiscipline(){
   clearRepeatCache();
@@ -13899,6 +14102,7 @@ function rPeriodDiscipline(){
    +'<input type="date" id="pd-date" value="'+esc(sel)+'" onchange="window._pdDate=this.value;rPeriodDiscipline()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'
    +(canAdd?'<button class="btn bp bsm" onclick="pdEntryM()">+ Record a Period</button>':'')
    +'<button class="btn bg2 bsm" onclick="pdExclusionsM()">\u{1f6ab} Excluded</button>'
+   +'<button class="btn bs bsm" onclick="pdStudentReportM()">\u{1f464} Student Report</button>'
    +'<button class="btn bs bsm" onclick="pdSummaryM()">\u{1f4c8} Summary</button>'
    +'<button class="btn bs bsm" onclick="pdBestM()">\u{1f3c6} Best Class</button>'
    +'<button class="btn bg2 bsm" onclick="pdQrM()">\u{1f4f1} Class QR Poster</button>'
@@ -13966,6 +14170,7 @@ function pdRowsHTML(list,canInf){
          ?(r.students||[]).map(function(st){
             return '<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;flex-wrap:wrap"><span>'+esc(st.name||'')+'</span>'
              +pdRepeatBadge(st)
+             +'<button class="btn bg2 bxs" title="Everything reported about this student" onclick="pdStudentReportM('+q+escJs(pdStudentKey(st))+q+')">📄</button>'
              +(canInf&&st.id?'<button class="btn bd3 bxs" title="Record a formal infraction for this student" onclick="pdInfraction('+q+escJs(r.id)+q+','+q+escJs(st.id)+q+')">⚠️ Infraction</button>':'')
              +(st.infractionId?'<span class="badge bgr" style="font-size:9px">✓ infraction filed</span>':'')+'</div>';
            }).join('')
