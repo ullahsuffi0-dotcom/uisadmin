@@ -4853,6 +4853,20 @@ function clearAllLate(){
 
 // ── Class-by-class absence summary ──────────────────────────
 // Read-only: builds a printable sheet from the attendance already recorded.
+// The sections of a grade added together, in the order the grades appear.
+function attGradeRollup(rows){
+  const by={},order=[];
+  (rows||[]).forEach(function(r){
+    const g=String(r.grade==null?'':r.grade);
+    if(!by[g]){by[g]={grade:g,sections:0,total:0,absent:0,late:0,names:[]};order.push(g);}
+    const b=by[g];
+    b.sections++;b.total+=r.total;
+    b.absent+=r.absent.length;b.late+=r.late.length;
+    b.names.push(r.cls);
+  });
+  return order.map(function(g){return by[g];});
+}
+
 function attClassBreakdown(date){
   const students=vpFilter(DB.get('students')||[]);
   const rec=(DB.get('attendance')||[]).find(a=>a.date===date)||{absentIds:[],lateIds:[]};
@@ -4895,6 +4909,7 @@ function expAttClassSummaryPDF(){
   +'td.c{text-align:center}tr:nth-child(even) td{background:#f7fafc}'
   +'.tot td{background:#D9EAF7;font-weight:bold}'
   +'.clean td{background:#eefaf1!important;color:#15803d}'
+  +'.gtot td{background:#eef4fb;font-weight:bold;border-top:2px solid #1a5f7a}'
   +'.names{font-size:10px;color:#444}'
   +'.cards{display:flex;gap:10px;margin-bottom:12px}'
   +'.card{flex:1;border:1px solid #d6e3ec;border-radius:5px;padding:9px;text-align:center}'
@@ -4914,23 +4929,63 @@ function expAttClassSummaryPDF(){
   +(clean?' — '+clean+' with full attendance, shaded green':'')+'. Only absent students are named.</div>'
   +'<table><thead><tr><th style="width:70px">Class</th><th style="width:52px">Total</th><th style="width:60px">Present</th>'
   +'<th style="width:56px">Absent</th><th style="width:48px">Late</th><th style="width:60px">Absent %</th><th>Absent Students</th></tr></thead><tbody>'
-  +rows.map(function(r){
-    const names=r.absent.map(function(st){
-      const exc=excusedFor(st.id,date);
-      return esc(fN(st))+(exc?' <em>(excused)</em>':'');
-    }).join(', ');
-    const none=r.absent.length===0;
-    return '<tr'+(none?' class="clean"':'')+'><td><strong>'+esc(r.cls)+'</strong></td>'
-     +'<td class="c">'+r.total+'</td>'
-     +'<td class="c">'+(r.total-r.absent.length)+'</td>'
-     +'<td class="c">'+(none?'0':'<strong>'+r.absent.length+'</strong>')+'</td>'
-     +'<td class="c">'+r.late.length+'</td>'
-     +'<td class="c">'+pct(r.absent.length,r.total)+'%</td>'
-     +'<td class="names">'+(none?'<em>Full attendance</em>':names)+'</td></tr>';
-  }).join('')
+  +(function(){
+    const secRow=function(r){
+      const names=r.absent.map(function(st){
+        const exc=excusedFor(st.id,date);
+        return esc(fN(st))+(exc?' <em>(excused)</em>':'');
+      }).join(', ');
+      const none=r.absent.length===0;
+      return '<tr'+(none?' class="clean"':'')+'><td><strong>'+esc(r.cls)+'</strong></td>'
+       +'<td class="c">'+r.total+'</td>'
+       +'<td class="c">'+(r.total-r.absent.length)+'</td>'
+       +'<td class="c">'+(none?'0':'<strong>'+r.absent.length+'</strong>')+'</td>'
+       +'<td class="c">'+r.late.length+'</td>'
+       +'<td class="c">'+pct(r.absent.length,r.total)+'%</td>'
+       +'<td class="names">'+(none?'<em>Full attendance</em>':names)+'</td></tr>';
+    };
+    const gradeRow=function(g){
+      return '<tr class="gtot"><td>Grade '+esc(g.grade)+' — all sections</td>'
+       +'<td class="c">'+g.total+'</td><td class="c">'+(g.total-g.absent)+'</td>'
+       +'<td class="c">'+g.absent+'</td><td class="c">'+g.late+'</td>'
+       +'<td class="c">'+pct(g.absent,g.total)+'%</td>'
+       +'<td class="names">'+g.sections+' section(s): '+esc(g.names.join(', '))+'</td></tr>';
+    };
+    const multi={};
+    attGradeRollup(rows).forEach(function(g){if(g.sections>1)multi[g.grade]=g;});
+    let out='',prev=null;
+    rows.forEach(function(r,i){
+      const g=String(r.grade==null?'':r.grade);
+      if(prev!==null&&g!==prev&&multi[prev])out+=gradeRow(multi[prev]);
+      out+=secRow(r);
+      if(i===rows.length-1&&multi[g])out+=gradeRow(multi[g]);
+      prev=g;
+    });
+    return out;
+  })()
   +'<tr class="tot"><td>TOTAL</td><td class="c">'+tot.students+'</td><td class="c">'+(tot.students-tot.absent)+'</td>'
   +'<td class="c">'+tot.absent+'</td><td class="c">'+tot.late+'</td><td class="c">'+pct(tot.absent,tot.students)+'%</td><td></td></tr>'
   +'</tbody></table>'
+  +(function(){
+    const roll=attGradeRollup(rows);
+    if(!roll.length)return '';
+    return '<div style="font-size:12px;font-weight:bold;margin:16px 0 5px">Students by grade</div>'
+     +'<table><thead><tr><th style="width:84px">Grade</th><th style="width:64px">Sections</th>'
+     +'<th style="width:66px">Students</th><th style="width:64px">Present</th><th style="width:58px">Absent</th>'
+     +'<th style="width:50px">Late</th><th style="width:62px">Absent %</th><th>Sections counted</th></tr></thead><tbody>'
+     +roll.map(function(g){
+       return '<tr><td><strong>Grade '+esc(g.grade)+'</strong></td><td class="c">'+g.sections+'</td>'
+        +'<td class="c"><strong>'+g.total+'</strong></td><td class="c">'+(g.total-g.absent)+'</td>'
+        +'<td class="c">'+g.absent+'</td><td class="c">'+g.late+'</td>'
+        +'<td class="c">'+pct(g.absent,g.total)+'%</td>'
+        +'<td class="names">'+esc(g.names.join(', '))+'</td></tr>';
+     }).join('')
+     +'<tr class="tot"><td>ALL GRADES</td><td class="c">'+rows.length+'</td>'
+     +'<td class="c">'+tot.students+'</td><td class="c">'+(tot.students-tot.absent)+'</td>'
+     +'<td class="c">'+tot.absent+'</td><td class="c">'+tot.late+'</td>'
+     +'<td class="c">'+pct(tot.absent,tot.students)+'%</td><td></td></tr>'
+     +'</tbody></table>';
+  })()
   +'<div style="margin-top:18px;font-size:10px;color:#555">Prepared by: '+esc(CU?((CU.firstName||'')+' '+(CU.lastName||'')).trim():'')
   +' &nbsp;·&nbsp; Generated: '+new Date().toLocaleString()+'</div>'
   +'</body></html>');
@@ -4943,10 +4998,22 @@ function expAttClassSummaryCSV(){
   // Every class is listed; only the absent students are named.
   const rows=attClassBreakdown(date);
   if(!rows.length){toast('No students to summarise','danger');return;}
-  const out=rows.map(function(r){
-    return [r.cls,r.total,r.total-r.absent.length,r.absent.length,r.late.length,
-      (r.total?Math.round(r.absent.length/r.total*1000)/10:0)+'%',
-      r.absent.length?r.absent.map(function(st){return fN(st);}).join('; '):'Full attendance'];
+  const pc=function(n,d){return (d?Math.round(n/d*1000)/10:0)+'%';};
+  const roll=attGradeRollup(rows);
+  const multi={};
+  roll.forEach(function(g){if(g.sections>1)multi[g.grade]=g;});
+  const out=[];
+  let prev=null;
+  rows.forEach(function(r,i){
+    const g=String(r.grade==null?'':r.grade);
+    const gRow=function(x){return ['Grade '+x.grade+' — all sections',x.total,x.total-x.absent,
+      x.absent,x.late,pc(x.absent,x.total),x.sections+' section(s): '+x.names.join(', ')];};
+    if(prev!==null&&g!==prev&&multi[prev])out.push(gRow(multi[prev]));
+    out.push([r.cls,r.total,r.total-r.absent.length,r.absent.length,r.late.length,
+      pc(r.absent.length,r.total),
+      r.absent.length?r.absent.map(function(st){return fN(st);}).join('; '):'Full attendance']);
+    if(i===rows.length-1&&multi[g])out.push(gRow(multi[g]));
+    prev=g;
   });
   const tot=rows.reduce(function(a,r){a.s+=r.total;a.a+=r.absent.length;a.l+=r.late.length;return a;},{s:0,a:0,l:0});
   out.push(['TOTAL',tot.s,tot.s-tot.a,tot.a,tot.l,(tot.s?Math.round(tot.a/tot.s*1000)/10:0)+'%','']);
