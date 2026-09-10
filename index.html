@@ -269,8 +269,17 @@ let PLATFORM_MODE=false;
 
 function getPlatformSchools(){try{return JSON.parse(localStorage.getItem('sms7_platform_schools')||'[]');}catch{return[];}}
 function setPlatformSchools(list){
-  localStorage.setItem('sms7_platform_schools',JSON.stringify(list));
-  syncPlatformToFirebase('platform_schools',list);
+  const next=Array.isArray(list)?list:[];
+  let prev=[];
+  try{prev=JSON.parse(localStorage.getItem('sms7_platform_schools')||'[]')||[];}catch(e){prev=[];}
+  // Publishing an empty list would take every school off every device's login
+  // screen. Removing the last school has to be deliberate, not a side effect.
+  if(!next.length&&Array.isArray(prev)&&prev.length){
+    console.warn('[Platform] Refusing to publish an empty school list over '+prev.length+' school(s)');
+    return;
+  }
+  localStorage.setItem('sms7_platform_schools',JSON.stringify(next));
+  syncPlatformToFirebase('platform_schools',next);
 }
 function getPlatformAdmins(){try{return JSON.parse(localStorage.getItem('sms7_platform_admins')||'[]');}catch{return[];}}
 function setPlatformAdmins(list){
@@ -295,12 +304,26 @@ async function syncPlatformFromFirebase(){
     const snap=await get(ref(db,'platform'));
     if(snap.exists()){
       const data=snap.val();
-      // Always overwrite local with Firebase truth — clear stale local data
-      if(data.platform_schools){
-        localStorage.setItem('sms7_platform_schools',JSON.stringify(data.platform_schools));
-      }else{
-        // Firebase has no schools — clear any stale local schools
-        localStorage.setItem('sms7_platform_schools',JSON.stringify([]));
+      // A school list that arrives empty is far more often a registry that was
+      // never written, or lost, than a school that truly no longer exists.
+      // Clearing the local copy on the strength of it locks every member of
+      // staff out, so keep what is here and put it back instead.
+      const incoming=Array.isArray(data.platform_schools)?data.platform_schools:[];
+      let localList=[];
+      try{localList=JSON.parse(localStorage.getItem('sms7_platform_schools')||'[]')||[];}catch(e){localList=[];}
+      if(!Array.isArray(localList))localList=[];
+      if(incoming.length){
+        // Union by id, so a school one device knows about is not dropped
+        const seen={},merged=[];
+        incoming.concat(localList).forEach(function(x){
+          if(!x||!x.id||seen[x.id])return;
+          seen[x.id]=1;merged.push(x);
+        });
+        localStorage.setItem('sms7_platform_schools',JSON.stringify(merged));
+        if(merged.length>incoming.length)syncPlatformToFirebase('platform_schools',merged);
+      }else if(localList.length){
+        console.warn('[Platform sync] Firebase lists no schools — keeping the '+localList.length+' known here and re-publishing');
+        syncPlatformToFirebase('platform_schools',localList);
       }
       if(data.platform_admins){
         localStorage.setItem('sms7_platform_admins',JSON.stringify(data.platform_admins));
@@ -1087,10 +1110,40 @@ function onSchoolSelect(){
   }
 }
 
+// A device that has ever held a school still has its data under
+// sms7_sch_<id>_… . If the registry is empty, the school can be named from
+// that, so staff are never locked out by a lost list.
+function schoolsFromLocalData(){
+  const out=[],seen={};
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i)||'';
+      const m=k.match(/^sms7_sch_(.+)_settings$/);
+      if(!m)continue;
+      const id=m[1];
+      if(seen[id])continue;
+      seen[id]=1;
+      let name='';
+      try{const st=JSON.parse(localStorage.getItem(k)||'null');if(st&&st.schoolName)name=st.schoolName;}catch(e){}
+      out.push({id:id,name:name||id,active:true,recovered:true});
+    }
+  }catch(e){}
+  return out;
+}
+
 function populateSchoolDropdown(){
   const sel=document.getElementById('lsch');
   if(!sel)return;
-  const schools=getPlatformSchools();
+  let schools=getPlatformSchools();
+  if(!Array.isArray(schools)||!schools.length){
+    const found=schoolsFromLocalData();
+    if(found.length){
+      console.warn('[Platform] No school list — recovered '+found.length+' from the data on this device');
+      schools=found;
+      localStorage.setItem('sms7_platform_schools',JSON.stringify(found));
+      syncPlatformToFirebase('platform_schools',found);
+    }
+  }
   sel.innerHTML='<option value="">— Select School —</option>'
     +schools.filter(s=>s.active!==false).map(s=>'<option value="'+s.id+'">'+(s.logo&&!s.logo.startsWith('data:')?s.logo+' ':'')+esc(s.name)+'</option>').join('')
     +'<option value="__platform">🔧 Platform Admin</option>';
