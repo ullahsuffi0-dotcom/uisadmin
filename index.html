@@ -1372,7 +1372,8 @@ function launch(){
   // Straight to the tab a QR poster asked for, if this user may open it
   var _go=window.__goTab;window.__goTab=null;
   if(_go&&document.getElementById('nav-'+_go)&&typeof canDo==='function'&&canDo(_go)!=='disabled'){
-    if(window.__goClass){if(_go==='break_discipline')window._bdOpenFor=window.__goClass;else window._pdClass=window.__goClass;}
+    if(_go==='break_discipline')window._bdOpenFor=window.__goClass||'*';
+    else if(window.__goClass)window._pdClass=window.__goClass;
     window.__goClass=null;
     try{navigate(_go);}catch(e){navigate('dashboard');}
   }else{navigate('dashboard');}
@@ -13569,7 +13570,7 @@ function rBreakDiscipline(){
    +'<input type="date" id="bd-date" value="'+esc(sel)+'" onchange="window._bdDate=this.value;rBreakDiscipline()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'
    +(canRate?'<button class="btn bp bsm" onclick="bdEntryM()">+ Rate a Class</button>':'')
    +'<button class="btn bs bsm" onclick="bdReportM()">\u{1f4c4} Report</button>'
-   +'<button class="btn bg2 bsm" onclick="bdQrM()">\u{1f4f1} Class QR Posters</button>'
+   +'<button class="btn bg2 bsm" onclick="bdQrM()">\u{1f4f1} Break QR Code</button>'
    +'</div></div>'
    +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Rate how each class leaves its room for break. Grades 1–3 break 9:15–9:30 after period 2; grades 4–12 break 10:00–10:15 after period 3, and Salah break 12:30–12:45 after period 6. The teacher of the lesson before the break is filled in from the timetable. Ratings count towards the class period discipline ranking.</div></div>'
    +((day==='Friday'||day==='Saturday')?'<div class="al aw" style="margin-bottom:12px">'+esc(day)+' is not a school day.</div>':'')
@@ -13581,10 +13582,11 @@ function rBreakDiscipline(){
    +'</div>'
    +bdGridCard(sel,todays,canRate)
    +bdListCard(all,canRate);
-  // Arrived from a classroom QR: open that class's form straight away
+  // Arrived from the break QR: open the rating form straight away, ready for
+  // the class to be picked (or with it chosen, from an older class poster)
   if(window._bdOpenFor&&canRate){
-    const c=window._bdOpenFor;window._bdOpenFor=null;
-    setTimeout(function(){bdEntryM(null,c,bdSlotNow(c));},50);
+    const c=window._bdOpenFor==='*'?'':window._bdOpenFor;window._bdOpenFor=null;
+    setTimeout(function(){bdEntryM(null,c,c?bdSlotNow(c):null);},50);
   }else window._bdOpenFor=null;
 }
 
@@ -13664,8 +13666,8 @@ function bdEntryM(id,presetCls,presetSlot){
   if(id&&!ex){toast('Rating not found','danger');return;}
   const classes=getAllClasses();
   if(!classes.length){toast('No classes on the roll yet','danger');return;}
-  const cls=ex?ex.className:(presetCls||classes[0]);
-  const slot=ex?ex.slot:(presetSlot||bdSlotNow(cls));
+  const cls=ex?ex.className:(presetCls||'');
+  const slot=ex?ex.slot:(presetSlot||(cls?bdSlotNow(cls):''));
   const date=ex?ex.date:(window._bdDate||ymd(new Date()));
   window._bdForm={id:id||null,rating:ex?ex.rating:'',teacherDirty:!!ex};
   const q=String.fromCharCode(39);
@@ -13674,9 +13676,14 @@ function bdEntryM(id,presetCls,presetSlot){
   +'<div class="fr f3">'
   +'<div class="fg"><label>Date *</label><input type="date" id="bd-f-date" value="'+esc(date)+'" onchange="bdFormChanged()"></div>'
   +'<div class="fg"><label>Class *</label><select id="bd-f-cls" onchange="bdFormChanged(true)">'
+    +'<option value="">— Select class —</option>'
     +classes.map(function(c){return '<option value="'+esc(c)+'"'+(c===cls?' selected':'')+'>'+esc(c)+'</option>';}).join('')+'</select></div>'
   +'<div class="fg"><label>Break *</label><select id="bd-f-slot" onchange="bdFormChanged()"></select></div>'
   +'</div>'
+  +(ex?'':'<div class="fg"><label>Tap the class</label><div id="bd-f-chips" style="display:flex;flex-wrap:wrap;gap:5px">'
+    +classes.map(function(c){
+      return '<button type="button" class="btn '+(c===cls?'bp':'bg2')+' bsm" data-c="'+esc(c)+'" style="min-width:52px" onclick="bdPickClass('+q+escJs(c)+q+')">'+esc(c)+'</button>';
+    }).join('')+'</div></div>')
   +'<div class="fg"><label>Teacher leading the class out</label>'
   +'<input id="bd-f-tch" list="bd-staff" autocomplete="off" oninput="window._bdForm.teacherDirty=true" value="'+esc(ex?ex.teacherName||'':'')+'">'
   +'<datalist id="bd-staff">'+getAssignableStaff().map(function(s){return '<option value="'+esc(s.name)+'">';}).join('')+'</datalist>'
@@ -13701,7 +13708,7 @@ function bdFillSlots(want){
   const el=document.getElementById('bd-f-slot');
   if(!el)return;
   const slots=bdSlotsFor(cls);
-  const keep=want||el.value;
+  const keep=want||el.value||(cls?bdSlotNow(cls):'');
   el.innerHTML=slots.map(function(s){
     return '<option value="'+s.id+'"'+(s.id===keep?' selected':'')+'>'+esc(s.label)+' · '+esc(s.time)+'</option>';
   }).join('');
@@ -13720,7 +13727,22 @@ function bdFormChanged(classChanged,first){
   if(tEl&&(!window._bdForm.teacherDirty||(!first&&!tEl.value))){tEl.value=t.name||'';window._bdForm.teacherDirty=false;}
   window._bdForm.teacherSource=t.source;window._bdForm.subject=t.subject;
   const h=document.getElementById('bd-f-hint');
-  if(h)h.innerHTML=bdTeacherHint(t);
+  if(h)h.innerHTML=cls?bdTeacherHint(t):'\u{1f446} Select the class first — the teacher then fills in from the timetable';
+  const chips=document.getElementById('bd-f-chips');
+  if(chips)[].slice.call(chips.querySelectorAll('button')).forEach(function(b){
+    b.className='btn '+(b.getAttribute('data-c')===cls?'bp':'bg2')+' bsm';
+  });
+}
+
+function bdPickClass(c){
+  const el=document.getElementById('bd-f-cls');
+  if(!el)return;
+  el.value=c;
+  window._bdForm.teacherDirty=false;
+  const slot=document.getElementById('bd-f-slot');
+  if(slot)slot.value='';
+  bdFillSlots(bdSlotNow(c));
+  bdFormChanged(false);
 }
 
 function bdPickRating(v){
@@ -13797,7 +13819,9 @@ function bdViewM(id){
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
 }
 
-// ── Classroom QR posters ──────────────────────────────────
+// ── Break QR code ─────────────────────────────────────────
+// One code for the whole school. Staff scan it at any classroom door and
+// pick the class; a link that names a class still opens with it chosen.
 function bdClassUrl(cls){
   let u=window.location.origin+window.location.pathname+'?go=break_discipline';
   if(CURRENT_SCHOOL_ID)u+='&sch='+encodeURIComponent(CURRENT_SCHOOL_ID);
@@ -13806,53 +13830,51 @@ function bdClassUrl(cls){
 }
 
 function bdQrM(){
-  const classes=getAllClasses();
-  if(!classes.length){toast('No classes on the roll yet','danger');return;}
-  const cls=window._bdQrClass||classes[0];
-  const url=bdClassUrl(cls);
+  const url=bdClassUrl('');
   const qr='https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data='+encodeURIComponent(url);
-  const q=String.fromCharCode(39);
-  openM('<div class="mh"><h3>\u{1f4f1} Break Leaving QR Posters</h3><button class="mc" onclick="closeM()">×</button></div>'
+  window._bdQrUrl=url;
+  openM('<div class="mh"><h3>\u{1f4f1} Break Leaving QR Code</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">Put a poster by each classroom door. As the class leaves for break, an admin assistant or vice principal scans it and the rating opens with the class, the break and the teacher already filled in — one tap to record. Staff sign in as usual; nobody else can rate.</div>'
-  +'<div class="fg"><label>Class</label><select onchange="window._bdQrClass=this.value;bdQrM()">'
-  +classes.map(function(c){return '<option value="'+esc(c)+'"'+(c===cls?' selected':'')+'>'+esc(c)+'</option>';}).join('')+'</select></div>'
-  +'<div style="text-align:center;padding:8px"><img src="'+qr+'" alt="" style="width:210px;height:210px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
+  +'<div class="al ai">One code for every class. As a class leaves for break, an admin assistant or vice principal scans it, taps the class, and the break and teacher fill in by themselves — then one tap to rate. Staff sign in as usual; nobody else can rate.</div>'
+  +'<div style="text-align:center;padding:8px"><img src="'+qr+'" alt="" style="width:220px;height:220px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
   +'<div style="background:var(--sf2);padding:8px;border-radius:var(--rs);font-size:10px;color:var(--ac);word-break:break-all;border:1px solid var(--bd)">'+esc(url)+'</div>'
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
-  +'<button class="btn bs" onclick="bdPrintPosters(getAllClasses())">\u{1f5a8}️ Print All Classes</button>'
-  +'<button class="btn bp" onclick="bdPrintPosters(['+q+escJs(cls)+q+'])">\u{1f5a8}️ Print This Class</button></div>',true);
+  +'<button class="btn bs" onclick="bdCopyQrLink()">\u{1f4cb} Copy Link</button>'
+  +'<button class="btn bp" onclick="bdPrintPoster()">\u{1f5a8}️ Print Poster</button></div>',true);
+}
+function bdCopyQrLink(){
+  const url=window._bdQrUrl||bdClassUrl('');
+  try{navigator.clipboard.writeText(url).then(function(){toast('Link copied','success');},function(){prompt('Copy this link:',url);});}
+  catch(e){prompt('Copy this link:',url);}
 }
 
-function bdPrintPosters(list){
+function bdPrintPoster(){
   const s=DB.get('settings')||{};
   const w=window.open('','_blank');
-  if(!w){toast('Allow pop-ups to print the posters','danger');return;}
-  const page=function(cls){
-    const qr='https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=20&data='+encodeURIComponent(bdClassUrl(cls));
-    const slots=bdSlotsFor(cls);
-    return '<div class="poster"><div class="school">'+esc(s.schoolName||'School')+'</div>'
-     +'<div class="cls">'+esc(cls)+'</div>'
-     +'<div class="title">Break Leaving Discipline</div>'
-     +'<div class="sub">Staff: scan as the class leaves for break</div>'
-     +'<div class="qr"><img src="'+qr+'" alt=""></div>'
-     +'<div class="times">'+slots.map(function(x){return '<span>'+esc(x.label)+' · '+esc(x.time)+'</span>';}).join('')+'</div></div>';
-  };
+  if(!w){toast('Allow pop-ups to print the poster','danger');return;}
+  const qr='https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=20&data='+encodeURIComponent(bdClassUrl(''));
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Break Leaving QR</title><style>'
    +'@page{size:A4;margin:0}body{margin:0;font-family:Arial,sans-serif;color:#1a3a5c}'
-   +'.poster{padding:24mm 18mm;text-align:center;page-break-after:always;min-height:297mm;box-sizing:border-box}'
-   +'.poster:last-child{page-break-after:auto}'
+   +'.poster{padding:22mm 18mm;text-align:center;box-sizing:border-box}'
    +'.school{font-size:22px;font-weight:bold}'
-   +'.cls{font-size:96px;font-weight:bold;color:#1a5f7a;margin:14px 0 0}'
-   +'.title{font-size:30px;font-weight:bold;margin-top:6px}'
-   +'.sub{font-size:16px;color:#555;margin:8px 0 18px}'
+   +'.title{font-size:34px;font-weight:bold;color:#1a5f7a;margin-top:12px}'
+   +'.sub{font-size:16px;color:#555;margin:8px 0 20px}'
    +'.qr{display:inline-block;border:8px solid #1a5f7a;border-radius:18px;padding:16px;background:#fff}'
-   +'.qr img{width:280px;height:280px;display:block}'
-   +'.times{margin-top:22px;display:flex;gap:18px;justify-content:center;font-size:15px}'
-   +'.times span{background:#eef4f8;border-radius:20px;padding:6px 16px}'
-   +'</style></head><body>'+list.map(page).join('')
-   +'<script>setTimeout(function(){window.print();},900);<\/script></body></html>');
+   +'.qr img{width:300px;height:300px;display:block}'
+   +'.steps{margin:20px auto 0;font-size:15px;line-height:1.9;display:inline-block;text-align:left}'
+   +'table{margin:18px auto 0;border-collapse:collapse;font-size:14px}'
+   +'th,td{border:1px solid #cfdde8;padding:7px 16px}th{background:#1a5f7a;color:#fff}'
+   +'</style></head><body><div class="poster">'
+   +'<div class="school">'+esc(s.schoolName||'School')+'</div>'
+   +'<div class="title">Break Class Leaving Discipline</div>'
+   +'<div class="sub">Staff: scan as a class leaves for break</div>'
+   +'<div class="qr"><img src="'+qr+'" alt=""></div>'
+   +'<div><div class="steps">1. Scan and sign in<br>2. Tap the class<br>3. Rate how the class left</div></div>'
+   +'<table><tr><th>Grades</th><th>Break</th><th>Salah Break</th></tr>'
+   +'<tr><td>1 – 3</td><td>9:15 – 9:30</td><td>—</td></tr>'
+   +'<tr><td>4 – 12</td><td>10:00 – 10:15</td><td>12:30 – 12:45</td></tr></table>'
+   +'</div><script>setTimeout(function(){window.print();},900);<\/script></body></html>');
   w.document.close();
 }
 
