@@ -8178,7 +8178,7 @@ const AUTO_REFRESH_MAP = {
   reexam_schedules:['rReexam'],
   duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
   duty_places:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
-  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],school_timetable:['rBreakDiscipline'],sub_preferences:['rSubstitutions'],
+  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],school_timetable:['rBreakDiscipline','rPeriodDiscipline'],sub_preferences:['rSubstitutions'],
   sessions:['rSessions'],active_session_id:['rSessions'],
   todos:['rMyTodos']
 };
@@ -13145,6 +13145,73 @@ function pdBehBadges(list){
    +list.map(function(b){return '<span class="badge bgr" style="font-size:9px">'+esc(b)+'</span>';}).join('')+'</div>';
 }
 
+// ── Marks out of ten ──────────────────────────────────────
+// Every period, and every break, is given a mark out of 10. Records saved
+// before marks existed carry a rating word instead; they are read as marks
+// (Excellent 10, V. Good 8, Good 6, Bad 3) and are never rewritten.
+const PD_MAX=10;
+const PD_MARKS=[0,1,2,3,4,5,6,7,8,9,10];
+const PD_RATING_MARKS={'Excellent':10,'V. Good':8,'Good':6,'Bad':3};
+const PD_MARK_GUIDE='10 outstanding · 8–9 very good · 6–7 good · 4–5 needs improvement · 0–3 poor';
+function pdHasMarks(r){return !!r&&r.marks!==undefined&&r.marks!==null&&r.marks!==''&&!isNaN(Number(r.marks));}
+function pdClampMarks(m){return Math.max(0,Math.min(PD_MAX,Math.round(Number(m)*2)/2));}
+function pdMarksOf(r){
+  if(!r)return 0;
+  if(pdHasMarks(r))return pdClampMarks(r.marks);
+  const v=PD_RATING_MARKS[r.rating];
+  return typeof v==='number'?v:0;
+}
+// The word saved alongside a mark, so older screens and exports still read
+function pdRatingForMarks(m){return m>=9?'Excellent':m>=7?'V. Good':m>=5?'Good':'Bad';}
+function pdMarkTone(m){
+  if(m===null||m===undefined||isNaN(m))return null;
+  if(m>=9)return {bg:'#e8f7ee',fg:'#15803d',badge:'bgn'};
+  if(m>=7)return {bg:'#eef4fb',fg:'#1a5f7a',badge:'bbl'};
+  if(m>=5)return {bg:'#fff8e1',fg:'#8a6100',badge:'bgo'};
+  return {bg:'#fdecec',fg:'#a52424',badge:'brd'};
+}
+function pdFmt(n){n=Number(n)||0;return String(Math.round(n*10)/10);}
+function pdMarkBadge(m,attrs){
+  const t=pdMarkTone(m)||{badge:'bgr'};
+  return '<span class="badge '+t.badge+'"'+(attrs||'')+'>'+pdFmt(m)+'/'+PD_MAX+'</span>';
+}
+// A row of 0-10 buttons; onpick names a global function taking the mark.
+function pdMarksPicker(boxId,current,onpick){
+  return '<div id="'+boxId+'" style="display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:4px">'
+   +PD_MARKS.map(function(m){
+     const on=current!==null&&current!==undefined&&Number(current)===m;
+     return '<button type="button" class="btn '+(on?'bp':'bg2')+' bsm" data-m="'+m+'" onclick="'+onpick+'('+m+')" style="justify-content:center;padding:9px 0;font-weight:700;min-width:0">'+m+'</button>';
+   }).join('')+'</div>';
+}
+function pdMarksPickerSet(boxId,m){
+  const box=document.getElementById(boxId);
+  if(!box)return;
+  [].slice.call(box.querySelectorAll('button')).forEach(function(b){
+    const on=m!==null&&m!==undefined&&Number(b.getAttribute('data-m'))===Number(m);
+    b.className='btn '+(on?'bp':'bg2')+' bsm';
+    b.style.justifyContent='center';b.style.padding='9px 0';b.style.fontWeight='700';b.style.minWidth='0';
+  });
+}
+function pdPickMarks(m){
+  window._pdForm.marks=m;
+  pdMarksPickerSet('pd-f-rate',m);
+}
+// What the timetable says about the period being recorded
+function pdEntryTtHint(){
+  const el=document.getElementById('pd-f-tt');
+  if(!el)return;
+  const date=(document.getElementById('pd-f-date')||{}).value||'';
+  const p=parseInt((document.getElementById('pd-f-per')||{}).value||'0',10);
+  const cls=(document.getElementById('pd-f-cls')||{}).value||'';
+  if(!date||!p||!cls||typeof bdTeacherAt!=='function'){el.textContent='';return;}
+  const t=bdTeacherAt(cls,date,p);
+  el.innerHTML=(t.subject||t.name)?'\u{1f4c5} Timetable: '+esc(t.subject||'—')+(t.name?' · '+esc(t.name):''):'';
+}
+function pdpMarks(m){
+  window._pdp.marks=m;
+  pdMarksPickerSet('pdp-r',m);
+}
+
 function pdRating(v){return PD_RATINGS.find(function(r){return r.v===v;})||{v:v||'',i:'',c:'var(--tx2)',bg:'bgr'};}
 function getPeriodDiscipline(){
   // A device that pulled the collection while it was stored keyed by record id
@@ -13298,9 +13365,9 @@ function pdExclDel(id){
 
 // ═══════════════════════════════════════════════════════════
 // BEST CLASS OF THE WEEK
-// Ranks classes from what teachers recorded period by period.
-// Each rating is worth points; a class is scored on its average
-// across every period recorded for it that week.
+// Ranks classes on the marks out of 10 that teachers give each
+// lesson and the admin staff give each break, added up day by day
+// (see MARKS FOR THE DAY below).
 // ═══════════════════════════════════════════════════════════
 const PD_POINTS={'Excellent':4,'V. Good':3,'Good':2,'Bad':0};
 function pdPoints(rating){const v=PD_POINTS[rating];return typeof v==='number'?v:0;}
@@ -13388,19 +13455,21 @@ function pdMissPenalty(missing){return (missing||0)*PD_MISS_PENALTY;}
 // and the empty Thursday slots carry no name, so the rater types one in.
 const SCHOOL_TIMETABLE={"1-A":{"ct":"M.Shaban","d":{"Sunday":[["OL","M.shaban"],["PE","Amr"],["Art",""],["Eng","Binu"],["Math","Asad"],["SST.E","Abdulwakeel"],["",""]],"Monday":[["Eng","Binu"],["SST.E","Abdulwakeel"],["OL","M.shaban"],["Eng","Binu"],["IST","Salah"],["Math","Asad"],["",""]],"Tuesday":[["OL","M.shaban"],["Sci","Mobeen"],["IST","Salah"],["Math","Asad"],["Eng","Binu"],["Comp","Fiaz"],["",""]],"Wednesday":[["Eng","Binu"],["Sci","Mobeen"],["Math","Asad"],["OL","M.shaban"],["Q","Salah"],["Comp","Fiaz"],["",""]],"Thursday":[["Sci","Mobeen"],["OL","M.shaban"],["Math","Asad"],["Eng","Binu"],["PE","Amr"],["Q","Salah"],["",""]]}},"1-B":{"ct":"ASAD","d":{"Sunday":[["Math","Asad"],["Eng","Binu"],["Q","Salah"],["PE","Amr"],["OL","M.shaban"],["Eng","Binu"],["",""]],"Monday":[["OL","M.shaban"],["Eng","Binu"],["Comp","Fiaz"],["Math","Asad"],["Sci","Mobeen"],["PE","Amr"],["",""]],"Tuesday":[["Eng","Binu"],["IST","Salah"],["OL","M.shaban"],["Art",""],["Sci","Mobeen"],["Math","Asad"],["",""]],"Wednesday":[["Comp","Fiaz"],["SST.E","Abdulwakeel"],["Eng","Binu"],["Q","Salah"],["OL","M.shaban"],["Math","Asad"],["",""]],"Thursday":[["SST.E","Abdulwakeel"],["Math","Asad"],["OL","M.shaban"],["IST","Salah"],["Sci","Mobeen"],["Eng","Binu"],["",""]]}},"1-C":{"ct":"BINU","d":{"Sunday":[["IST","Salah / Nawaz"],["Math","Asad"],["Comp","Fiaz"],["Sci","Mobeen"],["Eng","Binu"],["OL","M.shaban / Ismail"],["",""]],"Monday":[["Math","Asad"],["IST","Salah / Nawaz"],["Eng","Binu"],["Art",""],["Eng","Binu"],["OL","M.shaban"],["",""]],"Tuesday":[["Q","Salah"],["PE","Amr"],["Math","Asad"],["Sci","Mobeen"],["OL","M.shaban / Ismail"],["Eng","Binu"],["",""]],"Wednesday":[["Sci","Mobeen"],["Eng","Binu"],["Comp","Fiaz"],["Math","Asad"],["SST.E","Abdulwakeel"],["OL","M.shaban / Ismail"],["",""]],"Thursday":[["Q","Salah"],["SST.E","Abdulwakeel"],["Eng","Binu"],["Math","Asad"],["OL","M.shaban"],["PE","Amr"],["",""]]}},"2-A":{"ct":"Mobeen","d":{"Sunday":[["Eng","Abdulwakeel"],["OL","M.Muneer"],["PE","Amr"],["Eng","Abdulwakeel"],["Q","Saffir"],["Math","Asad"],["",""]],"Monday":[["Sci","Mobeen"],["Math","Asad"],["PE","Amr"],["Q","Saffir"],["OL","M.Muneer"],["Eng","Abdulwakeel"],["",""]],"Tuesday":[["Math","Asad"],["IST","Abdelqawy"],["Sci","Mobeen"],["SST.E","Binu"],["OL","M.Muneer"],["Eng","Abdulwakeel"],["",""]],"Wednesday":[["Math","Asad"],["Comp","Nawaz"],["Eng","Abdulwakeel"],["OL","M.Muneer"],["SST.E","Binu"],["Sci","Mobeen"],["",""]],"Thursday":[["Math","Asad"],["Art",""],["OL","M.Muneer"],["Comp","Nawaz"],["IST","Abdelqawy"],["Eng","Abdulwakeel"],["",""]]}},"2-B":{"ct":"ABDULWAKEEL","d":{"Sunday":[["OL","M.Muneer"],["Sci","Mobeen"],["Math","Asad"],["IST","Abdelqawy"],["Eng","Abdulwakeel"],["Comp","Nawaz"],["",""]],"Monday":[["OL","M.Muneer"],["Art",""],["Eng","Abdulwakeel"],["IST","Abdelqawy"],["Math","Asad"],["Q","Saffir"],["",""]],"Tuesday":[["OL","M.Muneer"],["SST.E","Binu"],["Eng","Abdulwakeel"],["PE","Amr"],["Math","Asad"],["Sci","Mobeen"],["",""]],"Wednesday":[["Eng","Abdulwakeel"],["Math","Asad"],["OL","M.Muneer"],["Eng","Abdulwakeel"],["PE","Amr"],["Q","Saffir"],["",""]],"Thursday":[["OL","M.Muneer"],["Sci","Mobeen"],["Comp","Nawaz"],["Eng","Abdulwakeel"],["SST.E","Binu"],["Math","Asad"],["",""]]}},"2-C":{"ct":"M.MUNEER","d":{"Sunday":[["SST.E","Binu"],["Eng","Abdulwakeel"],["Comp","Nawaz"],["Q","Saffir"],["OL","M.Muneer"],["Math","O.GALALY"],["",""]],"Monday":[["Math","O.GALALY"],["OL","M.Muneer / Ismail"],["IST","Nawaz / Abdelqawy"],["PE","Amr"],["Eng","Abdulwakeel"],["Sci","Mobeen"],["",""]],"Tuesday":[["Eng","Abdulwakeel"],["Math","O.GALALY"],["Art",""],["OL","M.Muneer / Ismail"],["Eng","Abdulwakeel"],["PE","Amr"],["",""]],"Wednesday":[["IST","Nawaz / Abdelqawy"],["OL","M.Muneer"],["Sci","Mobeen"],["Math","O.GALALY"],["Comp","Nawaz"],["Eng","Abdulwakeel"],["",""]],"Thursday":[["SST.E","Binu"],["OL","M.Muneer / Ismail"],["Q","Saffir"],["Math","O.GALALY"],["Eng","Abdulwakeel"],["Sci","Mobeen"],["",""]]}},"3-A":{"ct":"Mohammed Abdelhafiz","d":{"Sunday":[["IST","Saffir"],["Eng","M.Hafiz"],["Q","Saffir"],["Sci","WAHAJ"],["Math","O.GALALY"],["OL","Mustafa"],["",""]],"Monday":[["OL","Mustafa"],["Math","O.GALALY"],["Eng","M.Hafiz"],["Sci","WAHAJ"],["PE","Amr"],["Eng","M.Hafiz"],["",""]],"Tuesday":[["Eng","M.Hafiz"],["OL","Mustafa"],["Comp","Fiaz"],["Math","O.GALALY"],["Q","Saffir"],["Sci","WAHAJ"],["",""]],"Wednesday":[["OL","Mustafa"],["Math","O.GALALY"],["Eng","M.Hafiz"],["Art",""],["IST","Saffir"],["SST.E","Nayel"],["",""]],"Thursday":[["Eng","M.Hafiz"],["PE","Amr"],["Comp","Fiaz"],["OL","Mustafa"],["SST.E","Nayel"],["Math","O.GALALY"],["",""]]}},"3-B":{"ct":"Fiaz","d":{"Sunday":[["Math","O.GALALY"],["Art",""],["Eng","M.Hafiz"],["OL","Mustafa"],["PE","Amr"],["IST","Saffir"],["",""]],"Monday":[["Eng","M.Hafiz"],["Q","Saffir"],["Sci","WAHAJ"],["Comp","Fiaz"],["Math","O.GALALY"],["OL","Mustafa"],["",""]],"Tuesday":[["OL","Mustafa"],["SST.E","Nayel"],["Math","O.GALALY"],["Comp","Fiaz"],["Eng","M.Hafiz"],["Q","Saffir"],["",""]],"Wednesday":[["Eng","M.Hafiz"],["OL","Mustafa"],["IST","Saffir"],["Sci","WAHAJ"],["Eng","M.Hafiz"],["Math","O.GALALY"],["",""]],"Thursday":[["Math","O.GALALY"],["SST.E","Nayel"],["PE","Amr"],["Sci","WAHAJ"],["Eng","M.Hafiz"],["OL","Mustafa"],["",""]]}},"3-C":{"ct":"MUSTAFA","d":{"Sunday":[["Eng","M.Hafiz"],["SST.E","Nayel"],["OL","Mustafa"],["Math","O.GALALY"],["Sci","Mobeen"],["Comp","Fiaz"],["",""]],"Monday":[["Art",""],["Eng","M.Hafiz"],["OL","Mustafa"],["Sci","Mobeen"],["Q","Saffir"],["Math","O.GALALY"],["",""]],"Tuesday":[["Sci","Mobeen"],["Eng","M.Hafiz"],["Q","Saffir"],["OL","Mustafa"],["SST.E","Nayel"],["Math","O.GALALY"],["",""]],"Wednesday":[["Math","O.GALALY"],["IST","Saffir"],["PE","Amr"],["Eng","M.Hafiz"],["OL","Mustafa"],["Eng","M.Hafiz"],["",""]],"Thursday":[["PE","Amr"],["Eng","M.Hafiz"],["OL","Mustafa"],["Comp","Fiaz"],["Math","O.GALALY"],["IST","Saffir"],["",""]]}},"3-D":{"ct":"OMAR GALALY","d":{"Sunday":[["Sci","Mobeen"],["OL","Mustafa / Ismail"],["Math","O.GALALY"],["Comp","Fiaz"],["Eng","M.Hafiz"],["Art",""],["",""]],"Monday":[["PE","Amr"],["Sci","Mobeen"],["Math","O.GALALY"],["OL","Mustafa / Ismail"],["SST.E","Nayel"],["Comp","Fiaz"],["",""]],"Tuesday":[["Math","O.GALALY"],["IST","Saffir / Nawaz"],["PE","Amr"],["Eng","M.Hafiz"],["OL","Mustafa"],["Eng","M.Hafiz"],["",""]],"Wednesday":[["Q","Saffir"],["Eng","M.Hafiz"],["Math","O.GALALY"],["Sci","Mobeen"],["SST.E","Nayel"],["OL","Mustafa"],["",""]],"Thursday":[["OL","Mustafa / Ismail"],["IST","Saffir / Nawaz"],["Math","O.GALALY"],["Eng","M.Hafiz"],["Q","Saffir"],["Eng","M.Hafiz"],["",""]]}},"4-A":{"ct":"Bhaskar","d":{"Sunday":[["OL","M.Elsayed / Ismail"],["IST","I.Shokry / Nawaz"],["Math","Bhaskar"],["Sci","M.Ayman"],["Eng","Hosni"],["PE","Ahmed Ibrahim"],["SST A","M.Muneer"]],"Monday":[["Comp","Fiaz"],["OL","M.Elsayed"],["Math","Bhaskar"],["Q","I.Shokry"],["Eng","Hosni"],["Sci","M.Ayman"],["IST","I.Shokry"]],"Tuesday":[["Art",""],["Eng","Hosni"],["OL","M.Elsayed / Ismail"],["IST","I.Shokry / Nawaz"],["Math","Bhaskar"],["Sci","M.Ayman"],["Fr/NA","Soliman / M.shaban"]],"Wednesday":[["Fr/NA","Soliman / M.shaban"],["SST.E","Nayel"],["Eng","Hosni"],["Sci","M.Ayman"],["Math","Bhaskar"],["Q","I.Shokry"],["SST A","M.Muneer"]],"Thursday":[["Eng","Hosni"],["Sci","M.Ayman"],["SST.E","Nayel"],["Eng","Hosni"],["Math","Bhaskar"],["OL","M.Elsayed / Ismail"],["Comp","Fiaz"]]}},"4-B":{"ct":"Hosni","d":{"Sunday":[["SST.E","Nayel"],["Eng","Hosni"],["SST A","M.Elsayed"],["Math","Bhaskar"],["IST","I.Shokry"],["Sci","M.Ayman"],["Fr/NA","Soliman"]],"Monday":[["Math","Bhaskar"],["Eng","Hosni"],["Sci","M.Ayman"],["Eng","Hosni"],["OL","M.Elsayed"],["SST.E","Nayel"],["PE","Ahmed Ibrahim"]],"Tuesday":[["Comp","Fiaz"],["Sci","M.Ayman"],["IST","I.Shokry"],["Math","Bhaskar"],["Q","I.Shokry"],["OL","M.Elsayed"],["Eng","Hosni"]],"Wednesday":[["Math","Bhaskar"],["OL","M.Elsayed"],["IST","I.Shokry"],["Eng","Hosni"],["Comp","Fiaz"],["Sci","M.Ayman"],["Fr/NA","Soliman"]],"Thursday":[["Art",""],["SST A","M.Elsayed"],["Eng","Hosni"],["Math","Bhaskar"],["Sci","M.Ayman"],["Q","I.Shokry"],["OL","M.Elsayed"]]}},"4-C":{"ct":"MUHAMMED ELSAYED","d":{"Sunday":[["IST","I.Shokry"],["Sci","M.Ayman"],["Eng","Hosni"],["Eng","Hosni"],["Comp","Fiaz"],["Math","Bhaskar"],["SST A","M.Elsayed"]],"Monday":[["Sci","M.Ayman"],["SST.E","Nayel"],["Eng","Hosni"],["Math","Bhaskar"],["Art",""],["OL","M.Elsayed"],["Fr/NA","Soliman"]],"Tuesday":[["Math","Bhaskar"],["OL","M.Elsayed"],["Sci","M.Ayman"],["Eng","Hosni"],["Comp","Fiaz"],["Q","I.Shokry"],["PE","Amr"]],"Wednesday":[["IST","I.Shokry"],["Q","I.Shokry"],["Math","Bhaskar"],["OL","M.Elsayed"],["Sci","M.Ayman"],["SST A","M.Elsayed"],["Eng","Hosni"]],"Thursday":[["Math","Bhaskar"],["IST","I.Shokry"],["OL","M.Elsayed"],["Fr/NA","Soliman"],["Eng","Hosni"],["Sci","M.Ayman"],["SST.E","Nayel"]]}},"4-D":{"ct":"Mohd. Ayman","d":{"Sunday":[["Comp","Fiaz"],["Math","Bhaskar"],["Sci","M.Ayman"],["IST","I.Shokry"],["OL","M.Elsayed"],["SST.E","Nayel"],["Eng","Hosni"]],"Monday":[["Fr/NA","Soliman"],["Sci","M.Ayman"],["Q","I.Shokry"],["OL","M.Elsayed"],["IST","I.Shokry"],["Math","Bhaskar"],["Eng","Hosni"]],"Tuesday":[["SST.E","Nayel"],["Q","I.Shokry"],["Math","Bhaskar"],["Sci","M.Ayman"],["SST A","M.Elsayed"],["Eng","Hosni"],["OL","M.Elsayed"]],"Wednesday":[["Sci","M.Ayman"],["Eng","Hosni"],["Fr/NA","Soliman"],["PE","Amr"],["Eng","Hosni"],["Math","Bhaskar"],["SST A","M.Elsayed"]],"Thursday":[["OL","M.Elsayed"],["Comp","Fiaz"],["Sci","M.Ayman"],["IST","I.Shokry"],["Art",""],["Eng","Hosni"],["Math","Bhaskar"]]}},"5-A":{"ct":"AHMED SALEH","d":{"Sunday":[["Eng","Rizwan"],["Sci","WAHAJ"],["Q","Abdelqawy"],["SST A","M.Muneer"],["OL","A.Saleh"],["Math","Daud"],["PE","Ahmed Ibrahim"]],"Monday":[["OL","A.Saleh"],["Q","Abdelqawy"],["Eng","Rizwan"],["Fr/NA","Soliman"],["SST.E","Nawaz"],["Math","Daud"],["Sci","WAHAJ"]],"Tuesday":[["Eng","Rizwan"],["OL","A.Saleh"],["IST","Abdelqawy"],["Math","Daud"],["Comp","Faisal"],["IST","Abdelqawy"],["Sci","WAHAJ"]],"Wednesday":[["Sci","WAHAJ"],["Comp","Faisal"],["Eng","Rizwan"],["OL","A.Saleh"],["Math","Daud"],["IST","Abdelqawy"],["Eng","Rizwan"]],"Thursday":[["Eng","Rizwan"],["Math","Daud"],["Sci","WAHAJ"],["Art",""],["SST A","M.Muneer"],["SST.E","Nawaz"],["Fr/NA","Soliman"]]}},"5-B":{"ct":"RIZWAN","d":{"Sunday":[["Math","Daud"],["Fr/NA","Soliman / M.shaban"],["OL","A.Saleh / Ismail"],["Eng","Rizwan"],["Sci","WAHAJ"],["Eng","Rizwan"],["IST","M.Atif Anwar / Abdelqawy"]],"Monday":[["Sci","WAHAJ"],["Math","Daud"],["OL","A.Saleh / Ismail"],["SST A","M.Muneer"],["Fr/NA","Soliman / M.shaban"],["Eng","Rizwan"],["Comp","Faisal"]],"Tuesday":[["Q","Abdelqawy"],["Eng","Rizwan"],["SST A","M.Muneer"],["Sci","WAHAJ"],["SST.E","Nawaz"],["Math","Daud"],["Art",""]],"Wednesday":[["Comp","Faisal"],["Eng","Rizwan"],["IST","Abdelqawy"],["SST.E","Nawaz"],["Sci","WAHAJ"],["Math","Daud"],["OL","A.Saleh"]],"Thursday":[["Q","Abdelqawy"],["Eng","Rizwan"],["Math","Daud"],["IST","M.Atif Anwar / Abdelqawy"],["Sci","WAHAJ"],["PE","Ahmed Ibrahim"],["OL","A.Saleh / Ismail"]]}},"6-A":{"ct":"Daud","d":{"Sunday":[["Fr/NA","Soliman"],["Comp","Faisal"],["Math","Daud"],["Sci","BILAL"],["IST","Salah"],["OL","A.Saleh"],["Eng","Rizwan"]],"Monday":[["Sci","BILAL"],["PE","Ahmed Ibrahim"],["SST.E","Nayel"],["Eng","Rizwan"],["SST A","A.Saleh"],["Q","Abdelqawy"],["Math","Daud"]],"Tuesday":[["Math","Daud"],["Fr/NA","Soliman"],["Comp","Faisal"],["OL","A.Saleh"],["IST","Salah"],["Eng","Rizwan"],["Sci","BILAL"]],"Wednesday":[["SST A","A.Saleh"],["Art",""],["Math","Daud"],["SST.E","Nayel"],["OL","A.Saleh"],["Eng","Rizwan"],["Sci","BILAL"]],"Thursday":[["Math","Daud"],["OL","A.Saleh"],["Q","Abdelqawy"],["Eng","Rizwan"],["IST","Salah"],["Eng","Rizwan"],["Sci","BILAL"]]}},"6-B":{"ct":"Soliman","d":{"Sunday":[["Art",""],["Eng","Rizwan"],["Fr/NA","Soliman / M.shaban"],["Math","Daud"],["Q","Abdelqawy"],["Comp","Faisal"],["Sci","BILAL"]],"Monday":[["Eng","Rizwan"],["Sci","BILAL"],["Math","Daud"],["SST A","A.Saleh"],["Eng","Rizwan"],["IST","Salah / M.Ibrahim"],["OL","A.Saleh / Ismail"]],"Tuesday":[["Sci","BILAL"],["Math","Daud"],["Eng","Rizwan"],["Fr/NA","Soliman / M.shaban"],["PE","Ahmed Ibrahim"],["SST.E","Nayel"],["OL","A.Saleh"]],"Wednesday":[["SST.E","Nayel"],["Math","Daud"],["OL","A.Saleh / Ismail"],["Eng","Rizwan"],["Q","Abdelqawy"],["Sci","BILAL"],["IST","Salah"]],"Thursday":[["Sci","BILAL"],["IST","Salah / M.Ibrahim"],["OL","A.Saleh / Ismail"],["SST A","A.Saleh"],["Eng","Rizwan"],["Math","Daud"],["Comp","Faisal"]]}},"7-A":{"ct":"M.ATIF ANWAR","d":{"Sunday":[["IST","M.ANQARY"],["Eng","M.Atif Anwar"],["OL","Abdul Rehman"],["Sci","SHAN.Z"],["SST.E","Nayel"],["Math","SAJID"],["Comp","Faisal"]],"Monday":[["Eng","M.Atif Anwar"],["IST","M.ANQARY"],["Fr/NA","Soliman / Ahmed Ibrahim"],["Math","SAJID"],["Eng","M.Atif Anwar"],["Sci","SHAN.Z"],["OL","Abdul Rehman"]],"Tuesday":[["Eng","M.Atif Anwar"],["Sci","SHAN.Z"],["Math","SAJID"],["SST.E","Nayel"],["Q","Abdelqawy"],["OL","Abdul Rehman"],["Comp","Faisal"]],"Wednesday":[["IST","M.ANQARY"],["Q","Abdelqawy"],["SST A","Abdul Rehman"],["Sci","SHAN.Z"],["Sci","SHAN.Z"],["Eng","M.Atif Anwar"],["Math","SAJID"]],"Thursday":[["Fr/NA","Soliman / Ahmed Ibrahim"],["Eng","M.Atif Anwar"],["OL","Abdul Rehman"],["PE","Ahmed Ibrahim"],["Sci","SHAN.Z"],["SST A","Abdul Rehman"],["Math","SAJID"]]}},"7-B":{"ct":"SAJID","d":{"Sunday":[["Sci","SHAN.Z"],["IST","M.ANQARY / M.Ibrahim"],["SST.E","Nayel"],["Math","SAJID"],["Eng","M.Atif Anwar"],["Q","I.Shokry"],["OL","Abdul Rehman"]],"Monday":[["SST.E","Nayel"],["Comp","Faisal"],["Sci","SHAN.Z"],["Eng","M.Atif Anwar"],["OL","Abdul Rehman / Ismail"],["Math","SAJID"],["Sci","SHAN.Z"]],"Tuesday":[["OL","Abdul Rehman / Ismail"],["SST A","Abdul Rehman"],["Eng","M.Atif Anwar"],["IST","M.ANQARY / M.Ibrahim"],["Math","SAJID"],["Eng","M.Atif Anwar"],["Sci","SHAN.Z"]],"Wednesday":[["Eng","M.Atif Anwar"],["SST A","Abdul Rehman"],["Math","SAJID"],["Fr/NA","Soliman / Mustafa / Ahmed Ibrahim"],["OL","Abdul Rehman / Ismail"],["PE","Ahmed Ibrahim"],["Sci","SHAN.Z"]],"Thursday":[["Eng","M.Atif Anwar"],["Fr/NA","Soliman / Mustafa / Ahmed Ibrahim"],["Sci","SHAN.Z"],["Comp","Faisal"],["Q","I.Shokry"],["Math","SAJID"],["IST","M.ANQARY"]]}},"8-A":{"ct":"Abdul Rehman","d":{"Sunday":[["Eng","M.Atif Anwar"],["SST A","A.Saleh"],["Bio","BILAL"],["Fr/NA","Soliman / Ahmed Ibrahim"],["Phy","SAJID"],["OL","Abdul Rehman"],["Math","Zaheer"]],"Monday":[["Chem","Sahal"],["Eng","M.Atif Anwar"],["OL","Abdul Rehman"],["IST","M.ANQARY"],["Comp","Faisal"],["Q","M.ANQARY"],["Math","Zaheer"]],"Tuesday":[["Comp","Faisal"],["Math","Zaheer"],["Fr/NA","Soliman / Ahmed Ibrahim"],["OL","Abdul Rehman"],["SST A","A.Saleh"],["Phy","SAJID"],["Eng","M.Atif Anwar"]],"Wednesday":[["Math","Zaheer"],["Chem","Sahal"],["IST","M.ANQARY"],["Eng","M.Atif Anwar"],["Bio","BILAL"],["OL","Abdul Rehman"],["PE","Ahmed Ibrahim"]],"Thursday":[["Math","Zaheer"],["IST","M.ANQARY"],["Phy","SAJID"],["Bio","BILAL"],["Q","M.ANQARY"],["Eng","M.Atif Anwar"],["Chem","Sahal"]]}},"8-B":{"ct":"Sahal","d":{"Sunday":[["Bio","BILAL"],["Phy","SAJID"],["Math","Zaheer"],["OL","Abdul Rehman / Nawaz"],["Comp","Faisal"],["Eng","M.Atif Anwar"],["Chem","Sahal"]],"Monday":[["OL","Abdul Rehman / Nawaz"],["Math","Zaheer"],["Bio","BILAL"],["SST A","Abdul Rehman"],["Phy","SAJID"],["Eng","M.Atif Anwar"],["IST","M.ANQARY"]],"Tuesday":[["PE","Ahmed Ibrahim"],["Q","M.ANQARY"],["Bio","BILAL"],["Eng","M.Atif Anwar"],["IST","M.ANQARY / M.Ibrahim"],["Math","Zaheer"],["OL","Abdul Rehman / Nawaz"]],"Wednesday":[["Chem","Sahal"],["Fr/NA","Soliman / Ahmed Ibrahim"],["Eng","M.Atif Anwar"],["IST","M.ANQARY / M.Ibrahim"],["Phy","SAJID"],["Q","M.ANQARY"],["Math","Zaheer"]],"Thursday":[["Chem","Sahal"],["Math","Zaheer"],["Eng","M.Atif Anwar"],["SST A","Abdul Rehman"],["Fr/NA","Soliman / Ahmed Ibrahim"],["Comp","Faisal"],["OL","Abdul Rehman"]]}},"9-A":{"ct":"M.ANQARY","d":{"Sunday":[["PE","Ahmed Ibrahim"],["Bio","BILAL"],["Eng","M.Ibrahim"],["Chem","Sahal"],["Q","M.ANQARY"],["Math","Zaheer"],["IST","M.ANQARY"]],"Monday":[["Math","Zaheer"],["OL","Gomah"],["Comp","Faisal"],["Bio","BILAL"],["Eng","M.Ibrahim"],["SST A","Gomah"],["Phy","SAJID"]],"Tuesday":[["Eng","M.Ibrahim"],["NS","Sahal"],["OL","Gomah"],["Bio","BILAL"],["Math","Zaheer"],["Chem","Sahal"],["Phy","SAJID"]],"Wednesday":[["Eng","M.Ibrahim"],["SST A","Gomah"],["Bio","BILAL"],["Math","Zaheer"],["Comp","Faisal"],["Phy","SAJID"],["IST","M.ANQARY"]],"Thursday":[["Eng","M.Ibrahim"],["Phy","SAJID"],["Chem","Sahal"],["Q","M.ANQARY"],["OL","Gomah"],["IST","M.ANQARY"],["NM","Zaheer"]]}},"10-A":{"ct":"M.ZAHEER","d":{"Sunday":[["Eng","M.Ibrahim"],["Chem","Sahal"],["OL","Gomah"],["IST","M.ANQARY"],["Math","Zaheer"],["Phy","WAHAJ"],["",""]],"Monday":[["Eng","M.Ibrahim"],["Phy","WAHAJ"],["SST A","Gomah"],["Chem","Sahal"],["IST","M.ANQARY"],["Bio","BILAL"],["",""]],"Tuesday":[["Math","Zaheer"],["Eng","M.Ibrahim"],["Phy","WAHAJ"],["OL","Gomah"],["Bio","BILAL"],["IST","M.ANQARY"],["",""]],"Wednesday":[["OL","Gomah"],["Bio","BILAL"],["Eng","M.Ibrahim"],["Chem","Sahal"],["Math","Zaheer"],["Comp","Faisal"],["",""]],"Thursday":[["Phy","WAHAJ"],["Comp","Faisal"],["Bio","BILAL"],["Math","Zaheer"],["Chem","Sahal"],["",""],["",""]]}},"11-A":{"ct":"Salah","d":{"Sunday":[["OL","Gomah"],["Bio","SHAN.Z"],["Chem","Sahal"],["IST","Salah"],["Math","Daud"],["Eng","M.Ibrahim"],["",""]],"Monday":[["OL","Gomah"],["Phy","SAJID"],["Eng","M.Ibrahim"],["IST","Salah"],["Math","Daud"],["Comp","Faisal"],["",""]],"Tuesday":[["Chem","Sahal"],["Phy","SAJID"],["Math","Daud"],["Bio","SHAN.Z"],["OL","Gomah"],["Eng","M.Ibrahim"],["",""]],"Wednesday":[["Phy","SAJID"],["Bio","SHAN.Z"],["IST","Salah"],["Comp","Faisal"],["Chem","Sahal"],["SST A","Gomah"],["",""]],"Thursday":[["Bio","SHAN.Z"],["Chem","Sahal"],["Eng","M.Ibrahim"],["Math","Daud"],["Phy","SAJID"],["",""],["",""]]}},"12-A":{"ct":"SHAN ZAIB","d":{"Sunday":[["Phy","Zain"],["Math","Zaheer"],["Comp","Faisal"],["Eng","M.Ibrahim"],["Chem","Sahal"],["IST","Salah"],["",""]],"Monday":[["Phy","Zain"],["Eng","M.Ibrahim"],["Chem","Sahal"],["Bio","SHAN.Z"],["OL","Gomah"],["Math","Zaheer"],["",""]],"Tuesday":[["Phy","Zain"],["SST A","Gomah"],["Chem","Sahal"],["Math","Zaheer"],["Bio","SHAN.Z"],["IST","Salah"],["",""]],"Wednesday":[["Bio","SHAN.Z"],["IST","Salah"],["Math","Zaheer"],["OL","Gomah"],["Eng","M.Ibrahim"],["Chem","Sahal"],["",""]],"Thursday":[["Phy","Zain"],["Bio","SHAN.Z"],["Comp","Faisal"],["OL","Gomah"],["Eng","M.Ibrahim"],["",""],["",""]]}}};
 
+// Marks out of 10, with the band each descriptor covers. "marks" is what an
+// older rating word counts as.
 const BD_RATINGS=[
-  {v:'Exemplary',     i:'\u{1f31f}',bg:'bgn',drop:0,
+  {v:'Exemplary',     i:'\u{1f31f}',bg:'bgn',marks:10,band:'9–10',
    d:'Left in an orderly single-file line, led by the teacher'},
-  {v:'Proficient',    i:'\u{1f44d}',bg:'bbl',drop:0.05,
+  {v:'Proficient',    i:'\u{1f44d}',bg:'bbl',marks:8,band:'7–8',
    d:'Calm and orderly, though not in a line'},
-  {v:'Developing',    i:'\u{1f642}',bg:'bgo',drop:0.10,
+  {v:'Developing',    i:'\u{1f642}',bg:'bgo',marks:6,band:'5–6',
    d:'Noisy or hurried, but still under control'},
-  {v:'Unsatisfactory',i:'\u{1f61f}',bg:'brd',drop:0.50,
+  {v:'Unsatisfactory',i:'\u{1f61f}',bg:'brd',marks:3,band:'2–4',
    d:'Running or rushing out of the classroom'},
-  {v:'Unacceptable',  i:'⛔',   bg:'brd',drop:1.00,
+  {v:'Unacceptable',  i:'⛔',   bg:'brd',marks:0,band:'0–1',
    d:'Unsafe exit — pushing, shoving or running recklessly'}
 ];
-function bdRating(v){return BD_RATINGS.find(function(r){return r.v===v;})||{v:v||'',i:'',bg:'bgr',drop:0,d:''};}
+function bdRating(v){return BD_RATINGS.find(function(r){return r.v===v;})||{v:v||'',i:'',bg:'bgr',marks:0,band:'',d:''};}
 
 function bdSlotsFor(cls){
   const g=pdGradeOf(cls);
@@ -13430,17 +13499,18 @@ function bdSameName(a,b){
 // A split lesson (the class divided into two language or Islamic groups)
 // has two teachers, and both are named. A substitute recorded for that class
 // and period is named alongside the teacher they were covering.
-function bdTeacherFor(cls,date,slotId){
-  const slot=bdSlotsFor(cls).find(function(s){return s.id===slotId;});
-  if(!slot)return {name:'',names:[],subject:'',source:'none',period:0};
+// Who was teaching a class in a given period: the timetable, with any
+// substitute recorded for that class and period named alongside the teacher
+// they were covering. A split lesson names both teachers.
+function bdTeacherAt(cls,date,period){
   const day=getDayOfWeek(date);
   const tt=bdTimetable(cls);
   const row=tt&&tt.d?tt.d[day]:null;
-  const cell=row?row[slot.after-1]:null;
+  const cell=row?row[period-1]:null;
   const subject=cell?cell[0]:'';
   const planned=cell&&cell[1]?cell[1].split(' / ').filter(Boolean):[];
   const subs=(DB.get('substitutions')||[]).filter(function(s){
-    return s&&s.date===date&&Number(s.periodNumber)===slot.after&&bdSameClass(s.class||'',cls)&&s.substituteName;
+    return s&&s.date===date&&Number(s.periodNumber)===Number(period)&&bdSameClass(s.class||'',cls)&&s.substituteName;
   });
   const names=planned.slice();
   const covering=[];
@@ -13451,9 +13521,15 @@ function bdTeacherFor(cls,date,slotId){
     covering.push({sub:s.substituteName,absent:s.absentName||''});
   });
   const out={name:names.join(' / '),names:names,planned:planned,subject:subject,
-    period:slot.after,split:planned.length>1,covering:covering};
+    period:period,split:planned.length>1,covering:covering};
   out.source=subs.length?'substitute':(names.length?'timetable':(subject?'group':'none'));
   return out;
+}
+// Who led the class out: whoever taught the lesson just before the break.
+function bdTeacherFor(cls,date,slotId){
+  const slot=bdSlotsFor(cls).find(function(s){return s.id===slotId;});
+  if(!slot)return {name:'',names:[],subject:'',source:'none',period:0};
+  return bdTeacherAt(cls,date,slot.after);
 }
 
 function bdTeacherHint(t){
@@ -13523,22 +13599,21 @@ async function appendBreakDiscipline(rec){
 
 // Marks lost for a class's break ratings over a stretch of days — used by
 // the class period discipline ranking.
-function bdDeductionFor(cls,from,to){
-  const out={drop:0,count:0,counts:{}};
-  getBreakDiscipline().forEach(function(r){
-    if(normClass(r.className)!==normClass(cls))return;
-    if(from&&r.date<from)return;
-    if(to&&r.date>to)return;
-    // A class written off for the whole day is not judged on that day at all
-    if(typeof getPdExclusions==='function'&&getPdExclusions().some(function(x){
-      return !x.period&&pdExclMatch(x,r.className,r.date);
-    }))return;
-    out.count++;
-    out.drop+=bdRating(r.rating).drop;
-    out.counts[r.rating]=(out.counts[r.rating]||0)+1;
-  });
-  out.drop=Math.round(out.drop*100)/100;
-  return out;
+// A break's mark out of 10. Ratings saved before marks existed are read as
+// marks (Exemplary 10, Proficient 8, Developing 6, Unsatisfactory 3,
+// Unacceptable 0) and never rewritten.
+function bdMarksOf(r){
+  if(!r)return 0;
+  if(pdHasMarks(r))return pdClampMarks(r.marks);
+  const x=BD_RATINGS.find(function(b){return b.v===r.rating;});
+  return x?x.marks:0;
+}
+function bdRatingForMarks(m){return m>=9?'Exemplary':m>=7?'Proficient':m>=5?'Developing':m>=2?'Unsatisfactory':'Unacceptable';}
+function bdPickMarks(m){
+  window._bdForm.marks=m;
+  pdMarksPickerSet('bd-f-rate',m);
+  const w=document.getElementById('bd-f-word');
+  if(w){const r=bdRating(bdRatingForMarks(m));w.innerHTML=r.i+' <strong>'+esc(r.v)+'</strong> — '+esc(r.d);}
 }
 
 // The break that is due, or just finished, right now
@@ -13561,8 +13636,8 @@ function rBreakDiscipline(){
   const todays=all.filter(function(r){return r.date===sel;});
   const classes=getAllClasses();
   const due=classes.reduce(function(n,c){return n+bdSlotsFor(c).length;},0);
-  const good=todays.filter(function(r){return r.rating==='Exemplary'||r.rating==='Proficient';}).length;
-  const poor=todays.filter(function(r){return r.rating==='Unsatisfactory'||r.rating==='Unacceptable';}).length;
+  const good=todays.filter(function(r){return bdMarksOf(r)>=7;}).length;
+  const poor=todays.filter(function(r){return bdMarksOf(r)<5;}).length;
   const q=String.fromCharCode(39);
   document.getElementById('pc').innerHTML=
    '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>\u{1f6b6} Break Class Leaving Discipline</h3>'
@@ -13574,13 +13649,13 @@ function rBreakDiscipline(){
    +'<button class="btn bg2 bsm" onclick="bdQrM()">\u{1f4f1} Break QR Code</button>'
    +(bdTtCanEdit()?'<button class="btn bg2 bsm" onclick="bdTimetableM()">\u{1f4c5} Timetable</button>':'')
    +'</div></div>'
-   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Rate how each class leaves its room for break. Grades 1–3 break 9:15–9:30 after period 2; grades 4–12 break 10:00–10:15 after period 3, and Salah break 12:30–12:45 after period 6. The teacher of the lesson before the break is filled in from the timetable. Ratings count towards the class period discipline ranking.'
+   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Rate how each class leaves its room for break. Grades 1–3 break 9:15–9:30 after period 2; grades 4–12 break 10:00–10:15 after period 3, and Salah break 12:30–12:45 after period 6. The teacher of the lesson before the break is filled in from the timetable. Each break is marked out of 10, and the marks are added to the class’s total for the day in Class Period Discipline.'
    +'<div style="margin-top:4px">\u{1f4c5} '+bdTtSourceLine()+'</div></div></div>'
    +((day==='Friday'||day==='Saturday')?'<div class="al aw" style="margin-bottom:12px">'+esc(day)+' is not a school day.</div>':'')
    +'<div class="cg g4" style="margin-bottom:13px">'
    +'<div class="stat bl"><div class="sl2">Rated</div><div class="sv">'+todays.length+'</div><div class="sb3">of '+due+' breaks on '+esc(sel)+'</div><div class="sic">\u{1f4dd}</div></div>'
-   +'<div class="stat gn"><div class="sl2">Orderly</div><div class="sv">'+good+'</div><div class="sb3">exemplary or proficient</div><div class="sic">\u{1f31f}</div></div>'
-   +'<div class="stat rd"><div class="sl2">Poor</div><div class="sv">'+poor+'</div><div class="sb3">unsatisfactory or unacceptable</div><div class="sic">\u{1f61f}</div></div>'
+   +'<div class="stat gn"><div class="sl2">Orderly</div><div class="sv">'+good+'</div><div class="sb3">7 or more out of 10</div><div class="sic">\u{1f31f}</div></div>'
+   +'<div class="stat rd"><div class="sl2">Poor</div><div class="sv">'+poor+'</div><div class="sb3">below 5 out of 10</div><div class="sic">\u{1f61f}</div></div>'
    +'<div class="stat go"><div class="sl2">Still to rate</div><div class="sv">'+Math.max(0,due-todays.length)+'</div><div class="sb3">on '+esc(sel)+'</div><div class="sic">⏳</div></div>'
    +'</div>'
    +bdGridCard(sel,todays,canRate)
@@ -13608,8 +13683,8 @@ function bdGridCard(sel,todays,canRate){
       return '<td class="c">'+(canRate?'<button class="btn bg2 bxs" onclick="bdEntryM(null,'+q+escJs(c)+q+','+q+slotId+q+')">+</button>':'<span style="color:var(--tx3)">·</span>')
         +(t.name?'<div style="font-size:9px;color:var(--tx3)">'+esc(t.name)+'</div>':'')+'</td>';
     }
-    const rt=bdRating(r.rating);
-    return '<td class="c"><span class="badge '+rt.bg+'" style="cursor:pointer" title="'+esc(r.rating+' — '+rt.d)+'" onclick="bdViewM('+q+escJs(r.id)+q+')">'+rt.i+' '+esc(r.rating)+'</span>'
+    const m=bdMarksOf(r);
+    return '<td class="c">'+pdMarkBadge(m,' style="cursor:pointer" title="'+esc(bdRatingForMarks(m))+'" onclick="bdViewM('+q+escJs(r.id)+q+')"')
       +'<div style="font-size:9px;color:var(--tx3)">'+esc(r.teacherName||'—')+'</div></td>';
   };
   return '<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>\u{1f4c5} '+esc(sel)+' — '+esc(getDayOfWeek(sel)||'')+'</h3></div>'
@@ -13618,7 +13693,7 @@ function bdGridCard(sel,todays,canRate){
    +classes.map(function(c){return '<tr><td><strong>'+esc(c)+'</strong></td>'+cell(c,'break')+cell(c,'salah')+'</tr>';}).join('')
    +'</tbody></table></div>'
    +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:10px;color:var(--tx3)">'
-   +BD_RATINGS.map(function(r){return '<span>'+r.i+' '+esc(r.v)+'</span>';}).join('')
+   +BD_RATINGS.map(function(r){return '<span>'+r.i+' '+esc(r.band)+' '+esc(r.v)+'</span>';}).join('')
    +'<span>— no Salah break for grades 1–3</span></div></div>';
 }
 
@@ -13634,14 +13709,14 @@ function bdListCard(all,canRate){
 function bdRowsHTML(list,canRate){
   if(!list.length)return '<div class="emp" style="padding:16px"><div class="ei">\u{1f6b6}</div><p style="font-size:11px">Nothing rated yet.</p></div>';
   const q=String.fromCharCode(39);
-  return '<div class="tw"><table style="font-size:11px"><thead><tr><th>Date</th><th>Class</th><th>Break</th><th>Teacher</th><th>How they left</th><th>Rated by</th><th></th></tr></thead><tbody>'
+  return '<div class="tw"><table style="font-size:11px"><thead><tr><th>Date</th><th>Class</th><th>Break</th><th>Teacher</th><th>Marks</th><th>Rated by</th><th></th></tr></thead><tbody>'
    +list.map(function(r){
-     const rt=bdRating(r.rating);
-     return '<tr'+(rt.drop>=0.5?' style="background:var(--dnbg)"':'')+'>'
+     const m=bdMarksOf(r);
+     return '<tr'+(m<5?' style="background:var(--dnbg)"':'')+'>'
       +'<td class="mono">'+esc(r.date)+'</td><td><strong>'+esc(r.className)+'</strong></td>'
       +'<td>'+esc(bdSlotLabel(r.slot))+'</td>'
       +'<td>'+esc(r.teacherName||'—')+'</td>'
-      +'<td><span class="badge '+rt.bg+'">'+rt.i+' '+esc(r.rating)+'</span>'
+      +'<td>'+pdMarkBadge(m)+' <span style="font-size:10px;color:var(--tx3)">'+esc(bdRatingForMarks(m))+'</span>'
         +(r.note?'<div style="font-size:10px;color:var(--tx3)">'+esc(r.note)+'</div>':'')+'</td>'
       +'<td style="font-size:10px;color:var(--tx3)">'+esc(r.recordedBy||'—')+'</td>'
       +'<td style="display:flex;gap:4px">'
@@ -13672,7 +13747,7 @@ function bdEntryM(id,presetCls,presetSlot){
   const cls=ex?ex.className:(presetCls||'');
   const slot=ex?ex.slot:(presetSlot||(cls?bdSlotNow(cls):''));
   const date=ex?ex.date:(window._bdDate||ymd(new Date()));
-  window._bdForm={id:id||null,rating:ex?ex.rating:'',teacherDirty:!!ex};
+  window._bdForm={id:id||null,marks:ex?bdMarksOf(ex):null,teacherDirty:!!ex};
   const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f6b6} '+(ex?'Edit':'Rate')+' Break Leaving</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
@@ -13691,18 +13766,17 @@ function bdEntryM(id,presetCls,presetSlot){
   +'<input id="bd-f-tch" list="bd-staff" autocomplete="off" oninput="window._bdForm.teacherDirty=true" value="'+esc(ex?ex.teacherName||'':'')+'">'
   +'<datalist id="bd-staff">'+getAssignableStaff().map(function(s){return '<option value="'+esc(s.name)+'">';}).join('')+'</datalist>'
   +'<div id="bd-f-hint" style="font-size:10px;color:var(--tx3);margin-top:3px"></div></div>'
-  +'<div class="fg"><label>How did the class leave? *</label><div id="bd-f-rate" style="display:flex;flex-direction:column;gap:5px">'
-  +BD_RATINGS.map(function(r){
-    return '<button type="button" class="btn bg2" data-r="'+esc(r.v)+'" onclick="bdPickRating('+q+escJs(r.v)+q+')" style="justify-content:flex-start;text-align:left;padding:9px 12px">'
-     +'<span style="font-size:18px;margin-right:9px">'+r.i+'</span><span><strong>'+esc(r.v)+'</strong>'
-     +'<span style="display:block;font-size:11px;font-weight:400;opacity:.85">'+esc(r.d)+'</span></span></button>';
-  }).join('')+'</div></div>'
+  +'<div class="fg"><label>How did the class leave? Marks out of '+PD_MAX+' *</label>'
+  +pdMarksPicker('bd-f-rate',window._bdForm.marks,'bdPickMarks')
+  +'<div id="bd-f-word" style="font-size:12px;margin-top:6px;min-height:16px"></div>'
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:4px;line-height:1.6">'
+  +BD_RATINGS.map(function(r){return '<div>'+r.i+' <strong>'+esc(r.band)+'</strong> '+esc(r.v)+' — '+esc(r.d)+'</div>';}).join('')+'</div></div>'
   +'<div class="fg"><label>Note (optional)</label><textarea id="bd-f-note" placeholder="Anything worth recording…" style="min-height:60px">'+esc(ex?ex.note||'':'')+'</textarea></div>'
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
   +'<button class="btn bp" onclick="bdSave()">'+T('save')+' →</button></div>',true);
   bdFillSlots(slot);
-  bdPickRating(window._bdForm.rating);
+  if(window._bdForm.marks!==null)bdPickMarks(window._bdForm.marks);
   bdFormChanged(false,true);
 }
 
@@ -13748,14 +13822,10 @@ function bdPickClass(c){
   bdFormChanged(false);
 }
 
+// Kept for anything still calling it with a rating word
 function bdPickRating(v){
-  window._bdForm.rating=v;
-  const box=document.getElementById('bd-f-rate');
-  if(!box)return;
-  [].slice.call(box.querySelectorAll('button')).forEach(function(b){
-    b.className='btn '+(b.getAttribute('data-r')===v?'bp':'bg2');
-    b.style.justifyContent='flex-start';b.style.textAlign='left';b.style.padding='9px 12px';
-  });
+  const x=BD_RATINGS.find(function(b){return b.v===v;});
+  bdPickMarks(x?x.marks:null);
 }
 
 function bdSave(){
@@ -13768,17 +13838,17 @@ function bdSave(){
   if(!date){toast('Choose the date','danger');return;}
   if(!cls){toast('Choose the class','danger');return;}
   if(!slot){toast('Choose the break','danger');return;}
-  if(!f.rating){toast('Say how the class left','danger');return;}
+  if(f.marks===null||f.marks===undefined){toast('Give the class a mark out of '+PD_MAX,'danger');return;}
   const clash=getBreakDiscipline().find(function(r){
     return r.id!==f.id&&r.date===date&&r.slot===slot&&normClass(r.className)===normClass(cls);
   });
   if(clash&&!f.id){
-    if(!confirm(cls+' '+bdSlotLabel(slot)+' on '+date+' is already rated "'+clash.rating+'" by '+(clash.recordedBy||'someone')+'.\n\nReplace it with yours?'))return;
+    if(!confirm(cls+' '+bdSlotLabel(slot)+' on '+date+' already has '+pdFmt(bdMarksOf(clash))+'/'+PD_MAX+' from '+(clash.recordedBy||'someone')+'.\n\nReplace it with yours?'))return;
     f.id=clash.id;
   }
   const t=bdTeacherFor(cls,date,slot);
   const now=new Date().toISOString();
-  const rec={id:f.id||nid('bdr'),date:date,className:cls,slot:slot,rating:f.rating,
+  const rec={id:f.id||nid('bdr'),date:date,className:cls,slot:slot,marks:f.marks,rating:bdRatingForMarks(f.marks),
     teacherName:teacher,
     teacherSource:(teacher&&teacher===t.name)?t.source:(teacher?'entered':''),
     subject:t.subject||'',period:t.period||0,note:note,
@@ -13786,7 +13856,7 @@ function bdSave(){
     created:now};
   closeM();
   appendBreakDiscipline(rec).catch(function(){}).then(function(){
-    logA('Rated '+cls+' leaving for '+bdSlotLabel(slot)+' on '+date+': '+f.rating);
+    logA('Rated '+cls+' leaving for '+bdSlotLabel(slot)+' on '+date+': '+pdFmt(f.marks)+'/'+PD_MAX);
     toast('Saved','success');
     if(_page==='break_discipline')rBreakDiscipline();
   });
@@ -13807,12 +13877,13 @@ function bdDelete(id){
 function bdViewM(id){
   const r=getBreakDiscipline().find(function(x){return x.id===id;});
   if(!r){toast('Rating not found','danger');return;}
-  const rt=bdRating(r.rating);
+  const m=bdMarksOf(r);
+  const rt=bdRating(bdRatingForMarks(m));
   openM('<div class="mh"><h3>\u{1f6b6} '+esc(r.className)+' · '+esc(bdSlotLabel(r.slot))+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
   +'<div class="cg g2" style="margin-bottom:12px">'
   +'<div class="stat bl"><div class="sl2">Date</div><div style="font-size:15px;font-weight:700;margin-top:6px">'+esc(r.date)+'</div><div class="sb3">'+esc(getDayOfWeek(r.date)||'')+'</div><div class="sic">\u{1f4c5}</div></div>'
-  +'<div class="stat '+(rt.drop>=0.5?'rd':'gn')+'"><div class="sl2">How they left</div><div style="font-size:15px;font-weight:700;margin-top:6px">'+rt.i+' '+esc(r.rating)+'</div><div class="sb3">'+esc(rt.d)+'</div><div class="sic">\u{1f6b6}</div></div>'
+  +'<div class="stat '+(m<5?'rd':'gn')+'"><div class="sl2">Marks</div><div style="font-size:15px;font-weight:700;margin-top:6px">'+pdFmt(m)+' / '+PD_MAX+'</div><div class="sb3">'+rt.i+' '+esc(rt.v)+' — '+esc(rt.d)+'</div><div class="sic">\u{1f6b6}</div></div>'
   +'</div>'
   +'<div class="fg"><label>Teacher leading the class out</label><div style="font-size:13px;font-weight:600">'+esc(r.teacherName||'—')
     +(r.subject?' <span style="font-weight:400;color:var(--tx3)">· '+esc(r.subject)+(r.period?' (period '+r.period+')':'')+'</span>':'')
@@ -13901,22 +13972,21 @@ function bdReportData(from,to){
   });
   const byClass={},byTeacher={};
   rows.forEach(function(r){
-    const c=r.className;
-    if(!byClass[c])byClass[c]={className:c,n:0,drop:0,counts:{}};
-    byClass[c].n++;byClass[c].drop+=bdRating(r.rating).drop;
-    byClass[c].counts[r.rating]=(byClass[c].counts[r.rating]||0)+1;
-    // A split lesson names two teachers; each is credited with the rating
+    const c=r.className,m=bdMarksOf(r);
+    if(!byClass[c])byClass[c]={className:c,n:0,sum:0,low:0};
+    byClass[c].n++;byClass[c].sum+=m;if(m<5)byClass[c].low++;
+    // A split lesson names two teachers; each is credited with the mark
     bdTeacherList(r.teacherName).forEach(function(t){
-      if(!byTeacher[t])byTeacher[t]={teacher:t,n:0,drop:0,counts:{},classes:{}};
-      byTeacher[t].n++;byTeacher[t].drop+=bdRating(r.rating).drop;
-      byTeacher[t].counts[r.rating]=(byTeacher[t].counts[r.rating]||0)+1;
+      if(!byTeacher[t])byTeacher[t]={teacher:t,n:0,sum:0,low:0,classes:{}};
+      byTeacher[t].n++;byTeacher[t].sum+=m;if(m<5)byTeacher[t].low++;
       byTeacher[t].classes[c]=1;
     });
   });
-  const classes=Object.keys(byClass).map(function(k){return byClass[k];})
-    .sort(function(a,b){return a.drop-b.drop||(b.counts.Exemplary||0)-(a.counts.Exemplary||0)||a.className.localeCompare(b.className);});
-  const teachers=Object.keys(byTeacher).map(function(k){return byTeacher[k];})
-    .sort(function(a,b){return (a.drop/a.n)-(b.drop/b.n)||b.n-a.n||a.teacher.localeCompare(b.teacher);});
+  const fin=function(x){x.avg=x.n?x.sum/x.n:0;x.possible=x.n*PD_MAX;x.pct=x.possible?Math.round(x.sum/x.possible*1000)/10:0;return x;};
+  const classes=Object.keys(byClass).map(function(k){return fin(byClass[k]);})
+    .sort(function(a,b){return b.avg-a.avg||b.n-a.n||a.className.localeCompare(b.className);});
+  const teachers=Object.keys(byTeacher).map(function(k){return fin(byTeacher[k]);})
+    .sort(function(a,b){return b.avg-a.avg||b.n-a.n||a.teacher.localeCompare(b.teacher);});
   return {rows:rows,classes:classes,teachers:teachers};
 }
 
@@ -13954,21 +14024,16 @@ function bdReportRender(){
   if(!d.rows.length){box.innerHTML='<div class="emp" style="padding:16px"><div class="ei">\u{1f6b6}</div><p style="font-size:11px">Nothing rated in these dates.</p></div>';return;}
   box.innerHTML='<div style="font-size:11px;color:var(--tx3);margin-bottom:6px"><strong>'+d.rows.length+'</strong> rating(s) · <strong>'+d.classes.length+'</strong> class(es) · <strong>'+d.teachers.length+'</strong> teacher(s)</div>'
    +'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:4px">By class — best first</div>'
-   +'<div class="tw" style="max-height:200px;overflow:auto;margin-bottom:10px"><table style="font-size:11px"><thead><tr><th>Class</th><th class="c">Rated</th>'
-   +BD_RATINGS.map(function(x){return '<th class="c" title="'+esc(x.v)+'">'+x.i+'</th>';}).join('')
-   +'<th class="c">Marks lost</th></tr></thead><tbody>'
+   +'<div class="tw" style="max-height:200px;overflow:auto;margin-bottom:10px"><table style="font-size:11px"><thead><tr><th>Class</th><th class="c">Breaks rated</th><th class="c">Marks</th><th class="c">Average /'+PD_MAX+'</th><th class="c">%</th><th class="c">Below 5</th></tr></thead><tbody>'
    +d.classes.map(function(c){
-     return '<tr><td><strong>'+esc(c.className)+'</strong></td><td class="c">'+c.n+'</td>'
-      +BD_RATINGS.map(function(x){return '<td class="c">'+(c.counts[x.v]||0)+'</td>';}).join('')
-      +'<td class="c">'+(c.drop?'−'+c.drop.toFixed(2):'—')+'</td></tr>';
+     return '<tr><td><strong>'+esc(c.className)+'</strong></td><td class="c">'+c.n+'</td><td class="c">'+pdFmt(c.sum)+' / '+c.possible+'</td>'
+      +'<td class="c">'+pdMarkBadge(c.avg)+'</td><td class="c">'+c.pct+'%</td><td class="c"'+(c.low?' style="color:var(--dn);font-weight:600"':'')+'>'+c.low+'</td></tr>';
    }).join('')+'</tbody></table></div>'
    +'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:4px">By teacher leading the class out</div>'
-   +'<div class="tw" style="max-height:200px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Teacher</th><th class="c">Times</th>'
-   +BD_RATINGS.map(function(x){return '<th class="c" title="'+esc(x.v)+'">'+x.i+'</th>';}).join('')
-   +'<th>Classes</th></tr></thead><tbody>'
+   +'<div class="tw" style="max-height:200px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Teacher</th><th class="c">Times</th><th class="c">Average /'+PD_MAX+'</th><th class="c">Below 5</th><th>Classes</th></tr></thead><tbody>'
    +d.teachers.map(function(t){
-     return '<tr><td><strong>'+esc(t.teacher)+'</strong></td><td class="c">'+t.n+'</td>'
-      +BD_RATINGS.map(function(x){return '<td class="c">'+(t.counts[x.v]||0)+'</td>';}).join('')
+     return '<tr><td><strong>'+esc(t.teacher)+'</strong></td><td class="c">'+t.n+'</td><td class="c">'+pdMarkBadge(t.avg)+'</td>'
+      +'<td class="c"'+(t.low?' style="color:var(--dn);font-weight:600"':'')+'>'+t.low+'</td>'
       +'<td style="font-size:10px;color:var(--tx3)">'+esc(Object.keys(t.classes).join(', '))+'</td></tr>';
    }).join('')+'</tbody></table></div>';
 }
@@ -13993,28 +14058,26 @@ function bdReportPDF(){
    +pdfHeaderHTML({subtitle:'Break Class Leaving Discipline'})
    +'<div style="font-size:11px;font-weight:bold">'+esc(r.from||'')+' to '+esc(r.to||'')+'</div>'
    +'<div style="font-size:9px;color:#555">'+d.rows.length+' rating(s) · '+d.classes.length+' class(es) · '+d.teachers.length+' teacher(s)</div>'
-   +'<h2>By class — best first</h2><table><thead>'+hdr(['Class','Rated'].concat(BD_RATINGS.map(function(x){return x.v;})).concat(['Marks lost']))+'</thead><tbody>'
+   +'<h2>By class — best first</h2><table><thead>'+hdr(['Class','Breaks Rated','Marks','Average /'+PD_MAX,'%','Below 5'])+'</thead><tbody>'
    +d.classes.map(function(c){
-     return '<tr><td><strong>'+esc(c.className)+'</strong></td><td class="c">'+c.n+'</td>'
-      +BD_RATINGS.map(function(x){return '<td class="c">'+(c.counts[x.v]||0)+'</td>';}).join('')
-      +'<td class="c">'+(c.drop?'-'+c.drop.toFixed(2):'—')+'</td></tr>';
+     return '<tr><td><strong>'+esc(c.className)+'</strong></td><td class="c">'+c.n+'</td><td class="c">'+pdFmt(c.sum)+' / '+c.possible+'</td>'
+      +'<td class="c"><strong>'+pdFmt(c.avg)+'</strong></td><td class="c">'+c.pct+'%</td><td class="c">'+c.low+'</td></tr>';
    }).join('')+'</tbody></table>'
-   +'<h2>By teacher leading the class out</h2><table><thead>'+hdr(['Teacher','Times'].concat(BD_RATINGS.map(function(x){return x.v;})).concat(['Classes']))+'</thead><tbody>'
+   +'<h2>By teacher leading the class out</h2><table><thead>'+hdr(['Teacher','Times','Average /'+PD_MAX,'Below 5','Classes'])+'</thead><tbody>'
    +d.teachers.map(function(t){
-     return '<tr><td><strong>'+esc(t.teacher)+'</strong></td><td class="c">'+t.n+'</td>'
-      +BD_RATINGS.map(function(x){return '<td class="c">'+(t.counts[x.v]||0)+'</td>';}).join('')
+     return '<tr><td><strong>'+esc(t.teacher)+'</strong></td><td class="c">'+t.n+'</td><td class="c"><strong>'+pdFmt(t.avg)+'</strong></td><td class="c">'+t.low+'</td>'
       +'<td>'+esc(Object.keys(t.classes).join(', '))+'</td></tr>';
    }).join('')+'</tbody></table>'
-   +'<h2>Every rating</h2><table><thead>'+hdr(['Date','Day','Class','Break','Teacher','How they left','Note','Rated by'])+'</thead><tbody>'
+   +'<h2>Every rating</h2><table><thead>'+hdr(['Date','Day','Class','Break','Teacher','Marks','Band','Note','Rated by'])+'</thead><tbody>'
    +d.rows.map(function(x){
-     const rt=bdRating(x.rating);
-     return '<tr'+(rt.drop>=0.5?' class="poor"':'')+'><td>'+esc(x.date)+'</td><td>'+esc((getDayOfWeek(x.date)||'').slice(0,3))+'</td>'
+     const m=bdMarksOf(x);
+     return '<tr'+(m<5?' class="poor"':'')+'><td>'+esc(x.date)+'</td><td>'+esc((getDayOfWeek(x.date)||'').slice(0,3))+'</td>'
       +'<td>'+esc(x.className)+'</td><td>'+esc(bdSlotLabel(x.slot))+'</td>'
       +'<td>'+esc(x.teacherName||'—')+'</td>'
-      +'<td>'+esc(x.rating)+'</td><td>'+esc(x.note||'')+'</td><td>'+esc(x.recordedBy||'')+'</td></tr>';
+      +'<td class="c"><strong>'+pdFmt(m)+'</strong></td><td>'+esc(bdRatingForMarks(m))+'</td><td>'+esc(x.note||'')+'</td><td>'+esc(x.recordedBy||'')+'</td></tr>';
    }).join('')+'</tbody></table>'
-   +'<div class="key"><strong>Ratings:</strong> '+BD_RATINGS.map(function(x){return '<strong>'+esc(x.v)+'</strong> — '+esc(x.d)+' ('+(x.drop?'−'+x.drop.toFixed(2):'no marks lost')+')';}).join(' · ')
-   +'<br>Marks lost here are also taken off the class in the class period discipline ranking.</div>'
+   +'<div class="key"><strong>Marks out of '+PD_MAX+':</strong> '+BD_RATINGS.map(function(x){return '<strong>'+esc(x.band)+' '+esc(x.v)+'</strong> — '+esc(x.d);}).join(' · ')
+   +'<br>These marks are added to the class’s marks for the day in the class period discipline ranking.</div>'
    +'</body></html>');
   w.document.close();
   logA('Generated the break leaving report for '+(r.from||'')+' to '+(r.to||''));
@@ -14024,12 +14087,12 @@ function bdReportXlsx(){
   const r=bdReportRange();
   const d=bdReportData(r.from,r.to);
   if(!d.rows.length){toast('Nothing rated in these dates','danger');return;}
-  const cls=[['Class','Rated'].concat(BD_RATINGS.map(function(x){return x.v;})).concat(['Marks Lost'])];
-  d.classes.forEach(function(c){cls.push([c.className,c.n].concat(BD_RATINGS.map(function(x){return c.counts[x.v]||0;})).concat([c.drop.toFixed(2)]));});
-  const tch=[['Teacher','Times'].concat(BD_RATINGS.map(function(x){return x.v;})).concat(['Classes'])];
-  d.teachers.forEach(function(t){tch.push([t.teacher,t.n].concat(BD_RATINGS.map(function(x){return t.counts[x.v]||0;})).concat([Object.keys(t.classes).join(', ')]));});
-  const all=[['Date','Day','Class','Break','Teacher','Teacher Source','Subject','How They Left','Note','Rated By']];
-  d.rows.forEach(function(x){all.push([x.date,getDayOfWeek(x.date)||'',x.className,bdSlotLabel(x.slot),x.teacherName||'',x.teacherSource||'',x.subject||'',x.rating,x.note||'',x.recordedBy||'']);});
+  const cls=[['Class','Breaks Rated','Marks','Marks Available','Average /'+PD_MAX,'%','Below 5']];
+  d.classes.forEach(function(c){cls.push([c.className,c.n,pdFmt(c.sum),c.possible,pdFmt(c.avg),c.pct,c.low]);});
+  const tch=[['Teacher','Times','Average /'+PD_MAX,'Below 5','Classes']];
+  d.teachers.forEach(function(t){tch.push([t.teacher,t.n,pdFmt(t.avg),t.low,Object.keys(t.classes).join(', ')]);});
+  const all=[['Date','Day','Class','Break','Teacher','Teacher Source','Subject','Marks /'+PD_MAX,'Band','Note','Rated By']];
+  d.rows.forEach(function(x){const m=bdMarksOf(x);all.push([x.date,getDayOfWeek(x.date)||'',x.className,bdSlotLabel(x.slot),x.teacherName||'',x.teacherSource||'',x.subject||'',pdFmt(m),bdRatingForMarks(m),x.note||'',x.recordedBy||'']);});
   xlsxDownload([{name:'By Class',rows:cls},{name:'By Teacher',rows:tch},{name:'All Ratings',rows:all}],
     'break_leaving_'+(r.from||'')+'_to_'+(r.to||'')+'.xlsx');
   logA('Exported the break leaving report for '+(r.from||'')+' to '+(r.to||''));
@@ -14281,65 +14344,160 @@ function bdTtUndo(){
   if(_page==='break_discipline')rBreakDiscipline();
 }
 
+// ═══════════════════════════════════════════════════════════
+// MARKS FOR THE DAY
+// A class earns up to 10 marks for every lesson on its timetable and up to
+// 10 for every break it is rated on. A lesson no teacher filled in earns
+// nothing and is shown with the timetabled teacher's name; a break nobody
+// rated is left out rather than counted against the class, since rating it
+// is the staff's job. Lessons excluded on the Excluded screen are expected
+// of nobody. Positions come from the share of available marks obtained, so
+// a class with fewer lessons that day is not at a disadvantage.
+// ═══════════════════════════════════════════════════════════
+
+// Which periods a class has a lesson in that day, from the timetable
+function pdLessonPeriods(cls,date){
+  const tt=(typeof bdTimetable==='function')?bdTimetable(cls):null;
+  const day=getDayOfWeek(date);
+  if(tt&&tt.d){
+    const row=tt.d[day];
+    if(!row)return [];
+    return PD_PERIODS.filter(function(p){const c=row[p-1];return !!(c&&(c[0]||c[1]));});
+  }
+  const n=pdTimetable(cls).perDay;
+  return PD_PERIODS.filter(function(p){return p<=n;});
+}
+
+// Classes a reviewer is responsible for, whether or not anything was filed
+function pdRankableClasses(){
+  if(!CU||!pdCanReview())return [];
+  let list=getAllClasses().filter(function(c){return !!bdTimetable(c);});
+  if((CU.role==='vice_principal'||CU.role==='student_advisor')&&CU.assignedClasses&&CU.assignedClasses.length){
+    const want=CU.assignedClasses.map(normClass);
+    list=list.filter(function(c){return want.includes(normClass(c));});
+  }
+  return list;
+}
+
+// Everything in a date range, grouped by class and day
+function pdIndex(from,to){
+  const recs=pdVisible().filter(function(r){return r.date&&r.date>=from&&r.date<=to&&r.className;});
+  const brs=getBreakDiscipline().filter(function(r){return r.date&&r.date>=from&&r.date<=to&&r.className;});
+  const pBy={},bBy={},names={};
+  recs.forEach(function(r){
+    const k=normClass(r.className)+'|'+r.date;(pBy[k]=pBy[k]||[]).push(r);
+    if(!names[normClass(r.className)])names[normClass(r.className)]=r.className;
+  });
+  brs.forEach(function(r){const k=normClass(r.className)+'|'+r.date;(bBy[k]=bBy[k]||[]).push(r);});
+  pdRankableClasses().forEach(function(c){if(!names[normClass(c)])names[normClass(c)]=c;});
+  // A day nobody recorded anything on is a holiday, not a day of blanks
+  const days=Array.from(new Set(recs.map(function(r){return r.date;}).concat(brs.map(function(r){return r.date;})))).sort();
+  return {recs:recs,brs:brs,pBy:pBy,bBy:bBy,days:days,
+    classes:Object.keys(names).map(function(k){return names[k];})};
+}
+
+// One class, one day: every period and break, and the day's total
+function pdDayResult(cls,date,recs,brs){
+  const res={className:cls,date:date,off:false,periods:[],breaks:[],
+    periodMarks:0,periodPossible:0,breakMarks:0,breakPossible:0,
+    filled:0,expected:0,missing:[],named:0,breaksRated:0,obtained:0,possible:0,ratio:0,pct:0};
+  res.off=getPdExclusions().some(function(x){return !x.period&&pdExclMatch(x,cls,date);});
+  const byP={};
+  (recs||[]).forEach(function(r){
+    const p=Number(r.periodNumber||r.period);
+    const prev=byP[p];
+    if(!prev||String(r.updated||r.created||'')>String(prev.updated||prev.created||''))byP[p]=r;
+  });
+  const lessons=res.off?[]:pdLessonPeriods(cls,date);
+  PD_PERIODS.forEach(function(p){
+    const r=byP[p]||null;
+    const cell={p:p,rec:r,excluded:res.off||pdIsExcluded(cls,date,p),lesson:lessons.indexOf(p)>=0||!!r,marks:null,teacher:'',subject:''};
+    if(cell.excluded||!cell.lesson){res.periods.push(cell);return;}
+    res.expected++;res.periodPossible+=PD_MAX;
+    if(r){
+      cell.marks=pdMarksOf(r);
+      res.periodMarks+=cell.marks;res.filled++;res.named+=(r.students||[]).length;
+    }else{
+      const t=bdTeacherAt(cls,date,p);
+      cell.teacher=t.name||'';cell.subject=t.subject||'';
+      res.missing.push({p:p,teacher:cell.teacher,subject:cell.subject});
+    }
+    res.periods.push(cell);
+  });
+  bdSlotsFor(cls).forEach(function(s){
+    const r=res.off?null:((brs||[]).find(function(b){return b.slot===s.id;})||null);
+    const cell={slot:s.id,label:s.label,rec:r,marks:null};
+    if(r){cell.marks=bdMarksOf(r);res.breakMarks+=cell.marks;res.breakPossible+=PD_MAX;res.breaksRated++;}
+    res.breaks.push(cell);
+  });
+  res.obtained=res.periodMarks+res.breakMarks;
+  res.possible=res.periodPossible+res.breakPossible;
+  res.ratio=res.possible?res.obtained/res.possible:0;
+  res.pct=Math.round(res.ratio*1000)/10;
+  return res;
+}
+
+// Positions within each group, best share of marks first
+function pdGroupPositions(list){
+  const pos={};
+  PD_GROUPS.forEach(function(g){
+    list.filter(function(r){const rg=pdGroupOf(r.className);return r.possible>0&&rg&&rg.id===g.id;})
+      .sort(function(a,b){return b.ratio-a.ratio||b.obtained-a.obtained||a.className.localeCompare(b.className);})
+      .forEach(function(r,i){pos[r.className]=i+1;});
+  });
+  return pos;
+}
+function pdOrdinal(n){
+  if(!n)return '—';
+  const s=['th','st','nd','rd'],v=n%100;
+  return n+(s[(v-20)%10]||s[v]||s[0]);
+}
+const PD_DAY_SHORT={Sunday:'Sun',Monday:'Mon',Tuesday:'Tue',Wednesday:'Wed',Thursday:'Thu',Friday:'Fri',Saturday:'Sat'};
+// "Sun P3 Bhaskar; Mon P5 Hosni; +2 more"
+function pdMissingText(list,max){
+  max=max||3;
+  const bits=list.slice(0,max).map(function(m){
+    return (PD_DAY_SHORT[getDayOfWeek(m.date)]||m.date)+' P'+m.period+' '+(m.teacher||'(no teacher on timetable)');
+  });
+  return bits.join('; ')+(list.length>max?'; +'+(list.length-max)+' more':'');
+}
+
 function pdRankClasses(from,to){
-  const all=pdVisible().filter(function(r){
-    return r.date&&r.date>=from&&r.date<=to&&r.className;
-  });
-  // A day the school recorded nothing at all is a holiday, not a gap, so only
-  // days with some record anywhere count towards what a class owes.
-  const dayList=Array.from(new Set(all.map(function(r){return r.date;}))).sort();
-  const activeDays=dayList.length;
-  // Anything recorded in a slot that was written off does not count either way.
-  const rows=all.filter(function(r){
-    return !pdIsExcluded(r.className,r.date,r.periodNumber||r.period);
-  });
-  const by={};
-  rows.forEach(function(r){
-    const c=r.className;
-    if(!by[c])by[c]={className:c,periods:0,points:0,drop:0,named:0,reports:0,counts:{},teachers:{}};
-    const b=by[c];
-    b.periods++;
-    b.points+=pdPoints(r.rating);
-    b.drop+=pdRatingDrop(r.rating);
-    const n=((r.students||[]).length);
-    b.named+=n;
-    if(n)b.reports++;               // periods in which somebody was reported
-    b.counts[r.rating]=(b.counts[r.rating]||0)+1;
-    if(r.teacherName)b.teachers[r.teacherName]=1;
-  });
-  return Object.keys(by).map(function(c){
-    const b=by[c];
-    const tt=pdTimetable(c);
-    b.conduct=b.periods?(b.points/b.periods):0;          // the old 0-4 average, kept for reference
-    b.perDay=tt.perDay;
-    b.perWeek=tt.perWeek;
-    b.activeDays=activeDays;
-    b.expected=pdExpectedFor(c,dayList);
-    b.excluded=activeDays*tt.perDay-b.expected;
-    b.missing=Math.max(0,b.expected-b.periods);
-    b.coverage=b.expected?Math.min(1,b.periods/b.expected):0;
-    b.covPct=Math.round(b.coverage*100);
-    b.conductDrop=b.drop;                                // what the ratings cost
-    b.missPenalty=pdMissPenalty(b.missing);              // 0.10 a lesson left blank
-    b.penalty=pdNamedPenalty(b.named);                   // 0.10 a student reported
-    b.breaks=bdDeductionFor(c,from,to);                  // how the class left for break
-    b.breakDrop=b.breaks.drop;
-    b.deducted=b.conductDrop+b.missPenalty+b.penalty+b.breakDrop;
-    b.avg=Math.max(0,PD_BASE_SCORE-b.deducted);          // out of 100
-    b.pct=Math.round(b.avg*10)/10;
+  const ix=pdIndex(from,to);
+  return ix.classes.map(function(c){
+    const k=normClass(c);
+    const b={className:c,days:[],obtained:0,possible:0,periodMarks:0,periodPossible:0,
+      breakMarks:0,breakPossible:0,periods:0,expected:0,missing:0,missingList:[],
+      named:0,breaksRated:0,counts:{},teachers:{}};
+    ix.days.forEach(function(d){
+      const res=pdDayResult(c,d,ix.pBy[k+'|'+d]||[],ix.bBy[k+'|'+d]||[]);
+      b.days.push(res);
+      b.periodMarks+=res.periodMarks;b.periodPossible+=res.periodPossible;
+      b.breakMarks+=res.breakMarks;b.breakPossible+=res.breakPossible;
+      b.periods+=res.filled;b.expected+=res.expected;b.named+=res.named;b.breaksRated+=res.breaksRated;
+      res.missing.forEach(function(m){b.missingList.push({date:d,period:m.p,teacher:m.teacher,subject:m.subject});});
+      res.periods.forEach(function(x){
+        if(!x.rec)return;
+        const w=pdRatingForMarks(x.marks);b.counts[w]=(b.counts[w]||0)+1;
+        if(x.rec.teacherName)b.teachers[x.rec.teacherName]=1;
+      });
+    });
+    b.missing=b.missingList.length;
+    b.obtained=b.periodMarks+b.breakMarks;
+    b.possible=b.periodPossible+b.breakPossible;
+    b.ratio=b.possible?b.obtained/b.possible:0;
+    b.pct=Math.round(b.ratio*1000)/10;
+    b.avg=b.pct;                                   // kept for anything still reading it
     b.teacherCount=Object.keys(b.teachers).length;
     return b;
   }).filter(function(b){
-    return b.expected>0;              // excluded all week — no result, no position
+    return b.possible>0;              // excluded all week — no result, no position
   }).sort(function(a,b){
-    // Score first, then the quality of the ratings themselves: more Excellent,
-    // then more V. Good, then more Good, then fewer Bad.
-    return b.avg-a.avg
-      ||(b.counts['Excellent']||0)-(a.counts['Excellent']||0)
-      ||(b.counts['V. Good']||0)-(a.counts['V. Good']||0)
-      ||(b.counts['Good']||0)-(a.counts['Good']||0)
-      ||(a.counts['Bad']||0)-(b.counts['Bad']||0)
-      ||(a.breakDrop||0)-(b.breakDrop||0)
+    // The share of available marks decides it; then more marks, fewer
+    // lessons left blank, fewer students reported.
+    return b.ratio-a.ratio
+      ||b.obtained-a.obtained
+      ||a.missing-b.missing
       ||a.named-b.named
       ||b.periods-a.periods
       ||a.className.localeCompare(b.className);
@@ -14393,17 +14551,14 @@ function pdBestM(){
   if(!opts.length){toast('Record some periods first — there is nothing to rank yet','danger');return;}
   const cur=window._pdBestWeek||pdCurrentWeek();
   window._pdBestWeek=cur;
-  const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f3c6} Best Class of the Week</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">Every class starts on '+PD_BASE_SCORE+' and loses marks. An Excellent period costs nothing; '
-   +'V. Good costs '+PD_RATING_DROP['V. Good'].toFixed(2)+', Good '+PD_RATING_DROP['Good'].toFixed(2)+' and Bad '+PD_RATING_DROP['Bad'].toFixed(2)+'. '
-   +'A class is judged against its own timetable — '+PD_TIMETABLE.map(function(t){return t.perWeek+' periods a week for grades '+t.grades[0]+' to '+t.grades[t.grades.length-1];}).join(', ')
-   +' — losing '+PD_MISS_PENALTY.toFixed(2)+' for every lesson no teacher filled in and '+PD_NAMED_PENALTY.toFixed(2)+' for every student reported. '
-   +'Lessons written off on the Excluded screen \u2014 a trip, an exam, no lesson timetabled \u2014 are expected of nobody and cost nothing. '
-   +'Level scores are separated by the number of Excellent, then V. Good, then Good, then fewest Bad. '
+  +'<div class="al ai">Every lesson is marked out of '+PD_MAX+' by its teacher and every break out of '+PD_MAX+' by the admin staff. '
+   +'The marks of each day are added up, and the class with the highest share of the marks available wins. '
+   +'A lesson no teacher filled in scores nothing and the timetabled teacher is named; a break nobody rated is left out. '
+   +'Lessons written off on the Excluded screen are expected of nobody. '
    +'A class needs at least '+PD_MIN_PERIODS+' periods recorded to win. '
-   +'Each group is judged on its own: '+PD_GROUPS.map(function(g){return esc(g.name)+' (' + esc(g.label) + ')';}).join(', ')+'.</div>'
+   +'Each group is judged on its own: '+PD_GROUPS.map(function(g){return esc(g.name)+' ('+esc(g.label)+')';}).join(', ')+'.</div>'
   +'<div class="fg"><label>Week</label><select id="pd-bw" onchange="pdBestWeekChanged()">'
   +opts.map(function(w,i){
      const on=cur&&w.from===cur.from&&w.to===cur.to;
@@ -14438,49 +14593,44 @@ function pdBestRender(){
   box.innerHTML=groups.map(function(gr){
     const g=gr.group,rows=gr.rows,win=gr.winner;
     if(!rows.length){
-      return '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:var(--tx2)">'+esc(g.name)+' <span style="font-weight:400;color:var(--tx3)">\u00b7 '+esc(g.label)+'</span></div>'
+      return '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:var(--tx2)">'+esc(g.name)+' <span style="font-weight:400;color:var(--tx3)">· '+esc(g.label)+'</span></div>'
        +'<div style="font-size:11px;color:var(--tx3);padding:8px 0">Nothing recorded for these grades this week.</div></div>';
     }
     const thin=rows.filter(function(r){return r.periods<PD_MIN_PERIODS;}).length;
     return '<div style="margin-bottom:16px">'
      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">'
-     +'<div style="font-size:12px;font-weight:700;color:var(--tx2)">'+esc(g.name)+' <span style="font-weight:400;color:var(--tx3)">\u00b7 '+esc(g.label)+'</span></div>'
+     +'<div style="font-size:12px;font-weight:700;color:var(--tx2)">'+esc(g.name)+' <span style="font-weight:400;color:var(--tx3)">· '+esc(g.label)+'</span></div>'
      +(win&&g.id!=='other'?'<button class="btn bp bxs" onclick="pdCertificate('+q+escJs(g.id)+q+')">\u{1f3c5} Certificate for '+esc(win.className)+'</button>':'')
      +'</div>'
      +(win&&g.id!=='other'?'<div class="stat gn" style="margin-bottom:8px"><div class="sl2">Best class</div>'
         +'<div style="font-size:21px;font-weight:700;margin-top:5px">\u{1f3c6} '+esc(win.className)+'</div>'
-        +'<div class="sb3">'+win.avg.toFixed(2)+' out of '+PD_BASE_SCORE+' \u00b7 '+win.periods+' of '+win.expected+' periods filled in'
-        +(win.missing?' \u00b7 '+win.missing+' missing (\u2212'+win.missPenalty.toFixed(2)+')':'')
-        +' \u00b7 '+(win.named?win.named+' student(s) reported (\u2212'+win.penalty.toFixed(2)+')':'nobody reported')
-        +(win.breaks&&win.breaks.count?' \u00b7 breaks '+(win.breakDrop?'\u2212'+win.breakDrop.toFixed(2):'no marks lost'):'')+'</div>'
+        +'<div class="sb3">'+pdFmt(win.obtained)+' of '+win.possible+' marks ('+win.pct+'%) · '
+        +win.periods+' of '+win.expected+' periods filled in'
+        +(win.breaksRated?' · breaks '+pdFmt(win.breakMarks)+'/'+win.breakPossible:'')
+        +' · '+(win.named?win.named+' student(s) reported':'nobody reported')+'</div>'
         +'<div class="sic">\u{1f3c5}</div></div>':'')
      +'<div class="tw"><table style="font-size:11px"><thead><tr>'
-     +'<th class="c">#</th><th>Class</th><th class="c" title="Periods filled in, out of all seven a day">Filled in</th>'
-     +PD_RATINGS.map(function(r){return '<th class="c" title="'+esc(r.v)+'">'+r.i+'</th>';}).join('')
-     +'<th class="c" title="Marks lost on the ratings themselves">Conduct</th>'
-     +'<th class="c" title="Lessons no teacher filled in, and what they cost">Missing</th>'
+     +'<th class="c">#</th><th>Class</th>'
+     +'<th class="c" title="Lessons filled in, out of the lessons on the timetable">Filled in</th>'
+     +'<th class="c" title="Marks the teachers gave, out of 10 a lesson">Period marks</th>'
+     +'<th class="c" title="Marks for leaving the room for break, out of 10 a break">Break marks</th>'
+     +'<th class="c">Total</th><th class="c">%</th>'
      +'<th class="c" title="Students reported for disturbing a lesson">Named</th>'
-     +'<th class="c" title="Marks lost on how the class left for break (Break Class Leaving Discipline)">Breaks</th>'
-     +'<th class="c" title="Every mark lost">Deducted</th>'
-     +'<th class="c">Score /'+PD_BASE_SCORE+'</th></tr></thead><tbody>'
+     +'<th title="Lessons no teacher filled in, with the teacher on the timetable">Not filled in</th></tr></thead><tbody>'
      +rows.map(function(r,i){
        const isWin=win&&r.className===win.className&&g.id!=='other';
        const thinRow=r.periods<PD_MIN_PERIODS;
        return '<tr'+(isWin?' style="background:var(--subg,#e8f7ee)"':'')+'>'
         +'<td class="c">'+(isWin?'\u{1f3c6}':(i+1))+'</td>'
         +'<td><strong>'+esc(r.className)+'</strong>'+(thinRow&&g.id!=='other'?'<div style="font-size:9px;color:var(--tx3)">too few periods to win</div>':'')+'</td>'
-        +'<td class="c">'+r.periods+'<div style="font-size:9px;color:var(--tx3)">of '+r.expected
-          +(r.excluded?' \u00b7 '+r.excluded+' excluded':' ('+r.perWeek+'/wk)')+'</div></td>'
-        +PD_RATINGS.map(function(x){return '<td class="c">'+(r.counts[x.v]||0)+'</td>';}).join('')
-        +'<td class="c"'+(r.conductDrop?' style="color:var(--dg)"':'')+'>'+(r.conductDrop?'\u2212'+r.conductDrop.toFixed(2):'\u2014')+'</td>'
-        +'<td class="c"'+(r.missing?' style="color:var(--dg);font-weight:600"':'')+'>'+(r.missing?r.missing:'\u2014')
-          +(r.missing?'<div style="font-size:9px;color:var(--tx3);font-weight:400">\u2212'+r.missPenalty.toFixed(2)+'</div>':'')+'</td>'
-        +'<td class="c"'+(r.named?' style="color:var(--dn);font-weight:600"':'')+'>'+r.named
-          +(r.penalty?'<div style="font-size:9px;color:var(--tx3);font-weight:400">\u2212'+r.penalty.toFixed(2)+'</div>':'')+'</td>'
-        +'<td class="c"'+(r.breakDrop?' style="color:var(--dg)"':'')+'>'+(r.breaks&&r.breaks.count?(r.breakDrop?'\u2212'+r.breakDrop.toFixed(2):'0.00')
-          +'<div style="font-size:9px;color:var(--tx3);font-weight:400">'+r.breaks.count+' rated</div>':'\u2014')+'</td>'
-        +'<td class="c"'+(r.deducted?' style="color:var(--dn)"':'')+'>'+(r.deducted?'\u2212'+r.deducted.toFixed(2):'\u2014')+'</td>'
-        +'<td class="c"><strong>'+r.avg.toFixed(2)+'</strong></td></tr>';
+        +'<td class="c">'+r.periods+'<div style="font-size:9px;color:var(--tx3)">of '+r.expected+'</div></td>'
+        +'<td class="c">'+pdFmt(r.periodMarks)+'<div style="font-size:9px;color:var(--tx3)">of '+r.periodPossible+'</div></td>'
+        +'<td class="c">'+(r.breaksRated?pdFmt(r.breakMarks)+'<div style="font-size:9px;color:var(--tx3)">of '+r.breakPossible+'</div>':'<span style="color:var(--tx3)">—</span>')+'</td>'
+        +'<td class="c"><strong>'+pdFmt(r.obtained)+'</strong><div style="font-size:9px;color:var(--tx3)">of '+r.possible+'</div></td>'
+        +'<td class="c"><strong>'+r.pct+'%</strong></td>'
+        +'<td class="c"'+(r.named?' style="color:var(--dn);font-weight:600"':'')+'>'+r.named+'</td>'
+        +'<td style="font-size:10px'+(r.missing?';color:var(--dn)':';color:var(--tx3)')+'">'
+          +(r.missing?'<strong>'+r.missing+'</strong> · '+esc(pdMissingText(r.missingList,3)):'—')+'</td></tr>';
      }).join('')+'</tbody></table></div>'
      +(thin&&g.id!=='other'?'<div style="font-size:10px;color:var(--tx3);margin-top:4px">'+thin+' class(es) had fewer than '+PD_MIN_PERIODS+' periods recorded, so they are listed but cannot win.</div>':'')
      +'</div>';
@@ -14494,70 +14644,70 @@ function pdBestPDF(){
   const total=groups.reduce(function(n,g){return n+g.rows.length;},0);
   if(!total){toast('Nothing was recorded in this week','danger');return;}
   const reports=groups.reduce(function(n,g){return n+g.rows.reduce(function(m,r){return m+r.periods;},0);},0);
+  // Who left lessons blank, across every class
+  const byTeacher={};
+  groups.forEach(function(g){g.rows.forEach(function(r){r.missingList.forEach(function(m){
+    const t=m.teacher||'(no teacher on the timetable)';
+    (byTeacher[t]=byTeacher[t]||[]).push(r.className+' '+(PD_DAY_SHORT[getDayOfWeek(m.date)]||m.date)+' P'+m.period);
+  });});});
+  const tList=Object.keys(byTeacher).sort(function(a,b){return byTeacher[b].length-byTeacher[a].length||a.localeCompare(b);});
   const win2=window.open('','_blank');
   if(!win2){toast('Allow pop-ups to open the PDF','danger');return;}
-  win2.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Best Class \u2014 '+esc(w.label)+'</title><style>'
-   +'@page{size:A4;margin:16mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:12px}'
-   +'table{width:100%;border-collapse:collapse;margin-top:8px;font-size:11px}'
-   +'th{background:#1a5f7a;color:#fff;padding:7px;text-align:left;font-size:10px;text-transform:uppercase}'
-   +'td{padding:6px 8px;border-bottom:1px solid #ddd}.c{text-align:center}'
-   +'tr.win{background:#e8f7ee;font-weight:bold}'
-   +'h2{font-size:14px;margin:20px 0 0;padding-bottom:4px;border-bottom:2px solid #1a5f7a}'
-   +'h2 span{font-weight:normal;font-size:11px;color:#666}'
-   +'.banner{background:#e8f7ee;border:2px solid #16a34a;border-radius:8px;padding:9px 14px;margin:8px 0;text-align:center}'
-   +'.banner .cls{font-size:26px;font-weight:bold;color:#15803d;margin:2px 0}'
-   +'.note{margin-top:16px;font-size:10px;color:#666;line-height:1.6}'
-   +'@media print{button{display:none}}</style></head><body>'
-   +pdfHeaderHTML({subtitle:'Class Discipline \u2014 Best Class by Group'})
-   +'<button onclick="window.print()" style="margin-bottom:10px;padding:7px 15px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">\u{1f5a8}\ufe0f Print / Save as PDF</button>'
+  win2.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Best Class — '+esc(w.label)+'</title><style>'
+   +'@page{size:A4;margin:14mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:11px}'
+   +'table{width:100%;border-collapse:collapse;margin-top:6px;font-size:10px}'
+   +'th{background:#1a5f7a;color:#fff;padding:5px;text-align:left;font-size:9px;text-transform:uppercase}'
+   +'td{padding:4px 6px;border-bottom:1px solid #ddd;vertical-align:top}.c{text-align:center}'
+   +'tr.win td{background:#e8f7ee;font-weight:bold}'
+   +'h2{font-size:13px;margin:16px 0 0;padding-bottom:3px;border-bottom:2px solid #1a5f7a}'
+   +'h2 span{font-weight:normal;font-size:10px;color:#666}'
+   +'.banner{background:#e8f7ee;border:2px solid #16a34a;border-radius:8px;padding:7px 12px;margin:7px 0;text-align:center}'
+   +'.banner .cls{font-size:24px;font-weight:bold;color:#15803d;margin:2px 0}'
+   +'.miss{color:#a52424;font-size:9px}'
+   +'.note{margin-top:12px;font-size:9px;color:#666;line-height:1.6}'
+   +'@media print{button{display:none}tr{page-break-inside:avoid}}</style></head><body>'
+   +pdfHeaderHTML({subtitle:'Class Discipline — Best Class by Group'})
+   +'<button onclick="window.print()" style="margin-bottom:10px;padding:7px 15px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">\u{1f5a8}️ Print / Save as PDF</button>'
    +'<div style="font-size:14px;font-weight:bold">'+esc(w.label)+'</div>'
    +'<div style="font-size:11px;color:#555">'+esc(w.from)+' to '+esc(w.to)+'</div>'
    +groups.map(function(gr){
      const g=gr.group,rows=gr.rows,win=gr.winner;
-     let out='<h2>'+esc(g.name)+' <span>\u00b7 '+esc(g.label)+'</span></h2>';
+     let out='<h2>'+esc(g.name)+' <span>· '+esc(g.label)+'</span></h2>';
      if(!rows.length)return out+'<div style="font-size:11px;color:#888;margin-top:8px">Nothing recorded for these grades this week.</div>';
      if(win&&g.id!=='other'){
-       out+='<div class="banner"><div style="font-size:10px;letter-spacing:2px;color:#166534">BEST CLASS \u2014 '+esc(g.name.toUpperCase())+'</div>'
+       out+='<div class="banner"><div style="font-size:10px;letter-spacing:2px;color:#166534">BEST CLASS — '+esc(g.name.toUpperCase())+'</div>'
         +'<div class="cls">'+esc(win.className)+'</div>'
-        +'<div style="font-size:11px;color:#166534">'+win.avg.toFixed(2)+' out of '+PD_BASE_SCORE+' &nbsp;\u00b7&nbsp; '
-        +win.periods+' of '+win.expected+' periods filled in &nbsp;\u00b7&nbsp; '
+        +'<div style="font-size:11px;color:#166534">'+pdFmt(win.obtained)+' of '+win.possible+' marks ('+win.pct+'%) &nbsp;·&nbsp; '
+        +win.periods+' of '+win.expected+' periods filled in &nbsp;·&nbsp; '
         +(win.named?win.named+' student(s) reported':'no student reported')+'</div></div>';
      }
-     out+='<table><thead><tr><th class="c">#</th><th>Class</th><th class="c">Filled In</th>'
-      +PD_RATINGS.map(function(r){return '<th class="c">'+esc(r.v)+'</th>';}).join('')
-      +'<th class="c">Ratings Cost</th><th class="c">Missing</th><th class="c">Students Named</th><th class="c">Breaks</th><th class="c">Total Deducted</th>'
-      +'<th class="c">Score /'+PD_BASE_SCORE+'</th></tr></thead><tbody>'
+     out+='<table><thead><tr><th class="c">#</th><th>Class</th><th class="c">Filled In</th><th class="c">Period Marks</th>'
+      +'<th class="c">Break Marks</th><th class="c">Total</th><th class="c">%</th><th class="c">Named</th><th>Not Filled In (timetabled teacher)</th></tr></thead><tbody>'
       +rows.map(function(r,i){
         const isWin=win&&r.className===win.className&&g.id!=='other';
         return '<tr'+(isWin?' class="win"':'')+'><td class="c">'+(i+1)+'</td>'
-         +'<td>'+esc(r.className)+((r.periods<PD_MIN_PERIODS&&g.id!=='other')?' <span style="font-size:9px;color:#888">(too few periods to win)</span>':'')+'</td>'
+         +'<td>'+esc(r.className)+((r.periods<PD_MIN_PERIODS&&g.id!=='other')?' <span style="font-size:8px;color:#888">(too few periods to win)</span>':'')+'</td>'
          +'<td class="c">'+r.periods+' / '+r.expected+'</td>'
-         +PD_RATINGS.map(function(x){return '<td class="c">'+(r.counts[x.v]||0)+'</td>';}).join('')
-         +'<td class="c">'+(r.conductDrop?'\u2212'+r.conductDrop.toFixed(2):'\u2014')+'</td>'
-         +'<td class="c">'+(r.missing?r.missing+' (\u2212'+r.missPenalty.toFixed(2)+')':'\u2014')+'</td>'
-         +'<td class="c">'+r.named+(r.penalty?' (\u2212'+r.penalty.toFixed(2)+')':'')+'</td>'
-         +'<td class="c">'+(r.breaks&&r.breaks.count?(r.breakDrop?'\u2212'+r.breakDrop.toFixed(2):'0.00')+' <span style="font-size:9px;color:#888">('+r.breaks.count+')</span>':'\u2014')+'</td>'
-         +'<td class="c">'+(r.deducted?'\u2212'+r.deducted.toFixed(2):'\u2014')+'</td>'
-         +'<td class="c"><strong>'+r.avg.toFixed(2)+'</strong></td></tr>';
+         +'<td class="c">'+pdFmt(r.periodMarks)+' / '+r.periodPossible+'</td>'
+         +'<td class="c">'+(r.breaksRated?pdFmt(r.breakMarks)+' / '+r.breakPossible:'—')+'</td>'
+         +'<td class="c"><strong>'+pdFmt(r.obtained)+' / '+r.possible+'</strong></td>'
+         +'<td class="c"><strong>'+r.pct+'%</strong></td>'
+         +'<td class="c">'+r.named+'</td>'
+         +'<td class="miss">'+(r.missing?esc(pdMissingText(r.missingList,6)):'')+'</td></tr>';
       }).join('')+'</tbody></table>';
      return out;
    }).join('')
-   +'<div class="note"><strong>Groups:</strong> '+PD_GROUPS.map(function(g){return g.name+' \u2014 '+g.label;}).join(' &nbsp;\u00b7&nbsp; ')+'. Each group is judged on its own.</div>'
-   +'<div class="note"><strong>How the score works:</strong> every class starts on <strong>'+PD_BASE_SCORE+'</strong> and loses marks. '
-   +'An <strong>Excellent</strong> period costs nothing, <strong>V. Good</strong> costs '+PD_RATING_DROP['V. Good'].toFixed(2)+', '
-   +'<strong>Good</strong> '+PD_RATING_DROP['Good'].toFixed(2)+' and <strong>Bad</strong> '+PD_RATING_DROP['Bad'].toFixed(2)+'. '
-   +'A class is then measured against its own timetable — '
-   +PD_TIMETABLE.map(function(t){return '<strong>'+t.perWeek+' periods a week</strong> for grades '+t.grades[0]+' to '+t.grades[t.grades.length-1];}).join(', ')
-   +' — losing <strong>'+PD_MISS_PENALTY.toFixed(2)+'</strong> for every lesson no teacher filled in and <strong>'+PD_NAMED_PENALTY.toFixed(2)+'</strong> for every student reported for disturbing a lesson. '
-   +'How the class leaves for break counts too (Break Class Leaving Discipline): '
-   +BD_RATINGS.map(function(x){return '<strong>'+x.v+'</strong> '+(x.drop?'\u2212'+x.drop.toFixed(2):'costs nothing');}).join(', ')
-   +'. A break nobody rated costs the class nothing — the rating is the staff\u2019s to make, not the class\u2019s. '
-   +'<strong>Score = '+PD_BASE_SCORE+' − ratings cost − (missing × '+PD_MISS_PENALTY.toFixed(2)+') − (students reported × '+PD_NAMED_PENALTY.toFixed(2)+') − break marks</strong>, never below zero. '
-   +'Classes level on score are separated by the number of Excellent periods, then V. Good, then Good, then the fewest Bad. '
-   +'A day on which the school recorded nothing at all is treated as a holiday and is not counted against anyone, '
-   +'and lessons written off as excluded \u2014 a trip, an exam, no lesson timetabled \u2014 are expected of nobody. '
-   +'A class excluded for the whole period is left out of the ranking rather than scoring zero. '
-   +'A class needs at least '+PD_MIN_PERIODS+' recorded periods to be eligible to win.</div>'
+   +(tList.length?'<h2>Lessons not filled in <span>· by the teacher on the timetable</span></h2>'
+     +'<table><thead><tr><th>Teacher</th><th class="c">Lessons</th><th>Class, day and period</th></tr></thead><tbody>'
+     +tList.map(function(t){return '<tr><td><strong>'+esc(t)+'</strong></td><td class="c">'+byTeacher[t].length+'</td><td style="font-size:9px">'+esc(byTeacher[t].join(', '))+'</td></tr>';}).join('')
+     +'</tbody></table>':'')
+   +'<div class="note"><strong>Groups:</strong> '+PD_GROUPS.map(function(g){return g.name+' — '+g.label;}).join(' &nbsp;·&nbsp; ')+'. Each group is judged on its own.</div>'
+   +'<div class="note"><strong>How the marks work:</strong> the teacher gives every lesson a mark out of '+PD_MAX+' at the end of the period, and the admin staff give every break a mark out of '+PD_MAX+' for how the class left the room. '
+   +'Each day’s marks are added up. A lesson on the timetable that no teacher filled in scores 0, and the teacher it was timetabled to is named. '
+   +'A break nobody rated is left out rather than counted against the class. Lessons written off as excluded — a trip, an exam — are expected of nobody, '
+   +'and a day on which nothing at all was recorded is treated as a holiday. '
+   +'<strong>Position = marks obtained ÷ marks available</strong>, so a class with fewer lessons is not at a disadvantage; level classes are separated by total marks, then fewer lessons left blank, then fewer students reported. '
+   +'A class needs at least '+PD_MIN_PERIODS+' recorded periods to be eligible to win. Records made before marks were introduced count Excellent 10, V. Good 8, Good 6, Bad 3.</div>'
    +'<div class="note">Prepared from '+reports+' teacher reports across '+total+' class(es).</div>'
    +'</body></html>');
   win2.document.close();
@@ -14576,18 +14726,18 @@ function pdCertSheet(win,runnerUp,w,group){
    +(s.schoolNameAr?'<div class="school-ar">'+esc(s.schoolNameAr)+'</div>':'')
    +'<div class="ribbon">Certificate of Achievement</div>'
    +'<div class="title">Best Class of the Week</div>'
-   +'<div class="group">'+esc(group.name)+' \u00b7 '+esc(group.label)+'</div>'
+   +'<div class="group">'+esc(group.name)+' · '+esc(group.label)+'</div>'
    +'<div class="awarded">is proudly awarded to</div>'
    +'<div class="cls">'+esc(win.className)+'</div>'
-   +'<div class="week">'+esc(w.label)+' &nbsp;\u00b7&nbsp; '+esc(w.from)+' to '+esc(w.to)+'</div>'
-   +'<div class="cite">For the finest classroom conduct in '+esc(group.label.toLowerCase())+' this week, as reported by their teachers at the end of every period'
+   +'<div class="week">'+esc(w.label)+' &nbsp;·&nbsp; '+esc(w.from)+' to '+esc(w.to)+'</div>'
+   +'<div class="cite">For the finest conduct in '+esc(group.label.toLowerCase())+' this week, marked by their teachers at the end of every lesson and by the staff as they left for break'
    +(win.named?'':', with not one student reported for disturbing a lesson')+'.'
-   +(runnerUp?'<br>Runner-up: <strong>'+esc(runnerUp.className)+'</strong> ('+runnerUp.avg.toFixed(2)+' out of '+PD_BASE_SCORE+').':'')+'</div>'
+   +(runnerUp?'<br>Runner-up: <strong>'+esc(runnerUp.className)+'</strong> ('+runnerUp.pct+'%).':'')+'</div>'
    +'<div class="score">'
-   +'<div><div class="n">'+win.avg.toFixed(2)+'</div><div class="l">Score out of '+PD_BASE_SCORE+'</div></div>'
-   +'<div><div class="n">'+((win.counts['Excellent']||0))+'</div><div class="l">Excellent periods</div></div>'
-   +'<div><div class="n">'+win.periods+'</div><div class="l">Periods judged</div></div>'
-   +'<div><div class="n">'+win.periods+'/'+win.expected+'</div><div class="l">Timetable filled in</div></div>'
+   +'<div><div class="n">'+win.pct+'%</div><div class="l">Of the marks available</div></div>'
+   +'<div><div class="n">'+pdFmt(win.obtained)+'/'+win.possible+'</div><div class="l">Marks obtained</div></div>'
+   +'<div><div class="n">'+win.periods+'/'+win.expected+'</div><div class="l">Lessons marked</div></div>'
+   +(win.breaksRated?'<div><div class="n">'+pdFmt(win.breakMarks)+'/'+win.breakPossible+'</div><div class="l">Break marks</div></div>':'')
    +'<div><div class="n">'+win.named+'</div><div class="l">Students reported</div></div>'
    +'</div>'
    +'<div class="sigs"><div class="sig">Vice Principal</div><div class="sig">Principal</div></div>'
@@ -14673,127 +14823,135 @@ function pdCertificate(groupId){
 // period, so a weak period across the school stands out.
 // ═══════════════════════════════════════════════════════════
 function pdSummaryData(from,to){
-  // A lesson written off is expected of nobody, so anything sitting in one is
-  // left out here too, exactly as it is in the ranking.
-  const rows=pdVisible().filter(function(r){
-    if(!(r.date&&r.date>=from&&r.date<=to&&r.className))return false;
-    return !pdIsExcluded(r.className,r.date,r.periodNumber||r.period);
-  });
-  const cells={},classes={},periodTot={};
-  PD_PERIODS.forEach(function(p){periodTot[p]={n:0,points:0,named:0,counts:{}};});
-  rows.forEach(function(r){
-    const c=r.className,p=r.periodNumber||r.period;
-    const named=((r.students||[]).length);
-    const pts=pdPoints(r.rating);
-    const key=c+'|'+p;
-    if(!cells[key])cells[key]={n:0,points:0,named:0,ratings:[],days:[]};
-    const cell=cells[key];
-    cell.n++;cell.points+=pts;cell.named+=named;
-    cell.ratings.push(r.rating);cell.days.push(r.date);
-    if(!classes[c])classes[c]={className:c,n:0,points:0,drop:0,named:0,counts:{}};
-    const cl=classes[c];
-    cl.n++;cl.points+=pts;cl.named+=named;cl.drop+=pdRatingDrop(r.rating);
-    cl.counts[r.rating]=(cl.counts[r.rating]||0)+1;
-    if(periodTot[p]){
-      periodTot[p].n++;periodTot[p].points+=pts;periodTot[p].named+=named;
-      periodTot[p].counts[r.rating]=(periodTot[p].counts[r.rating]||0)+1;
-    }
-  });
-  // Days the school recorded something; a silent day is a holiday, not a gap.
-  const dayList=Array.from(new Set(rows.map(function(r){return r.date;}))).sort();
-  const activeDays=dayList.length;
-  const clsList=Object.keys(classes).sort(function(a,b){
+  const ix=pdIndex(from,to);
+  // Anything sitting in a lesson written off is left out, as in the ranking
+  const rows=ix.recs.filter(function(r){return !pdIsExcluded(r.className,r.date,r.periodNumber||r.period);});
+  const ranked=pdRankClasses(from,to);
+  const classes={};ranked.forEach(function(b){classes[b.className]=b;});
+  const pos=pdGroupPositions(ranked);
+  const clsList=ranked.map(function(b){return b.className;}).sort(function(a,b){
     return (pdGradeOf(a)||99)-(pdGradeOf(b)||99)||a.localeCompare(b);
   });
-  clsList.forEach(function(c){
-    const cl=classes[c];
-    cl.avg=cl.n?cl.points/cl.n:0;
-    const tt=pdTimetable(c);
-    cl.expected=pdExpectedFor(c,dayList);
-    cl.excluded=activeDays*tt.perDay-cl.expected;
-    cl.missing=Math.max(0,cl.expected-cl.n);
-    cl.missPenalty=pdMissPenalty(cl.missing);
-    cl.penalty=pdNamedPenalty(cl.named);
-    cl.conductDrop=cl.drop||0;
-    cl.breaks=bdDeductionFor(c,from,to);
-    cl.breakDrop=cl.breaks.drop;
-    cl.deducted=cl.conductDrop+cl.missPenalty+cl.penalty+cl.breakDrop;
-    cl.score=Math.max(0,PD_BASE_SCORE-cl.deducted);
+  const cells={},periodTot={},missingAll=[];
+  PD_PERIODS.forEach(function(p){periodTot[p]={sum:0,n:0,named:0,missing:0};});
+  ['break','salah'].forEach(function(s){periodTot[s]={sum:0,n:0,named:0,missing:0};});
+  ranked.forEach(function(b){
+    b.days.forEach(function(res){
+      res.periods.forEach(function(x){
+        const key=b.className+'|'+x.p;
+        const cell=cells[key]||(cells[key]={sum:0,n:0,expected:0,missing:[],excluded:0,named:0});
+        if(x.excluded){cell.excluded++;return;}
+        if(!x.lesson)return;
+        cell.expected++;
+        if(x.rec){
+          const nm=(x.rec.students||[]).length;
+          cell.sum+=x.marks;cell.n++;cell.named+=nm;
+          periodTot[x.p].sum+=x.marks;periodTot[x.p].n++;periodTot[x.p].named+=nm;
+        }else{
+          cell.missing.push({date:res.date,teacher:x.teacher,subject:x.subject});
+          periodTot[x.p].missing++;
+          missingAll.push({date:res.date,className:b.className,period:x.p,subject:x.subject,teacher:x.teacher});
+        }
+      });
+      res.breaks.forEach(function(x){
+        const key=b.className+'|'+x.slot;
+        const cell=cells[key]||(cells[key]={sum:0,n:0,expected:0,missing:[],excluded:0,named:0,isBreak:true});
+        if(res.off){cell.excluded++;return;}
+        cell.expected++;
+        if(x.rec){cell.sum+=x.marks;cell.n++;periodTot[x.slot].sum+=x.marks;periodTot[x.slot].n++;}
+      });
+    });
   });
-  PD_PERIODS.forEach(function(p){
-    const t=periodTot[p];t.avg=t.n?t.points/t.n:0;
+  missingAll.sort(function(a,b){
+    return (a.date||'').localeCompare(b.date||'')||(pdGradeOf(a.className)||99)-(pdGradeOf(b.className)||99)
+      ||a.className.localeCompare(b.className)||a.period-b.period;
   });
-  const days=Array.from(new Set(rows.map(function(r){return r.date;}))).sort();
-  return {from:from,to:to,rows:rows,cells:cells,classes:classes,clsList:clsList,
-    periodTot:periodTot,days:days,singleDay:days.length<=1,
+  return {from:from,to:to,rows:rows,ranked:ranked,cells:cells,classes:classes,clsList:clsList,pos:pos,
+    periodTot:periodTot,days:ix.days,singleDay:ix.days.length<=1,missingAll:missingAll,
     totalPeriods:rows.length,
     totalNamed:rows.reduce(function(n,r){return n+((r.students||[]).length);},0)};
 }
 
+// Text for one grid cell: the mark (or the average over several days), or,
+// for a lesson nobody filled in, the teacher on the timetable.
 function pdCellLabel(cell,singleDay){
-  if(!cell||!cell.n)return '';
-  if(singleDay||cell.n===1)return cell.ratings[0]||'';
-  return (cell.points/cell.n).toFixed(2)+' ('+cell.n+')';
+  if(!cell)return {t:'—',kind:'none'};
+  if(!cell.expected)return cell.excluded?{t:'excluded',kind:'excl'}:{t:'—',kind:'none'};
+  if(cell.n){
+    const v=singleDay?cell.sum:cell.sum/cell.n;
+    return {t:pdFmt(v),kind:'mark',v:v,
+      sub:(!singleDay&&cell.n>1?cell.n+' marked':'')+(cell.missing.length?(cell.n>1&&!singleDay?' · ':'')+cell.missing.length+' not filled':'')};
+  }
+  if(cell.isBreak)return {t:'not rated',kind:'unrated'};
+  if(singleDay){
+    const m=cell.missing[0]||{};
+    return {t:m.teacher||'not filled in',kind:'missing',sub:m.teacher?'not filled in':''};
+  }
+  const names=Array.from(new Set(cell.missing.map(function(m){return m.teacher||'?';})));
+  return {t:'not filled ×'+cell.missing.length,kind:'missing',sub:names.join(', ')};
 }
-function pdCellColour(cell){
-  if(!cell||!cell.n)return null;
-  const a=cell.points/cell.n;
-  if(a>=3.5)return {bg:'#e8f7ee',fg:'#15803d'};
-  if(a>=2.5)return {bg:'#eef4fb',fg:'#1a5f7a'};
-  if(a>=1.5)return {bg:'#fff8e1',fg:'#8a6100'};
-  return {bg:'#fdecec',fg:'#a52424'};
+function pdCellColour(lab){
+  if(!lab)return null;
+  if(lab.kind==='mark')return pdMarkTone(lab.v);
+  if(lab.kind==='missing')return {bg:'#fff1f1',fg:'#b42318'};
+  return null;
 }
 
+// The grid, shared by the on-screen preview and the printed sheet.
 // The grid, shared by the on-screen preview and the printed sheet.
 function pdSummaryTableHTML(d,forPrint){
   if(!d.clsList.length)return '<div style="padding:14px;font-size:12px;color:#888">Nothing was recorded in these dates.</div>';
   const bd=forPrint?'1px solid #ddd':'1px solid var(--bd)';
-  const th=forPrint?'background:#1a5f7a;color:#fff;padding:6px 8px;font-size:10px;text-transform:uppercase'
-                   :'background:var(--ac);color:#fff;padding:6px 8px;font-size:10px;text-transform:uppercase';
+  const th=(forPrint?'background:#1a5f7a;':'background:var(--ac);')+'color:#fff;padding:5px 5px;font-size:9px;text-transform:uppercase;text-align:center';
+  const foot='font-weight:700;background:'+(forPrint?'#f0f4f8':'var(--sf3)');
+  const cellHTML=function(lab){
+    const col=pdCellColour(lab);
+    return '<td style="border:'+bd+';padding:4px 4px;text-align:center;line-height:1.2'
+      +(col?';background:'+col.bg+';color:'+col.fg:';color:#aaa')
+      +(lab.kind==='mark'?';font-weight:700':'')+(lab.kind==='missing'?';font-size:9px;font-weight:600':'')+'">'
+      +esc(lab.t)+(lab.sub?'<div style="font-size:8px;font-weight:400">'+esc(lab.sub)+'</div>':'')+'</td>';
+  };
   let h='<table style="width:100%;border-collapse:collapse;font-size:11px">'
    +'<thead><tr><th style="'+th+';text-align:left">Class</th>'
-   +PD_PERIODS.map(function(p){return '<th style="'+th+';text-align:center">P'+p+'</th>';}).join('')
-   +'<th style="'+th+';text-align:center">Periods</th>'
-   +'<th style="'+th+';text-align:center">Named</th>'
-   +'<th style="'+th+';text-align:center" title="Marks lost on how the class left for break">Breaks</th>'
-   +'<th style="'+th+';text-align:center">Score</th></tr></thead><tbody>';
+   +PD_PERIODS.map(function(p){return '<th style="'+th+'">P'+p+'</th>';}).join('')
+   +'<th style="'+th+'">Break</th><th style="'+th+'">Salah</th>'
+   +'<th style="'+th+'">Total</th><th style="'+th+'">%</th><th style="'+th+'">Position</th>'
+   +'<th style="'+th+'">Named</th></tr></thead><tbody>';
   d.clsList.forEach(function(c){
     const cl=d.classes[c];
-    h+='<tr><td style="border:'+bd+';padding:5px 8px"><strong>'+esc(c)+'</strong></td>';
-    PD_PERIODS.forEach(function(p){
-      const cell=d.cells[c+'|'+p];
-      const col=pdCellColour(cell);
-      h+='<td style="border:'+bd+';padding:5px 6px;text-align:center'
-        +(col?';background:'+col.bg+';color:'+col.fg+';font-weight:600':';color:#bbb')+'">'
-        +(cell?esc(pdCellLabel(cell,d.singleDay))+(cell.named?'<div style="font-size:8px;font-weight:400">'+cell.named+' named</div>':''):'·')
-        +'</td>';
+    const g=pdGroupOf(c);
+    h+='<tr><td style="border:'+bd+';padding:4px 7px;white-space:nowrap"><strong>'+esc(c)+'</strong></td>';
+    PD_PERIODS.forEach(function(p){h+=cellHTML(pdCellLabel(d.cells[c+'|'+p],d.singleDay));});
+    ['break','salah'].forEach(function(s){
+      const cell=d.cells[c+'|'+s];
+      h+=cell?cellHTML(pdCellLabel(cell,d.singleDay)):'<td style="border:'+bd+';text-align:center;color:#bbb">—</td>';
     });
-    h+='<td style="border:'+bd+';padding:5px 6px;text-align:center">'+cl.n+'</td>'
-     +'<td style="border:'+bd+';padding:5px 6px;text-align:center'+(cl.named?';color:#a52424;font-weight:600':'')+'">'+cl.named+'</td>'
-     +'<td style="border:'+bd+';padding:5px 6px;text-align:center'+(cl.breakDrop?';color:#a52424':'')+'">'+(cl.breaks&&cl.breaks.count?(cl.breakDrop?'\u2212'+cl.breakDrop.toFixed(2):'0.00'):'\u00b7')+'</td>'
-     +'<td style="border:'+bd+';padding:5px 6px;text-align:center"><strong>'+cl.score.toFixed(2)+'</strong></td></tr>';
+    h+='<td style="border:'+bd+';padding:4px 5px;text-align:center;white-space:nowrap"><strong>'+pdFmt(cl.obtained)+'</strong>/'+cl.possible+'</td>'
+     +'<td style="border:'+bd+';padding:4px 5px;text-align:center"><strong>'+cl.pct+'%</strong></td>'
+     +'<td style="border:'+bd+';padding:4px 5px;text-align:center;white-space:nowrap"><strong>'+pdOrdinal(d.pos[c])+'</strong>'
+       +(g?'<div style="font-size:8px;color:#888">'+esc(g.name)+'</div>':'')+'</td>'
+     +'<td style="border:'+bd+';padding:4px 5px;text-align:center'+(cl.named?';color:#a52424;font-weight:600':'')+'">'+cl.named+'</td></tr>';
   });
-  // What every period looked like across the school
-  h+='<tr><td style="border:'+bd+';padding:5px 8px;font-weight:700;background:'+(forPrint?'#f0f4f8':'var(--sf3)')+'">All classes</td>';
-  PD_PERIODS.forEach(function(p){
+  // How each period went across the school
+  h+='<tr><td style="border:'+bd+';padding:4px 7px;'+foot+'">All classes</td>';
+  PD_PERIODS.concat(['break','salah']).forEach(function(p){
     const t=d.periodTot[p];
-    h+='<td style="border:'+bd+';padding:5px 6px;text-align:center;font-weight:700;background:'+(forPrint?'#f0f4f8':'var(--sf3)')+'">'
-     +(t.n?t.avg.toFixed(2):'·')+(t.n?'<div style="font-size:8px;font-weight:400">'+t.n+' rec</div>':'')+'</td>';
+    h+='<td style="border:'+bd+';padding:4px 4px;text-align:center;'+foot+'">'
+     +(t.n?pdFmt(t.sum/t.n):'·')
+     +(t.missing?'<div style="font-size:8px;font-weight:400;color:#b42318">'+t.missing+' not filled</div>':'')+'</td>';
   });
-  h+='<td style="border:'+bd+';padding:5px 6px;text-align:center;font-weight:700;background:'+(forPrint?'#f0f4f8':'var(--sf3)')+'">'+d.totalPeriods+'</td>'
-   +'<td style="border:'+bd+';padding:5px 6px;text-align:center;font-weight:700;background:'+(forPrint?'#f0f4f8':'var(--sf3)')+'">'+d.totalNamed+'</td>'
-   +'<td style="border:'+bd+';padding:5px 6px;background:'+(forPrint?'#f0f4f8':'var(--sf3)')+'"></td></tr>';
+  h+='<td colspan="4" style="border:'+bd+';padding:4px 5px;font-size:9px;'+foot+'">'+d.totalPeriods+' lessons marked · '+d.missingAll.length+' not filled in · '+d.totalNamed+' student report(s)</td></tr>';
   return h+'</tbody></table>';
 }
 
 function pdSummaryM(){
   const cur=pdCurrentWeek();
-  const st=window._pdSum||(window._pdSum={
-    from:cur?cur.from:ymd(new Date()),to:cur?cur.to:ymd(new Date())});
+  const st=window._pdSum||(window._pdSum={from:ymd(new Date()),to:ymd(new Date())});
   const opts=pdWeekOptions();
   openM('<div class="mh"><h3>\u{1f4c8} Discipline Summary</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">Every class against every period. Over a single day each cell is that period’s rating; over a longer stretch it is the class’s average for that period, so a period that goes wrong across the school stands out.</div>'
+  +'<div class="al ai">Every class against every period and break, in marks out of '+PD_MAX+', with the total for the day and each class’s position in its group. '
+   +'Where a teacher did not fill in a lesson, the teacher on the timetable is named instead of a mark. Over several days each cell is the average mark.</div>'
   +(opts.length?'<div class="fg"><label>Quick pick a week</label><select id="pds-w" onchange="pdSummaryWeek()">'
      +'<option value="">— choose a week —</option>'
      +opts.map(function(w,i){return '<option value="'+i+'"'+((w.from===st.from&&w.to===st.to)?' selected':'')+'>'+esc(w.label)+' ('+esc(w.from)+' → '+esc(w.to)+')</option>';}).join('')
@@ -14832,11 +14990,17 @@ function pdSummaryRender(){
   window._pdSum={from:r.from,to:r.to};
   const d=pdSummaryData(r.from,r.to);
   box.innerHTML='<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">'
-   +'<strong>'+d.clsList.length+'</strong> class(es) · <strong>'+d.totalPeriods+'</strong> period(s) recorded · '
-   +'<strong>'+d.totalNamed+'</strong> student report(s) · '+d.days.length+' day(s)'
-   +(d.singleDay?' — each cell is that period’s rating':' — each cell is the average for that class and period, with how many were recorded')
+   +'<strong>'+d.clsList.length+'</strong> class(es) · <strong>'+d.totalPeriods+'</strong> lesson(s) marked · '
+   +'<strong style="color:var(--dn)">'+d.missingAll.length+'</strong> not filled in · '+d.days.length+' day(s)'
+   +(d.singleDay?' — each cell is the mark out of '+PD_MAX:' — each cell is the average mark out of '+PD_MAX)
    +'</div>'
-   +'<div class="tw" style="max-height:330px;overflow:auto">'+pdSummaryTableHTML(d,false)+'</div>';
+   +'<div class="tw" style="max-height:330px;overflow:auto">'+pdSummaryTableHTML(d,false)+'</div>'
+   +(d.missingAll.length?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 4px">Lessons not filled in ('+d.missingAll.length+')</div>'
+     +'<div class="tw" style="max-height:180px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Date</th><th>Class</th><th class="c">Period</th><th>Subject</th><th>Teacher on the timetable</th></tr></thead><tbody>'
+     +d.missingAll.map(function(m){
+       return '<tr><td class="mono">'+esc(m.date)+'</td><td><strong>'+esc(m.className)+'</strong></td><td class="c">P'+m.period+'</td>'
+        +'<td>'+esc(m.subject||'—')+'</td><td style="color:var(--dn);font-weight:600">'+esc(m.teacher||'(none on the timetable)')+'</td></tr>';
+     }).join('')+'</tbody></table></div>':'');
 }
 
 function pdSummaryPDF(){
@@ -14844,33 +15008,47 @@ function pdSummaryPDF(){
   if(!r.from||!r.to||r.to<r.from){toast('Choose a valid date range','danger');return;}
   const d=pdSummaryData(r.from,r.to);
   if(!d.clsList.length){toast('Nothing was recorded in these dates','danger');return;}
+  const byTeacher={};
+  d.missingAll.forEach(function(m){
+    const t=m.teacher||'(none on the timetable)';
+    (byTeacher[t]=byTeacher[t]||[]).push(m);
+  });
+  const tList=Object.keys(byTeacher).sort(function(a,b){return byTeacher[b].length-byTeacher[a].length||a.localeCompare(b);});
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to open the PDF','danger');return;}
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Discipline Summary '+esc(r.from)+' to '+esc(r.to)+'</title><style>'
-   +'@page{size:A4 landscape;margin:12mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:11px}'
-   +'h2{font-size:13px;margin:16px 0 6px}'
+   +'@page{size:A4 landscape;margin:9mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:10px}'
+   +'h2{font-size:12px;margin:12px 0 5px}'
    +'table{width:100%;border-collapse:collapse}'
-   +'.legend{margin-top:10px;font-size:10px;color:#555;line-height:1.7}'
+   +'.mt th{background:#1a5f7a;color:#fff;padding:4px 6px;text-align:left;font-size:9px;text-transform:uppercase}'
+   +'.mt td{padding:3px 6px;border:1px solid #ddd;font-size:9px}'
+   +'.legend{margin-top:8px;font-size:9px;color:#555;line-height:1.6}'
    +'.key{display:inline-block;padding:1px 7px;border-radius:3px;margin-right:4px;font-weight:600}'
-   +'@media print{button{display:none}}</style></head><body>'
-   +pdfHeaderHTML({subtitle:'Class Discipline — Period Summary'})
-   +'<button onclick="window.print()" style="margin-bottom:10px;padding:7px 15px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">\u{1f5a8}️ Print / Save as PDF</button>'
-   +'<div style="font-size:13px;font-weight:bold">'+esc(r.from)+' to '+esc(r.to)+'</div>'
-   +'<div style="font-size:11px;color:#555;margin-bottom:8px">'+d.clsList.length+' class(es) · '+d.totalPeriods+' period(s) recorded · '
-   +d.totalNamed+' student report(s) · '+d.days.length+' day(s)</div>'
+   +'@media print{button{display:none}tr{page-break-inside:avoid}}</style></head><body>'
+   +pdfHeaderHTML({subtitle:'Class Discipline — Marks Summary'})
+   +'<button onclick="window.print()" style="margin-bottom:8px;padding:7px 15px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">\u{1f5a8}️ Print / Save as PDF</button>'
+   +'<div style="font-size:12px;font-weight:bold">'+esc(r.from)+(r.from!==r.to?' to '+esc(r.to):' — '+esc(getDayOfWeek(r.from)||''))+'</div>'
+   +'<div style="font-size:10px;color:#555;margin-bottom:6px">'+d.clsList.length+' class(es) · '+d.totalPeriods+' lesson(s) marked · '
+   +d.missingAll.length+' not filled in · '+d.totalNamed+' student report(s) · '+d.days.length+' day(s)</div>'
    +pdSummaryTableHTML(d,true)
    +'<div class="legend">'
-   +(d.singleDay?'<strong>Each cell</strong> is the rating a teacher gave that class in that period.'
-     :'<strong>Each cell</strong> is the class’s average for that period across the range, with the number of records in brackets. Ratings count Excellent 4, V. Good 3, Good 2, Bad 0.')
-   +'<br><span class="key" style="background:#e8f7ee;color:#15803d">3.50 and above</span>'
-   +'<span class="key" style="background:#eef4fb;color:#1a5f7a">2.50 – 3.49</span>'
-   +'<span class="key" style="background:#fff8e1;color:#8a6100">1.50 – 2.49</span>'
-   +'<span class="key" style="background:#fdecec;color:#a52424">below 1.50</span>'
-   +'<br><strong>Score</strong> starts at '+PD_BASE_SCORE+' and loses '+PD_RATING_DROP['V. Good'].toFixed(2)+' a V. Good period, '+PD_RATING_DROP['Good'].toFixed(2)+' a Good one and '+PD_RATING_DROP['Bad'].toFixed(2)+' a Bad one, '
-   +'then '+PD_MISS_PENALTY.toFixed(2)+' for every lesson no teacher filled in and '+PD_NAMED_PENALTY.toFixed(2)+' for every student reported. '
-   +'A class owes '+PD_TIMETABLE.map(function(t){return t.perWeek+' periods a week in grades '+t.grades[0]+'-'+t.grades[t.grades.length-1];}).join(' and ')+'.'
-   +'<br><strong>All classes</strong> shows how each period went across the school — a low figure means that period is a problem everywhere, not just in one room.'
-   +'</div></body></html>');
+   +(d.singleDay?'<strong>Each cell</strong> is the mark out of '+PD_MAX+' the teacher gave that lesson, or the admin staff gave that break. A name in red is the teacher on the timetable who did not fill that lesson in; it scores 0.'
+     :'<strong>Each cell</strong> is the average mark out of '+PD_MAX+' for that class and period across the range; lessons not filled in are counted underneath.')
+   +'<br><span class="key" style="background:#e8f7ee;color:#15803d">9 – 10</span>'
+   +'<span class="key" style="background:#eef4fb;color:#1a5f7a">7 – 8.9</span>'
+   +'<span class="key" style="background:#fff8e1;color:#8a6100">5 – 6.9</span>'
+   +'<span class="key" style="background:#fdecec;color:#a52424">below 5</span>'
+   +'<span class="key" style="background:#fff1f1;color:#b42318">not filled in</span>'
+   +'<br><strong>Total</strong> is the marks obtained out of the marks available: '+PD_MAX+' for every lesson on the timetable and '+PD_MAX+' for every break that was rated. '
+   +'<strong>Position</strong> is within the class’s group ('+PD_GROUPS.map(function(g){return g.name+' '+g.label.toLowerCase();}).join(', ')+'), by the share of marks obtained.'
+   +'</div>'
+   +(tList.length?'<h2>Lessons not filled in — by the teacher on the timetable</h2>'
+     +'<table class="mt"><thead><tr><th>Teacher</th><th>Lessons</th><th>Class · day · period (subject)</th></tr></thead><tbody>'
+     +tList.map(function(t){
+       return '<tr><td><strong>'+esc(t)+'</strong></td><td>'+byTeacher[t].length+'</td><td>'
+        +esc(byTeacher[t].map(function(m){return m.className+' · '+(d.singleDay?'':(PD_DAY_SHORT[getDayOfWeek(m.date)]||m.date)+' ')+'P'+m.period+(m.subject?' ('+m.subject+')':'');}).join(', '))+'</td></tr>';
+     }).join('')+'</tbody></table>':'')
+   +'</body></html>');
   w.document.close();
   logA('Generated the period discipline summary for '+r.from+' to '+r.to);
 }
@@ -14880,42 +15058,48 @@ function pdSummaryXlsx(){
   if(!r.from||!r.to||r.to<r.from){toast('Choose a valid date range','danger');return;}
   const d=pdSummaryData(r.from,r.to);
   if(!d.clsList.length){toast('Nothing was recorded in these dates','danger');return;}
+  const cellText=function(lab){
+    if(lab.kind==='mark')return lab.t;
+    if(lab.kind==='missing')return 'Not filled in'+(lab.t&&lab.t.indexOf('not filled')!==0?' – '+lab.t:(lab.sub?' – '+lab.sub:''));
+    if(lab.kind==='excl')return 'Excluded';
+    if(lab.kind==='unrated')return 'Not rated';
+    return '';
+  };
   // Sheet 1 — the grid
-  const grid=[['Class'].concat(PD_PERIODS.map(function(p){return 'P'+p;}))
-    .concat(['Periods Filled In','Expected','Missing','Students Named','Breaks Rated','Break Deduction','Total Deducted','Score /'+PD_BASE_SCORE])];
+  const grid=[['Class'].concat(PD_PERIODS.map(function(p){return 'P'+p;})).concat(['Break','Salah Break','Marks Obtained','Marks Available','%','Group','Position','Students Named'])];
   d.clsList.forEach(function(c){
-    const cl=d.classes[c];
-    grid.push([c].concat(PD_PERIODS.map(function(p){
-      const cell=d.cells[c+'|'+p];
-      if(!cell||!cell.n)return '';
-      return d.singleDay||cell.n===1?(cell.ratings[0]||''):(cell.points/cell.n).toFixed(2);
-    })).concat([cl.n,cl.expected,cl.missing||'',cl.named,cl.breaks?cl.breaks.count:0,cl.breakDrop?('-'+cl.breakDrop.toFixed(2)):'',cl.deducted?('-'+cl.deducted.toFixed(2)):'',cl.score.toFixed(2)]));
+    const cl=d.classes[c];const g=pdGroupOf(c);
+    grid.push([c].concat(PD_PERIODS.map(function(p){return cellText(pdCellLabel(d.cells[c+'|'+p],d.singleDay));}))
+      .concat(['break','salah'].map(function(s){const cell=d.cells[c+'|'+s];return cell?cellText(pdCellLabel(cell,d.singleDay)):'';}))
+      .concat([pdFmt(cl.obtained),cl.possible,cl.pct,g?g.name:'',d.pos[c]||'',cl.named]));
   });
   grid.push([]);
-  grid.push(['All classes'].concat(PD_PERIODS.map(function(p){
-    const t=d.periodTot[p];return t.n?t.avg.toFixed(2):'';
-  })).concat([d.totalPeriods,d.totalNamed,'','','']));
-  grid.push(['Records per period'].concat(PD_PERIODS.map(function(p){return d.periodTot[p].n;})).concat(['','','','','']));
-  grid.push(['Students named per period'].concat(PD_PERIODS.map(function(p){return d.periodTot[p].named;})).concat(['','','','','']));
-  // Sheet 2 — how many of each rating, per class
-  const counts=[['Class'].concat(PD_RATINGS.map(function(x){return x.v;})).concat(['Periods','Students Named','Score /'+PD_BASE_SCORE])];
-  d.clsList.forEach(function(c){
-    const cl=d.classes[c];
-    counts.push([c].concat(PD_RATINGS.map(function(x){return cl.counts[x.v]||0;}))
-      .concat([cl.n,cl.named,cl.score.toFixed(2)]));
+  grid.push(['All classes (average)'].concat(PD_PERIODS.concat(['break','salah']).map(function(p){const t=d.periodTot[p];return t.n?pdFmt(t.sum/t.n):'';})));
+  grid.push(['Not filled in'].concat(PD_PERIODS.map(function(p){return d.periodTot[p].missing;})));
+  // Sheet 2 — marks and position
+  const marks=[['Group','Position','Class','Period Marks','Period Marks Available','Break Marks','Break Marks Available','Marks Obtained','Marks Available','%','Lessons Filled In','Lessons On Timetable','Not Filled In','Breaks Rated','Students Named']];
+  PD_GROUPS.forEach(function(g){
+    d.ranked.filter(function(b){const rg=pdGroupOf(b.className);return rg&&rg.id===g.id;}).forEach(function(b){
+      marks.push([g.name,d.pos[b.className]||'',b.className,pdFmt(b.periodMarks),b.periodPossible,pdFmt(b.breakMarks),b.breakPossible,
+        pdFmt(b.obtained),b.possible,b.pct,b.periods,b.expected,b.missing,b.breaksRated,b.named]);
+    });
   });
-  // Sheet 3 — every record behind the numbers
-  const detail=[['Date','Day','Period','Class','Discipline','Students Named','Count','What Happened','Note','Teacher']];
+  // Sheet 3 — lessons nobody filled in, with who was timetabled
+  const missing=[['Date','Day','Class','Period','Subject','Teacher On The Timetable']];
+  d.missingAll.forEach(function(m){missing.push([m.date,getDayOfWeek(m.date)||'',m.className,m.period,m.subject||'',m.teacher||'']);});
+  if(!d.missingAll.length)missing.push(['Every lesson was filled in']);
+  // Sheet 4 — every record behind the numbers
+  const detail=[['Date','Day','Period','Class','Marks /'+PD_MAX,'Students Named','Count','What Happened','Note','Teacher']];
   d.rows.slice().sort(function(a,b){
     return (a.date||'').localeCompare(b.date||'')
       ||((a.periodNumber||a.period||0)-(b.periodNumber||b.period||0))
       ||(a.className||'').localeCompare(b.className||'');
   }).forEach(function(x){
-    detail.push([x.date||'',getDayOfWeek(x.date)||'',x.periodNumber||x.period||'',x.className||'',x.rating||'',
+    detail.push([x.date||'',getDayOfWeek(x.date)||'',x.periodNumber||x.period||'',x.className||'',pdFmt(pdMarksOf(x)),
       (x.students||[]).map(function(s){return s.name;}).join('; '),(x.students||[]).length,
       (x.behaviours||[]).join('; '),x.note||'',x.teacherName||'']);
   });
-  // Sheet 4 — anyone named more than once in this range
+  // Sheet 5 — anyone named more than once in this range
   const rep=pdRepeatMap(d.rows);
   const repList=Object.keys(rep).map(function(k){return rep[k];})
     .filter(function(m){return m.repeated;})
@@ -14928,7 +15112,8 @@ function pdSummaryXlsx(){
   if(repList.length===0)repeats.push(['Nobody was named more than once in these dates']);
   xlsxDownload([
     {name:'Class x Period',rows:grid},
-    {name:'Ratings by Class',rows:counts},
+    {name:'Marks and Position',rows:marks},
+    {name:'Not Filled In',rows:missing},
     {name:'Repeat Students',rows:repeats},
     {name:'All Records',rows:detail}
   ],'discipline_summary_'+r.from+'_to_'+r.to+'.xlsx');
@@ -15094,8 +15279,9 @@ function pdStudentHistory(key,from,to){
     return (r.students||[]).some(function(st){return pdStudentKey(st)===key;});
   }).map(function(r){
     const st=(r.students||[]).find(function(x){return pdStudentKey(x)===key;})||{};
+    const m=pdMarksOf(r);
     return {date:r.date||'',period:r.periodNumber||r.period||'',className:r.className||'',
-      rating:r.rating||'',teacherName:r.teacherName||'',behaviours:r.behaviours||[],
+      rating:pdFmt(m)+'/'+PD_MAX,marks:m,low:m<5,teacherName:r.teacherName||'',behaviours:r.behaviours||[],
       note:r.note||'',infractionId:st.infractionId||'',recordId:r.id};
   }).sort(function(a,b){
     return (a.date||'').localeCompare(b.date||'')||(a.period||0)-(b.period||0);
@@ -15171,13 +15357,12 @@ function pdStudentRender(){
    +(s.behaviours.length?'<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Most often: '
      +s.behaviours.slice(0,4).map(function(b){return esc(b)+' ('+s.behaviourCounts[b]+')';}).join(' · ')+'</div>':'')
    +'<div class="tw" style="max-height:260px;overflow:auto"><table style="font-size:11px"><thead><tr>'
-   +'<th>Date</th><th class="c">P</th><th>Class</th><th>Class rated</th><th>Reported by</th><th>What happened</th></tr></thead><tbody>'
+   +'<th>Date</th><th class="c">P</th><th>Class</th><th>Class marks</th><th>Reported by</th><th>What happened</th></tr></thead><tbody>'
    +rows.map(function(r){
-     const rt=pdRating(r.rating);
-     return '<tr'+(r.rating==='Bad'?' style="background:var(--dnbg)"':'')+'>'
+     return '<tr'+(r.low?' style="background:var(--dnbg)"':'')+'>'
       +'<td class="mono">'+esc(r.date)+'</td><td class="c">'+esc(String(r.period))+'</td>'
       +'<td><strong>'+esc(r.className)+'</strong></td>'
-      +'<td><span class="badge '+rt.bg+'" style="font-size:9px">'+rt.i+' '+esc(r.rating)+'</span></td>'
+      +'<td>'+pdMarkBadge(r.marks,' style="font-size:9px"')+'</td>'
       +'<td style="font-size:10px">'+esc(r.teacherName||'—')+'</td>'
       +'<td style="font-size:10px;color:var(--tx2)">'+((r.behaviours||[]).length?esc(r.behaviours.join('; ')):'—')
         +(r.note?'<div style="color:var(--tx3)">'+esc(r.note)+'</div>':'')
@@ -15240,7 +15425,7 @@ function pdStudentPDF(){
    +'<table><thead><tr><th style="width:66px">Date</th><th style="width:22px">P</th><th style="width:48px">Class</th>'
    +'<th style="width:60px">Class rated</th><th style="width:90px">Reported by</th><th>What happened</th></tr></thead><tbody>'
    +rows.map(function(r){
-     return '<tr'+(r.rating==='Bad'?' class="bad"':'')+'>'
+     return '<tr'+(r.low?' class="bad"':'')+'>'
       +'<td>'+esc(r.date)+'</td><td class="c">'+esc(String(r.period))+'</td>'
       +'<td>'+esc(r.className)+'</td><td>'+esc(r.rating)+'</td>'
       +'<td>'+esc(r.teacherName||'—')+'</td>'
@@ -15280,7 +15465,7 @@ function rPeriodDiscipline(){
   const sel=window._pdDate||today;
   const rows=pdVisible();
   const todayRows=rows.filter(function(r){return r.date===sel;});
-  const bad=todayRows.filter(function(r){return r.rating==='Bad';}).length;
+  const bad=todayRows.filter(function(r){return pdMarksOf(r)<5;}).length;
   const flagged=todayRows.reduce(function(n,r){return n+((r.students||[]).length);},0);
   const classes=getAllClasses();
   document.getElementById('pc').innerHTML=
@@ -15296,11 +15481,11 @@ function rPeriodDiscipline(){
    +'<button class="btn bg2 bsm" onclick="pdQrM()">\u{1f4f1} Class QR Poster</button>'
    +'<button class="btn bg2 bsm" onclick="pdExport()">\u{1f4ca} Export</button>'
    +'</div></div>'
-   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">At the end of each period, pick the class, say how it went, and name anyone who caused a problem. A named student can be turned into a formal infraction later.</div></div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">At the end of each period, pick the class, give it a mark out of 10 for discipline, and name anyone who caused a problem. The marks for each day, with the break marks, decide each class’s position. A named student can be turned into a formal infraction later.</div></div>'
    +'<div class="cg g4" style="margin-bottom:13px">'
    +'<div class="stat bl"><div class="sl2">Periods Recorded</div><div class="sv">'+todayRows.length+'</div><div class="sb3">on '+esc(sel)+'</div><div class="sic">\u{1f4dd}</div></div>'
    +'<div class="stat gn"><div class="sl2">Classes Covered</div><div class="sv">'+new Set(todayRows.map(function(r){return r.className;})).size+'</div><div class="sb3">of '+classes.length+'</div><div class="sic">\u{1f3eb}</div></div>'
-   +'<div class="stat rd"><div class="sl2">Rated Bad</div><div class="sv">'+bad+'</div><div class="sb3">need attention</div><div class="sic">\u{1f61f}</div></div>'
+   +'<div class="stat rd"><div class="sl2">Marks Below 5</div><div class="sv">'+bad+'</div><div class="sb3">need attention</div><div class="sic">\u{1f61f}</div></div>'
    +'<div class="stat go"><div class="sl2">Students Named</div><div class="sv">'+flagged+'</div><div class="sb3">on '+esc(sel)+'</div><div class="sic">⚠️</div></div>'
    +'</div>'
    +pdRepeatCard()
@@ -15309,29 +15494,52 @@ function rPeriodDiscipline(){
 }
 
 // A class-by-period grid so a gap is obvious at a glance.
+// A class-by-period grid for the day: the mark in each lesson, or the name of
+// the timetabled teacher where nobody has filled it in; the breaks; the total
+// for the day; and each class's position in its group.
 function pdGridCard(sel,todayRows,canAdd){
   const classes=getAllClasses();
   if(!classes.length)return '<div class="card" style="margin-bottom:13px"><div class="emp" style="padding:16px"><div class="ei">\u{1f3eb}</div><p style="font-size:11px">No classes on the roll yet.</p></div></div>';
-  const at={};
-  todayRows.forEach(function(r){at[r.className+'|'+r.period]=r;});
-  return '<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>\u{1f4c5} '+esc(sel)+' — period by period</h3></div>'
-   +'<div class="tw"><table style="font-size:11px"><thead><tr><th style="min-width:64px">Class</th>'
-   +PD_PERIODS.map(function(p){return '<th class="c">P'+p+'</th>';}).join('')+'</tr></thead><tbody>'
-   +classes.map(function(c){
+  const q=String.fromCharCode(39);
+  const brs=getBreakDiscipline().filter(function(r){return r.date===sel;});
+  const results=classes.map(function(c){
+    return pdDayResult(c,sel,
+      todayRows.filter(function(r){return normClass(r.className)===normClass(c);}),
+      brs.filter(function(r){return normClass(r.className)===normClass(c);}));
+  });
+  const anything=todayRows.length||brs.length;
+  const pos=anything?pdGroupPositions(results):{};
+  return '<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>\u{1f4c5} '+esc(sel)+' — marks for the day</h3></div>'
+   +'<div class="tw"><table style="font-size:11px"><thead><tr><th style="min-width:54px">Class</th>'
+   +PD_PERIODS.map(function(p){return '<th class="c">P'+p+'</th>';}).join('')
+   +'<th class="c">Break</th><th class="c">Salah</th><th class="c">Total</th><th class="c">Position</th></tr></thead><tbody>'
+   +results.map(function(res){
+     const c=res.className;
      return '<tr><td><strong>'+esc(c)+'</strong></td>'
-      +PD_PERIODS.map(function(p){
-        const r=at[c+'|'+p];
-        if(pdIsExcluded(c,sel,p))return '<td class="c" title="Excluded — not expected"><span style="color:var(--tx3);font-size:11px">\u{1f6ab}</span></td>';
-        if(!r)return '<td class="c">'+(canAdd?'<button class="btn bg2 bxs" title="Record '+esc(c)+' period '+p+'" onclick="pdEntryM(null,'+String.fromCharCode(39)+escJs(c)+String.fromCharCode(39)+','+p+')">+</button>':'<span style="color:var(--tx3)">·</span>')+'</td>';
-        const rt=pdRating(r.rating);
-        const n=(r.students||[]).length;
-        return '<td class="c"><span class="badge '+rt.bg+'" style="cursor:pointer" title="'+esc(r.rating)+(r.teacherName?' · '+esc(r.teacherName):'')+'" onclick="pdViewM('+String.fromCharCode(39)+escJs(r.id)+String.fromCharCode(39)+')">'+rt.i+(n?' '+n:'')+'</span></td>';
-      }).join('')+'</tr>';
+      +res.periods.map(function(x){
+        if(x.excluded)return '<td class="c" title="Excluded — not expected"><span style="color:var(--tx3);font-size:11px">\u{1f6ab}</span></td>';
+        if(x.rec){
+          const n=(x.rec.students||[]).length;
+          return '<td class="c">'+pdMarkBadge(x.marks,' style="cursor:pointer" title="'+esc((x.rec.teacherName||'')+(n?' · '+n+' named':''))+'" onclick="pdViewM('+q+escJs(x.rec.id)+q+')"')
+            +(n?'<div style="font-size:9px;color:var(--dn)">⚠ '+n+'</div>':'')+'</td>';
+        }
+        if(!x.lesson)return '<td class="c" style="color:var(--tx3)">—</td>';
+        return '<td class="c">'+(canAdd?'<button class="btn bg2 bxs" title="Record '+esc(c)+' period '+x.p+'" onclick="pdEntryM(null,'+q+escJs(c)+q+','+x.p+')">+</button>':'')
+          +'<div style="font-size:9px;color:var(--dn);font-weight:600;line-height:1.2" title="Not filled in — teacher on the timetable">'+esc(x.teacher||'not filled')+'</div></td>';
+      }).join('')
+      +['break','salah'].map(function(s){
+        const b=res.breaks.find(function(x){return x.slot===s;});
+        if(!b)return '<td class="c" style="color:var(--tx3)">—</td>';
+        return '<td class="c">'+(b.rec?pdMarkBadge(b.marks):'<span style="color:var(--tx3);font-size:10px" title="Not rated yet">·</span>')+'</td>';
+      }).join('')
+      +'<td class="c">'+(res.possible?'<strong>'+pdFmt(res.obtained)+'</strong>/'+res.possible+'<div style="font-size:9px;color:var(--tx3)">'+res.pct+'%</div>':'<span style="color:var(--tx3)">—</span>')+'</td>'
+      +'<td class="c">'+(pos[c]?'<strong>'+pdOrdinal(pos[c])+'</strong><div style="font-size:9px;color:var(--tx3)">'+esc((pdGroupOf(c)||{}).name||'')+'</div>':'<span style="color:var(--tx3)">—</span>')+'</td>'
+      +'</tr>';
    }).join('')+'</tbody></table></div>'
    +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:10px;color:var(--tx3)">'
-   +PD_RATINGS.map(function(r){return '<span>'+r.i+' '+esc(r.v)+'</span>';}).join('')
-   +'<span>\u{1f6ab} excluded</span>'
-   +'<span>A number next to the face is how many students were named.</span></div></div>';
+   +'<span>Marks out of '+PD_MAX+' — '+esc(PD_MARK_GUIDE)+'</span>'
+   +'<span><strong style="color:var(--dn)">Red name</strong> = teacher on the timetable who has not filled that lesson in (scores 0)</span>'
+   +'<span>\u{1f6ab} excluded</span><span>Break marks come from Break Class Leaving Discipline; a break not rated is left out of the total.</span></div></div>';
 }
 
 function pdListCard(rows,sel){
@@ -15344,16 +15552,16 @@ function pdListCard(rows,sel){
 
 function pdRowsHTML(list,canInf){
   if(!list.length)return '<div class="emp" style="padding:16px"><div class="ei">\u{1f4dd}</div><p style="font-size:11px">Nothing recorded yet.</p></div>';
-  return '<div class="tw"><table style="font-size:11px"><thead><tr><th>Date</th><th class="c">Period</th><th>Class</th><th>Discipline</th><th>Students named</th><th>Teacher</th><th></th></tr></thead><tbody>'
+  return '<div class="tw"><table style="font-size:11px"><thead><tr><th>Date</th><th class="c">Period</th><th>Class</th><th>Marks</th><th>Students named</th><th>Teacher</th><th></th></tr></thead><tbody>'
    +list.map(function(r){
-     const rt=pdRating(r.rating);
+     const m=pdMarksOf(r);
      const mine=pdIsMine(r);
      const q=String.fromCharCode(39);
-     return '<tr'+(r.rating==='Bad'?' style="background:var(--dnbg)"':'')+'>'
+     return '<tr'+(m<5?' style="background:var(--dnbg)"':'')+'>'
       +'<td class="mono">'+esc(r.date||'')+'</td>'
       +'<td class="c"><strong>'+esc(String(r.period||''))+'</strong></td>'
       +'<td><strong>'+esc(r.className||'')+'</strong></td>'
-      +'<td><span class="badge '+rt.bg+'">'+rt.i+' '+esc(r.rating||'')+'</span></td>'
+      +'<td>'+pdMarkBadge(m)+(pdHasMarks(r)?'':'<div style="font-size:9px;color:var(--tx3)">from "'+esc(r.rating||'')+'"</div>')+'</td>'
       +'<td>'+((r.students||[]).length
          ?(r.students||[]).map(function(st){
             return '<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;flex-wrap:wrap"><span>'+esc(st.name||'')+'</span>'
@@ -15394,21 +15602,20 @@ function pdEntryM(id,presetClass,presetPeriod){
   if(!classes.length){toast('No classes on the roll yet','danger');return;}
   const cls=ex?ex.className:(presetClass||window._pdClass||classes[0]);
   const per=ex?ex.period:(presetPeriod||1);
-  window._pdForm={id:id||null,cls:cls,rating:ex?ex.rating:'',picked:(ex&&ex.students?ex.students.slice():[]),
+  window._pdForm={id:id||null,cls:cls,marks:ex?pdMarksOf(ex):null,picked:(ex&&ex.students?ex.students.slice():[]),
     behaviours:(ex&&Array.isArray(ex.behaviours))?ex.behaviours.slice():[]};
-  const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f9ed} '+(ex?'Edit':'Record')+' Period Discipline</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">Choose the class and period, say how the class behaved, and name anyone who caused a problem.</div>'
+  +'<div class="al ai">Choose the class and period, give the class a mark out of '+PD_MAX+' for its discipline, and name anyone who caused a problem.</div>'
   +'<div class="fr f3">'
-  +'<div class="fg"><label>Date *</label><input type="date" id="pd-f-date" value="'+esc(ex?ex.date:(window._pdDate||ymd(new Date())))+'"></div>'
-  +'<div class="fg"><label>Period *</label><select id="pd-f-per">'+PD_PERIODS.map(function(p){return '<option value="'+p+'"'+(p===per?' selected':'')+'>Period '+p+'</option>';}).join('')+'</select></div>'
+  +'<div class="fg"><label>Date *</label><input type="date" id="pd-f-date" value="'+esc(ex?ex.date:(window._pdDate||ymd(new Date())))+'" onchange="pdEntryTtHint()"></div>'
+  +'<div class="fg"><label>Period *</label><select id="pd-f-per" onchange="pdEntryTtHint()">'+PD_PERIODS.map(function(p){return '<option value="'+p+'"'+(p===per?' selected':'')+'>Period '+p+'</option>';}).join('')+'</select></div>'
   +'<div class="fg"><label>Class *</label><select id="pd-f-cls" onchange="pdClassChanged()">'+classes.map(function(c){return '<option value="'+esc(c)+'"'+(c===cls?' selected':'')+'>'+esc(c)+'</option>';}).join('')+'</select></div>'
   +'</div>'
-  +'<div class="fg"><label>How did the class behave? *</label><div id="pd-f-rate" style="display:flex;gap:6px;flex-wrap:wrap">'
-  +PD_RATINGS.map(function(r){
-    return '<button type="button" class="btn bg2 bsm" data-r="'+esc(r.v)+'" onclick="pdPickRating('+q+escJs(r.v)+q+')" style="flex:1;min-width:110px;justify-content:center">'+r.i+' '+esc(r.v)+'</button>';
-  }).join('')+'</div></div>'
+  +'<div id="pd-f-tt" style="font-size:10px;color:var(--tx3);margin:-4px 0 8px"></div>'
+  +'<div class="fg"><label>Discipline marks out of '+PD_MAX+' *</label>'
+  +pdMarksPicker('pd-f-rate',window._pdForm.marks,'pdPickMarks')
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:4px">'+esc(PD_MARK_GUIDE)+'</div></div>'
   +'<div class="fg"><label>Students who caused a problem (optional)</label>'
   +'<div id="pd-f-chips" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>'
   +'<input id="pd-f-q" placeholder="Type a name from this class…" oninput="pdStuSearch()" style="margin-bottom:5px">'
@@ -15420,25 +15627,21 @@ function pdEntryM(id,presetClass,presetPeriod){
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
   +'<button class="btn bp" onclick="pdSave()">'+T('save')+' →</button></div>',true);
-  pdPickRating(window._pdForm.rating||'');
   pdRenderStudents();
+  pdEntryTtHint();
 }
 
+// Kept for anything still calling it with a rating word
 function pdPickRating(v){
-  window._pdForm.rating=v;
-  const box=document.getElementById('pd-f-rate');
-  if(!box)return;
-  [].slice.call(box.querySelectorAll('button')).forEach(function(b){
-    const on=b.getAttribute('data-r')===v;
-    b.className='btn '+(on?'bp':'bg2')+' bsm';
-    b.style.flex='1';b.style.minWidth='110px';b.style.justifyContent='center';
-  });
+  const m=PD_RATING_MARKS[v];
+  pdPickMarks(typeof m==='number'?m:null);
 }
 
 function pdClassChanged(){
   window._pdForm.cls=(document.getElementById('pd-f-cls')||{}).value||'';
   window._pdForm.picked=[];        // a different class means different boys
   pdRenderStudents();
+  pdEntryTtHint();
 }
 
 function pdStuSearch(){pdRenderStudents();}
@@ -15494,18 +15697,18 @@ function pdSave(){
   if(!date){toast('Choose the date','danger');return;}
   if(!period){toast('Choose the period','danger');return;}
   if(!cls){toast('Choose the class','danger');return;}
-  if(!f.rating){toast('Say how the class behaved','danger');return;}
+  if(f.marks===null||f.marks===undefined){toast('Give the class a mark out of '+PD_MAX,'danger');return;}
   const list=getPeriodDiscipline();
   // One record per class per period per day — editing replaces, not duplicates
   const clash=list.find(function(r){
     return r.id!==f.id&&r.date===date&&r.period===period&&r.className===cls;
   });
   if(clash&&!f.id){
-    if(!confirm(cls+' period '+period+' is already recorded on '+date+' by '+(clash.teacherName||'someone')+' as "'+clash.rating+'".\n\nReplace it with yours?'))return;
+    if(!confirm(cls+' period '+period+' is already recorded on '+date+' by '+(clash.teacherName||'someone')+' with '+pdFmt(pdMarksOf(clash))+'/'+PD_MAX+'.\n\nReplace it with yours?'))return;
     f.id=clash.id;
   }
   const now=new Date().toISOString();
-  const body={date:date,period:period,className:cls,rating:f.rating,
+  const body={date:date,period:period,className:cls,marks:f.marks,rating:pdRatingForMarks(f.marks),
     students:f.picked.map(function(p){return {id:p.id||'',name:p.name,infractionId:p.infractionId||''};}),
     behaviours:(f.behaviours||[]).slice(),
     note:note,teacherId:CU.id,teacherName:pdMyName()};
@@ -15527,7 +15730,7 @@ function pdSave(){
   // Same protection as the wall-poster form: merge into whatever is stored
   // rather than writing this device's copy of the whole list over the top.
   appendPeriodDiscipline(saving).catch(function(){}).then(function(){
-    logA((i>=0?'Updated':'Recorded')+' period discipline for '+cls+' period '+period+' on '+date+' ('+f.rating+')');
+    logA((i>=0?'Updated':'Recorded')+' period discipline for '+cls+' period '+period+' on '+date+' ('+pdFmt(f.marks)+'/'+PD_MAX+')');
     toast('Saved','success');
     if(typeof rPeriodDiscipline==='function'&&_page==='period_discipline')rPeriodDiscipline();
   });
@@ -15554,14 +15757,14 @@ function pdDelete(id){
 function pdViewM(id){
   const r=getPeriodDiscipline().find(function(x){return x.id===id;});
   if(!r){toast('Record not found','danger');return;}
-  const rt=pdRating(r.rating);
+  const pm=pdMarksOf(r);
   const canInf=canDo('infractions')!=='disabled';
   const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f9ed} '+esc(r.className||'')+' · Period '+esc(String(r.period||''))+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
   +'<div class="cg g2" style="margin-bottom:12px">'
   +'<div class="stat bl"><div class="sl2">Date</div><div style="font-size:15px;font-weight:700;margin-top:6px">'+esc(r.date||'')+'</div><div class="sb3">Period '+esc(String(r.period||''))+'</div><div class="sic">\u{1f4c5}</div></div>'
-  +'<div class="stat go"><div class="sl2">Discipline</div><div style="font-size:15px;font-weight:700;margin-top:6px">'+rt.i+' '+esc(r.rating||'')+'</div><div class="sb3">'+esc(r.teacherName||'')+'</div><div class="sic">\u{1f9ed}</div></div>'
+  +'<div class="stat '+(pm<5?'rd':'go')+'"><div class="sl2">Marks</div><div style="font-size:15px;font-weight:700;margin-top:6px">'+pdFmt(pm)+' / '+PD_MAX+'</div><div class="sb3">'+esc(r.teacherName||'')+'</div><div class="sic">\u{1f9ed}</div></div>'
   +'</div>'
   +((r.students||[]).length
     ?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin-bottom:5px">Students named</div>'
@@ -15605,7 +15808,7 @@ function pdInfraction(recId,sid){
       const d=document.getElementById('infd');
       if(d&&r&&!d.value){
         d.value='Classroom discipline, '+r.className+' period '+r.period+' on '+r.date
-          +' (class rated '+r.rating+').'
+          +' (class given '+pdFmt(pdMarksOf(r))+'/'+PD_MAX+').'
           +((r.behaviours||[]).length?' '+r.behaviours.join('; ')+'.':'')
           +(r.note?' '+r.note:'');
       }
@@ -15636,21 +15839,20 @@ function pdExport(){
   const rows=pdVisible();
   if(!rows.length){toast('Nothing to export','danger');return;}
   const out=rows.map(function(r){
-    return [r.date||'',String(r.period||''),r.className||'',r.rating||'',
+    return [r.date||'',String(r.period||''),r.className||'',pdFmt(pdMarksOf(r)),r.rating||'',
       (r.students||[]).map(function(s){return s.name;}).join('; '),
       String((r.students||[]).length),
       (r.students||[]).filter(function(s){return s.infractionId;}).length+'',
       (r.behaviours||[]).join('; '),
       r.note||'',r.teacherName||'',(r.created||'').split('T')[0]];
   });
-  const byRating={};
-  rows.forEach(function(r){byRating[r.rating||'—']=(byRating[r.rating||'—']||0)+1;});
+  const total=rows.reduce(function(n,r){return n+pdMarksOf(r);},0);
   out.push([]);
   out.push(['SUMMARY']);
-  PD_RATINGS.forEach(function(r){out.push([r.v,String(byRating[r.v]||0)]);});
   out.push(['Total periods recorded',String(rows.length)]);
+  out.push(['Average marks /'+PD_MAX,pdFmt(rows.length?total/rows.length:0)]);
   out.push(['Students named',String(rows.reduce(function(n,r){return n+((r.students||[]).length);},0))]);
-  expCSV(['Date','Period','Class','Discipline','Students Named','Count','Infractions Filed','What Happened','Note','Teacher','Recorded'],
+  expCSV(['Date','Period','Class','Marks /'+PD_MAX,'Band','Students Named','Count','Infractions Filed','What Happened','Note','Teacher','Recorded'],
     out,'class_period_discipline_'+ymd(new Date()));
   logA('Exported class period discipline ('+rows.length+' records)');
 }
@@ -15696,7 +15898,8 @@ function renderPdPortal(){
   const old=document.getElementById('pdp');if(old)old.remove();
   const classes=getAllClasses();
   const teachers=pdTeacherOptions();
-  const st=window._pdp||(window._pdp={cls:'',period:0,rating:'',picked:[],teacher:'',behaviours:[]});
+  const st=window._pdp||(window._pdp={cls:'',period:0,marks:null,picked:[],teacher:'',behaviours:[]});
+  if(st.marks===undefined)st.marks=null;
   if(!Array.isArray(st.behaviours))st.behaviours=[];
   const q=String.fromCharCode(39);
   const wrap=document.createElement('div');
@@ -15738,13 +15941,8 @@ function renderPdPortal(){
       return '<button type="button" class="btn '+(st.period===p?'bp':'bg2')+'" data-p="'+p+'" onclick="pdpPeriod('+p+')" style="flex:1;min-width:62px;justify-content:center">'+p+'</button>';
     }).join('')+'</div>',true)
   // 4 — rating
-  +pdpQ('4. How did the class behave?','',
-    '<div style="display:flex;flex-direction:column;gap:6px" id="pdp-r">'
-    +PD_RATINGS.map(function(r){
-      const on=st.rating===r.v;
-      return '<button type="button" class="btn '+(on?'bp':'bg2')+'" data-r="'+esc(r.v)+'" onclick="pdpRating('+q+escJs(r.v)+q+')" style="justify-content:flex-start;padding:12px 14px;font-size:14px">'
-       +'<span style="font-size:18px;margin-right:9px">'+r.i+'</span>'+esc(r.v)+'</button>';
-    }).join('')+'</div>',true)
+  +pdpQ('4. Discipline marks out of '+PD_MAX,PD_MARK_GUIDE,
+    pdMarksPicker('pdp-r',st.marks,'pdpMarks'),true)
   // 5 — students
   +pdpQ('5. Any student who caused a problem?','Leave this empty if the class was fine.',
     '<div id="pdp-s"></div>',false)
@@ -15781,13 +15979,8 @@ function pdpPeriod(p){
   });
 }
 function pdpRating(v){
-  window._pdp.rating=v;
-  const box=document.getElementById('pdp-r');
-  if(!box)return;
-  [].slice.call(box.querySelectorAll('button')).forEach(function(b){
-    b.className='btn '+(b.getAttribute('data-r')===v?'bp':'bg2');
-    b.style.justifyContent='flex-start';b.style.padding='12px 14px';b.style.fontSize='14px';
-  });
+  const m=PD_RATING_MARKS[v];
+  pdpMarks(typeof m==='number'?m:null);
 }
 function pdpClass(){
   const el=document.getElementById('pdp-c');
@@ -15955,10 +16148,11 @@ function pdpSubmit(){
   if(!teacher){toast('Choose your name','danger');return;}
   if(!cls){toast('Choose the class','danger');return;}
   if(!st.period){toast('Choose the period','danger');return;}
-  if(!st.rating){toast('Say how the class behaved','danger');return;}
+  if(st.marks===null||st.marks===undefined){toast('Give the class a mark out of '+PD_MAX,'danger');return;}
   const btn=document.getElementById('pdp-go');
   if(btn){btn.disabled=true;btn.textContent='Sending…';}
-  const rec={id:nid('pdi'),date:ymd(new Date()),period:st.period,className:cls,rating:st.rating,
+  const rec={id:nid('pdi'),date:ymd(new Date()),period:st.period,className:cls,
+    marks:st.marks,rating:pdRatingForMarks(st.marks),
     students:st.picked.map(function(p){return {id:p.id||'',name:p.name,infractionId:''};}),
     behaviours:(st.behaviours||[]).slice(),
     note:note,teacherId:tid,teacherName:teacher,source:'qr',created:new Date().toISOString()};
@@ -15968,7 +16162,6 @@ function pdpSubmit(){
 }
 
 function pdpDone(rec,replaced){
-  const rt=pdRating(rec.rating);
   const body=document.getElementById('pdp-body');
   const go=document.getElementById('pdp-go');
   if(go)go.remove();
@@ -15977,7 +16170,7 @@ function pdpDone(rec,replaced){
    +'<div style="font-size:46px;margin-bottom:10px">✅</div>'
    +'<div style="font-size:18px;font-weight:700;color:var(--su);margin-bottom:8px">Recorded</div>'
    +'<div style="font-size:13px;color:var(--tx2);line-height:1.7"><strong>'+esc(rec.className)+'</strong> · Period '+esc(String(rec.period))
-   +'<br>'+rt.i+' '+esc(rec.rating)
+   +'<br>Marks: <strong>'+pdFmt(pdMarksOf(rec))+' / '+PD_MAX+'</strong>'
    +((rec.students||[]).length?'<br>Named: '+esc(rec.students.map(function(s){return s.name;}).join(', ')):'')
    +((rec.behaviours||[]).length?'<br><span style="font-size:12px;color:var(--tx3)">'+esc(rec.behaviours.join(' · '))+'</span>':'')
    +'</div>'
@@ -15989,7 +16182,7 @@ function pdpDone(rec,replaced){
 
 function pdpAgain(){
   const t=window._pdp?window._pdp.teacher:'';
-  window._pdp={cls:'',period:0,rating:'',picked:[],teacher:t,note:'',behaviours:[]};
+  window._pdp={cls:'',period:0,marks:null,picked:[],teacher:t,note:'',behaviours:[]};
   renderPdPortal();
 }
 
