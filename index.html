@@ -8149,7 +8149,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
-  'duty_places','duty_remarks','classroom_discipline','period_discipline','pd_exclusions','break_discipline','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
+  'duty_places','duty_remarks','classroom_discipline','period_discipline','pd_exclusions','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -8178,7 +8178,7 @@ const AUTO_REFRESH_MAP = {
   reexam_schedules:['rReexam'],
   duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
   duty_places:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
-  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],sub_preferences:['rSubstitutions'],
+  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],school_timetable:['rBreakDiscipline'],sub_preferences:['rSubstitutions'],
   sessions:['rSessions'],active_session_id:['rSessions'],
   todos:['rMyTodos']
 };
@@ -13414,10 +13414,11 @@ function bdSlotLabel(id){return id==='salah'?'Salah Break':'Break';}
 // The timetable, looked up however the class name is written
 function bdClassKey(c){return normClass(c).replace(/^(grade|gr|g)(?=\d)/,'');}
 function bdTimetable(cls){
-  if(SCHOOL_TIMETABLE[cls])return SCHOOL_TIMETABLE[cls];
+  const all=bdTimetableData();
+  if(all[cls])return all[cls];
   const n=bdClassKey(cls);
-  const k=Object.keys(SCHOOL_TIMETABLE).find(function(x){return bdClassKey(x)===n;});
-  return k?SCHOOL_TIMETABLE[k]:null;
+  const k=Object.keys(all).find(function(x){return bdClassKey(x)===n;});
+  return k?all[k]:null;
 }
 function bdSameClass(a,b){return bdClassKey(a)===bdClassKey(b);}
 function bdSameName(a,b){
@@ -13571,8 +13572,10 @@ function rBreakDiscipline(){
    +(canRate?'<button class="btn bp bsm" onclick="bdEntryM()">+ Rate a Class</button>':'')
    +'<button class="btn bs bsm" onclick="bdReportM()">\u{1f4c4} Report</button>'
    +'<button class="btn bg2 bsm" onclick="bdQrM()">\u{1f4f1} Break QR Code</button>'
+   +(bdTtCanEdit()?'<button class="btn bg2 bsm" onclick="bdTimetableM()">\u{1f4c5} Timetable</button>':'')
    +'</div></div>'
-   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Rate how each class leaves its room for break. Grades 1–3 break 9:15–9:30 after period 2; grades 4–12 break 10:00–10:15 after period 3, and Salah break 12:30–12:45 after period 6. The teacher of the lesson before the break is filled in from the timetable. Ratings count towards the class period discipline ranking.</div></div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Rate how each class leaves its room for break. Grades 1–3 break 9:15–9:30 after period 2; grades 4–12 break 10:00–10:15 after period 3, and Salah break 12:30–12:45 after period 6. The teacher of the lesson before the break is filled in from the timetable. Ratings count towards the class period discipline ranking.'
+   +'<div style="margin-top:4px">\u{1f4c5} '+bdTtSourceLine()+'</div></div></div>'
    +((day==='Friday'||day==='Saturday')?'<div class="al aw" style="margin-bottom:12px">'+esc(day)+' is not a school day.</div>':'')
    +'<div class="cg g4" style="margin-bottom:13px">'
    +'<div class="stat bl"><div class="sl2">Rated</div><div class="sv">'+todays.length+'</div><div class="sb3">of '+due+' breaks on '+esc(sel)+'</div><div class="sic">\u{1f4dd}</div></div>'
@@ -14030,6 +14033,252 @@ function bdReportXlsx(){
   xlsxDownload([{name:'By Class',rows:cls},{name:'By Teacher',rows:tch},{name:'All Ratings',rows:all}],
     'break_leaving_'+(r.from||'')+'_to_'+(r.to||'')+'.xlsx');
   logA('Exported the break leaving report for '+(r.from||'')+' to '+(r.to||''));
+}
+
+
+// ── Uploading a new timetable ─────────────────────────────
+// The school's timetable PDF (aSc Timetables, one page per class) is read in
+// the browser and the teachers before each break are taken from it. Classes in
+// the new file replace their old entries; classes it leaves out keep theirs.
+// Ratings already saved keep the teacher they were saved with.
+function bdTimetableData(){
+  const u=DB.get('school_timetable');
+  if(u&&u.classes&&typeof u.classes==='object'&&Object.keys(u.classes).length)return u.classes;
+  return SCHOOL_TIMETABLE;
+}
+function bdTtCanEdit(){return !!CU&&['superadmin','principal','vice_principal','admin_assistant'].includes(CU.role);}
+function bdTtSourceLine(){
+  const u=DB.get('school_timetable');
+  if(u&&u.classes&&Object.keys(u.classes).length&&u.builtin)
+    return 'Built-in timetable (2026–2027) · '+Object.keys(u.classes).length+' classes'+(u.restoredBy?' · restored by '+esc(u.restoredBy):'');
+  if(u&&u.classes&&Object.keys(u.classes).length)
+    return 'Uploaded timetable: '+esc(u.fileName||'PDF')+' · '+Object.keys(u.classes).length+' classes · '
+      +esc((u.uploadedAt||'').split('T')[0])+(u.uploadedBy?' by '+esc(u.uploadedBy):'');
+  return 'Built-in timetable (2026–2027) · '+Object.keys(SCHOOL_TIMETABLE).length+' classes';
+}
+
+const BD_PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+function bdLoadPdfJs(){
+  if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+  if(window.__bdPdfJsLoading)return window.__bdPdfJsLoading;
+  window.__bdPdfJsLoading=new Promise(function(res,rej){
+    const sc=document.createElement('script');
+    sc.src=BD_PDFJS+'pdf.min.js';
+    sc.onload=function(){
+      try{window.pdfjsLib.GlobalWorkerOptions.workerSrc=BD_PDFJS+'pdf.worker.min.js';res(window.pdfjsLib);}
+      catch(e){rej(e);}
+    };
+    sc.onerror=function(){window.__bdPdfJsLoading=null;rej(new Error('Could not load the PDF reader — check the internet connection'));};
+    document.head.appendChild(sc);
+  });
+  return window.__bdPdfJsLoading;
+}
+
+// Every piece of text on every page, with where it sits and how big it is
+async function bdPdfItems(buf){
+  const lib=await bdLoadPdfJs();
+  const doc=await lib.getDocument({data:buf}).promise;
+  const pages=[];
+  for(let i=1;i<=doc.numPages;i++){
+    const pg=await doc.getPage(i);
+    const tc=await pg.getTextContent();
+    pages.push(tc.items.filter(function(t){return t.str&&t.str.trim();}).map(function(t){
+      return {s:t.str.trim(),x:Math.round(t.transform[4]),y:Math.round(t.transform[5]),
+        h:Math.round(Math.abs(t.transform[3])*10)/10};
+    }));
+  }
+  return pages;
+}
+
+// Group labels printed in a cell that are not people
+const BD_TT_LABEL=/^(ist\s*[.\-]?\s*[ae]|arabic|urdu|french-?|fr|free-?|art|ana|arabic\s*na|asc timetables|pe)$/i;
+const BD_TT_DAYS={Su:'Sunday',Mo:'Monday',Tu:'Tuesday',We:'Wednesday',Th:'Thursday'};
+
+// Page layout: a "Grade 4 A" title, days down the side, periods 1-7 across.
+// In each cell the subject is large and the teacher small; a split lesson
+// has two of each.
+function bdParseTimetable(pages){
+  const classes={},problems=[];
+  pages.forEach(function(items,pi){
+    const title=items.find(function(t){return /^Grade\s*\d+\s*[A-Z]?$/i.test(t.s)&&t.h>25;});
+    if(!title){problems.push('Page '+(pi+1)+': no class title found — skipped');return;}
+    const m=title.s.match(/^Grade\s*(\d+)\s*([A-Z])?$/i);
+    // a grade with a single section prints no letter; the school calls it A
+    const cls=m[1]+'-'+(m[2]||'A').toUpperCase();
+    const ct=((items.find(function(t){return /^Class teacher/i.test(t.s);})||{}).s||'').replace(/^Class teacher\s*:\s*/i,'').trim();
+    const nums=items.filter(function(t){return /^[1-7]$/.test(t.s)&&t.h>12;});
+    if(!nums.length){problems.push(cls+': no period numbers found — skipped');return;}
+    const headY=Math.max.apply(null,nums.map(function(t){return t.y;}));
+    const cols=nums.filter(function(t){return Math.abs(t.y-headY)<3;})
+      .sort(function(a,b){return a.x-b.x;}).map(function(h){return {p:+h.s,x:h.x};});
+    if(cols.length<6){problems.push(cls+': only '+cols.length+' period columns found — skipped');return;}
+    const width=(cols[cols.length-1].x-cols[0].x)/(cols.length-1);
+    const colOf=function(x){
+      let b=null;
+      cols.forEach(function(c){if(x>=c.x-width*0.55&&x<c.x+width*0.5)b=c.p;});
+      return b;
+    };
+    const rows=items.filter(function(t){return BD_TT_DAYS[t.s]&&t.h>25;})
+      .map(function(t){return {day:BD_TT_DAYS[t.s],y:t.y};});
+    if(rows.length<5)problems.push(cls+': only '+rows.length+' of 5 days found');
+    if(!rows.length)return;
+    const d={};
+    rows.forEach(function(r){
+      const cells={};
+      for(let p=1;p<=7;p++)cells[p]={subs:[],small:[]};
+      items.filter(function(t){return t.y<=r.y+40&&t.y>=r.y-45&&!BD_TT_DAYS[t.s]&&t.x>70;}).forEach(function(t){
+        const p=colOf(t.x);if(!p)return;
+        if(t.h>15)cells[p].subs.push(t);else if(t.h>7&&t.h<12)cells[p].small.push(t);
+      });
+      d[r.day]=[];
+      for(let p=1;p<=7;p++){
+        const c=cells[p];
+        const subject=c.subs.sort(function(a,b){return b.y-a.y;}).map(function(t){return t.s;})
+          .filter(function(v,i,a){return a.indexOf(v)===i;}).join('/');
+        const names=c.small.filter(function(t){return !BD_TT_LABEL.test(t.s);})
+          .sort(function(a,b){return b.y-a.y;}).map(function(t){return t.s;});
+        const uniq=names.filter(function(v,i,a){
+          return a.findIndex(function(x){return x.toLowerCase()===v.toLowerCase();})===i;
+        });
+        d[r.day].push([subject,uniq.join(' / ')]);
+      }
+    });
+    if(classes[cls])problems.push(cls+' appears twice — the later page was used');
+    classes[cls]={ct:ct,d:d};
+  });
+  return {classes:classes,problems:problems,pages:pages.length};
+}
+
+// Every break-time teacher that the new file would change
+function bdTtChanges(oldT,newT){
+  const out=[];
+  Object.keys(newT).forEach(function(cls){
+    bdSlotsFor(cls).forEach(function(slot){
+      Object.keys(BD_TT_DAYS).map(function(k){return BD_TT_DAYS[k];}).forEach(function(day){
+        const cellOf=function(t){
+          const c=t&&t[cls]&&t[cls].d&&t[cls].d[day];
+          return c?c[slot.after-1]:null;
+        };
+        const a=cellOf(oldT),b=cellOf(newT);
+        const ta=a?a[1]:'',tb=b?b[1]:'';
+        if(ta!==tb)out.push({cls:cls,day:day,slot:slot.label,period:slot.after,from:ta,to:tb,subject:b?b[0]:''});
+      });
+    });
+  });
+  return out;
+}
+
+function bdTimetableM(){
+  if(!bdTtCanEdit()){toast('Only the principal, vice principals and admin assistants can change the timetable','danger');return;}
+  const u=DB.get('school_timetable');
+  const hasPrev=!!(u&&u.previous);
+  window._bdTt=null;
+  openM('<div class="mh"><h3>\u{1f4c5} Timetable for Break Teachers</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">The teacher shown for each break is whoever teaches the lesson just before it. Upload the latest class timetable PDF (from aSc Timetables, one page per class) and the break teachers update to match. You see every change before anything is saved. Classes missing from the file keep their current timetable, and ratings already saved are not changed.</div>'
+  +'<div style="font-size:12px;margin-bottom:10px"><strong>Now using:</strong> '+bdTtSourceLine()+'</div>'
+  +'<div class="fg"><label>Timetable PDF</label><input type="file" id="bd-tt-file" accept="application/pdf,.pdf" onchange="bdTtRead(this)"></div>'
+  +'<div id="bd-tt-out"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +(hasPrev?'<button class="btn bs" onclick="bdTtUndo()">↩️ Go back to the previous timetable</button>':'')
+  +'<button class="btn bp" id="bd-tt-apply" onclick="bdTtApply()" disabled>Apply this timetable</button></div>',true);
+}
+
+async function bdTtRead(input){
+  const f=input&&input.files&&input.files[0];
+  const box=document.getElementById('bd-tt-out');
+  const btn=document.getElementById('bd-tt-apply');
+  window._bdTt=null;if(btn)btn.disabled=true;
+  if(!f||!box)return;
+  if(!/\.pdf$/i.test(f.name)&&f.type!=='application/pdf'){box.innerHTML='<div class="al ad">Choose a PDF file.</div>';return;}
+  box.innerHTML='<div style="padding:10px;font-size:12px;color:var(--tx3)">⏳ Reading '+esc(f.name)+'…</div>';
+  let parsed;
+  try{
+    const buf=await f.arrayBuffer();
+    parsed=bdParseTimetable(await bdPdfItems(buf));
+  }catch(e){
+    box.innerHTML='<div class="al ad">Could not read this PDF: '+esc(e&&e.message||e)+'</div>';return;
+  }
+  const names=Object.keys(parsed.classes).sort(function(a,b){
+    return (pdGradeOf(a)||99)-(pdGradeOf(b)||99)||a.localeCompare(b);
+  });
+  if(!names.length){
+    box.innerHTML='<div class="al ad">No class timetables were found in this file. It needs to be the class timetable exported from aSc Timetables, with a "Grade 4 A" style title on each page.</div>'
+      +(parsed.problems.length?'<div style="font-size:11px;color:var(--tx3);margin-top:6px">'+parsed.problems.map(esc).join('<br>')+'</div>':'');
+    return;
+  }
+  const current=bdTimetableData();
+  const changes=bdTtChanges(current,parsed.classes);
+  const added=names.filter(function(c){return !current[c];});
+  const kept=Object.keys(current).filter(function(c){return !parsed.classes[c];});
+  let breakSlots=0,withTeacher=0;
+  names.forEach(function(c){
+    bdSlotsFor(c).forEach(function(s){
+      Object.keys(parsed.classes[c].d).forEach(function(day){
+        breakSlots++;
+        const cell=parsed.classes[c].d[day][s.after-1];
+        if(cell&&cell[1])withTeacher++;
+      });
+    });
+  });
+  window._bdTt={fileName:f.name,classes:parsed.classes,pages:parsed.pages};
+  const q=String.fromCharCode(39);
+  box.innerHTML='<div class="cg g3" style="margin-bottom:10px">'
+   +'<div class="stat bl"><div class="sl2">Classes found</div><div class="sv">'+names.length+'</div><div class="sb3">on '+parsed.pages+' page(s)</div><div class="sic">\u{1f4c4}</div></div>'
+   +'<div class="stat gn"><div class="sl2">Break teachers</div><div class="sv">'+withTeacher+'</div><div class="sb3">of '+breakSlots+' break slots named</div><div class="sic">\u{1f9d1}‍\u{1f3eb}</div></div>'
+   +'<div class="stat go"><div class="sl2">Will change</div><div class="sv">'+changes.length+'</div><div class="sb3">break teacher(s)</div><div class="sic">\u{1f504}</div></div>'
+   +'</div>'
+   +'<div style="font-size:11px;margin-bottom:8px"><strong>Classes:</strong> '+names.map(esc).join(', ')
+   +(added.length?'<br><strong>New classes:</strong> '+added.map(esc).join(', '):'')
+   +(kept.length?'<br><strong>Not in this file (kept as they are):</strong> '+kept.map(esc).join(', '):'')+'</div>'
+   +(parsed.problems.length?'<div class="al aw" style="font-size:11px">'+parsed.problems.map(esc).join('<br>')+'</div>':'')
+   +(changes.length
+     ?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:6px 0 4px">Break teachers that will change</div>'
+      +'<div class="tw" style="max-height:260px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Class</th><th>Day</th><th>Break</th><th>Now</th><th>From the new timetable</th></tr></thead><tbody>'
+      +changes.map(function(c){
+        return '<tr><td><strong>'+esc(c.cls)+'</strong></td><td>'+esc(c.day)+'</td><td>'+esc(c.slot)+' <span style="color:var(--tx3)">(after P'+c.period+')</span></td>'
+          +'<td style="color:var(--tx3)">'+esc(c.from||'—')+'</td><td><strong>'+esc(c.to||'—')+'</strong>'
+          +(c.subject?' <span style="color:var(--tx3)">· '+esc(c.subject)+'</span>':'')+'</td></tr>';
+      }).join('')+'</tbody></table></div>'
+     :'<div class="al ai">Every break teacher is the same as now. Applying it will still save this file as the current timetable.</div>');
+  if(btn)btn.disabled=false;
+}
+
+function bdTtApply(){
+  const t=window._bdTt;
+  if(!t||!t.classes||!Object.keys(t.classes).length){toast('Choose the timetable PDF first','danger');return;}
+  const old=DB.get('school_timetable');
+  const current=bdTimetableData();
+  // Classes in the new file replace their old entries; the rest stay
+  const merged=Object.assign({},current,t.classes);
+  const n=bdTtChanges(current,t.classes).length;
+  if(!confirm('Use '+t.fileName+' for break teachers?\n\n'+Object.keys(t.classes).length+' class(es) updated, '+n+' break teacher(s) change.\nRatings already saved keep their teacher.'))return;
+  const rec={classes:merged,fileName:t.fileName,pages:t.pages,
+    uploadedAt:new Date().toISOString(),
+    uploadedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),uploadedById:CU.id,
+    // one step back is kept, so an upload can be undone
+    previous:old&&old.classes?{classes:old.classes,fileName:old.fileName||'',uploadedAt:old.uploadedAt||'',uploadedBy:old.uploadedBy||'',builtin:!!old.builtin}
+      :{classes:SCHOOL_TIMETABLE,fileName:'Built-in timetable (2026–2027)',uploadedAt:'',uploadedBy:'',builtin:true}};
+  DB.set('school_timetable',rec);
+  logA('Updated the break teachers from timetable '+t.fileName+' ('+Object.keys(t.classes).length+' classes, '+n+' changes)');
+  window._bdTt=null;
+  closeM();toast('Timetable updated — '+n+' break teacher(s) changed','success');
+  if(_page==='break_discipline')rBreakDiscipline();
+}
+
+function bdTtUndo(){
+  const u=DB.get('school_timetable');
+  if(!u||!u.previous||!u.previous.classes){toast('There is no earlier timetable to go back to','danger');return;}
+  const p=u.previous;
+  if(!confirm('Go back to '+(p.fileName||'the previous timetable')+'?\n\nThe current one ('+(u.fileName||'uploaded PDF')+') is kept as the step back, so this can be reversed.'))return;
+  DB.set('school_timetable',{classes:p.classes,fileName:p.fileName,uploadedAt:p.uploadedAt||new Date().toISOString(),
+    uploadedBy:p.uploadedBy||'',builtin:!!p.builtin,restoredAt:new Date().toISOString(),
+    restoredBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),
+    previous:{classes:u.classes,fileName:u.fileName||'',uploadedAt:u.uploadedAt||'',uploadedBy:u.uploadedBy||'',builtin:!!u.builtin}});
+  logA('Went back to timetable '+(p.fileName||'(previous)'));
+  closeM();toast('Previous timetable restored','success');
+  if(_page==='break_discipline')rBreakDiscipline();
 }
 
 function pdRankClasses(from,to){
