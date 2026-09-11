@@ -15920,26 +15920,27 @@ function renderPdPortal(){
   +'<div style="margin-top:10px;font-size:11px;color:var(--dn)">* Required</div>'
   +'</div></div>'
   +'<div id="pdp-body">'
-  // 1 — who
-  +pdpQ('1. Your name','Pick yourself from the list so the record is in your name.',
-    (teachers.length
-      ?'<select id="pdp-t" onchange="pdpTouch()"><option value="">— Choose your name —</option>'
-        +teachers.map(function(t){return '<option value="'+esc(t.name)+'" data-id="'+esc(t.id)+'"'+(t.name===st.teacher?' selected':'')+'>'+esc(t.name)+'</option>';}).join('')
-        +'</select>'
-      :'<input id="pdp-t" placeholder="Type your name" value="'+esc(st.teacher)+'">'),true)
-  // 2 — class
-  +pdpQ('2. Class','',
+  // 1 — class
+  +pdpQ('1. Class','',
     (classes.length
       ?'<select id="pdp-c" onchange="pdpClass()"><option value="">— Choose the class —</option>'
         +classes.map(function(c){return '<option value="'+esc(c)+'"'+(c===st.cls?' selected':'')+'>'+esc(c)+'</option>';}).join('')
         +'</select>'
       :'<div style="font-size:12px;color:var(--tx3)">Loading the class list…</div>'),true)
-  // 3 — period
-  +pdpQ('3. Period','',
+  // 2 — period
+  +pdpQ('2. Period','',
     '<div style="display:flex;gap:6px;flex-wrap:wrap" id="pdp-p">'
     +PD_PERIODS.map(function(p){
       return '<button type="button" class="btn '+(st.period===p?'bp':'bg2')+'" data-p="'+p+'" onclick="pdpPeriod('+p+')" style="flex:1;min-width:62px;justify-content:center">'+p+'</button>';
     }).join('')+'</div>',true)
+  // 3 — who: picked from the timetable once class and period are known
+  +pdpQ('3. Your name','Filled in from the timetable when you choose the class and period. Change it if someone else taught this lesson.',
+    (teachers.length
+      ?'<select id="pdp-t" onchange="pdpTouch()"><option value="">— Choose your name —</option>'
+        +teachers.map(function(t){return '<option value="'+esc(t.name)+'" data-id="'+esc(t.id)+'"'+(t.name===st.teacher?' selected':'')+'>'+esc(t.name)+'</option>';}).join('')
+        +'</select>'
+      :'<input id="pdp-t" placeholder="Type your name" value="'+esc(st.teacher)+'" oninput="pdpTouch()">')
+    +'<div id="pdp-t-hint" style="font-size:12px;color:var(--tx3);margin-top:7px"></div><div id="pdp-t-alt" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>',true)
   // 4 — rating
   +pdpQ('4. Discipline marks out of '+PD_MAX,PD_MARK_GUIDE,
     pdMarksPicker('pdp-r',st.marks,'pdpMarks'),true)
@@ -15956,6 +15957,8 @@ function renderPdPortal(){
   +'</div>';
   document.body.appendChild(wrap);
   pdpRenderStudents();
+  if(st.teacher)pdpEnsureTeacherOption(st.teacher);
+  pdpTtHint();
 }
 
 function pdpQ(title,hint,inner,req){
@@ -15965,12 +15968,104 @@ function pdpQ(title,hint,inner,req){
    +inner+'</div>';
 }
 
+// Timetable names are short ("M.Elsayed", "SHAN.Z", "Bhaskar"); the staff
+// list has full names. A match needs every word of the timetable name to be
+// in the staff name (an initial matches a word starting with it). If two
+// people fit equally well, nobody is guessed.
+function pdStaffTokens(s){return String(s||'').toLowerCase().replace(/[^a-z\s.]/g,' ').replace(/\./g,' ').split(/\s+/).filter(Boolean);}
+function pdMatchStaff(ttName,opts){
+  const want=pdStaffTokens(ttName);
+  if(!want.length)return null;
+  const exact=opts.find(function(o){return normDutyName(o.name)===normDutyName(ttName);});
+  if(exact)return exact;
+  let best=null,bestScore=0,tie=false;
+  opts.forEach(function(o){
+    const have=pdStaffTokens(o.name);
+    let score=0;
+    for(let i=0;i<want.length;i++){
+      const w=want[i];
+      if(w.length===1){
+        if(have.some(function(h){return h[0]===w;}))score+=1;else{score=-1;break;}
+      }else if(have.indexOf(w)>=0)score+=10;
+      else if(have.some(function(h){return h.length>=3&&w.length>=3&&(h.indexOf(w)===0||w.indexOf(h)===0);}))score+=6;
+      else{score=-1;break;}
+    }
+    if(score>bestScore){best=o;bestScore=score;tie=false;}
+    else if(score>0&&score===bestScore)tie=true;
+  });
+  return best&&!tie?best:null;
+}
+function pdpTeacherSelectOptions(){
+  const el=document.getElementById('pdp-t');
+  if(!el||el.tagName!=='SELECT')return [];
+  return [].slice.call(el.options).filter(function(o){return o.value;})
+    .map(function(o){return {name:o.value,id:o.getAttribute('data-id')||''};});
+}
+// A timetable name nobody on the staff list matches is still offered, so the
+// record carries the right name
+function pdpEnsureTeacherOption(name){
+  const el=document.getElementById('pdp-t');
+  if(!el||el.tagName!=='SELECT'||!name)return;
+  const has=[].slice.call(el.options).some(function(o){return o.value===name;});
+  if(!has){
+    const o=document.createElement('option');
+    o.value=name;o.textContent=name+' (timetable)';o.setAttribute('data-id','');
+    el.appendChild(o);
+  }
+  el.value=name;
+}
+function pdpSetTeacher(name){
+  const el=document.getElementById('pdp-t');
+  if(!el||!name)return;
+  const m=pdMatchStaff(name,el.tagName==='SELECT'?pdpTeacherSelectOptions():pdTeacherOptions());
+  const pick=m?m.name:name;
+  if(el.tagName==='SELECT')pdpEnsureTeacherOption(pick);else el.value=pick;
+  window._pdp.teacher=pick;
+  window._pdp.ttPicked=name;
+  window._pdp.ttAuto=pick;          // what the timetable chose, so a hand-picked name is left alone
+  pdpTtHint();
+}
+function pdpAutoTeacher(){
+  const st=window._pdp;
+  if(!st||!st.cls||!st.period){pdpTtHint();return;}
+  const t=bdTeacherAt(st.cls,ymd(new Date()),st.period);
+  const cands=bdTeacherList(t.name).filter(function(x){return x!=='(not recorded)';});
+  st.ttCands=cands;st.ttSubject=t.subject||'';
+  if(cands.length){pdpSetTeacher(cands[0]);return;}
+  // No lesson on the timetable: undo a name the timetable chose earlier
+  if(st.ttAuto&&st.teacher===st.ttAuto){
+    const el=document.getElementById('pdp-t');
+    if(el)el.value='';
+    st.teacher='';st.ttAuto=null;st.ttPicked=null;
+  }
+  pdpTtHint();
+}
+function pdpTtHint(){
+  const st=window._pdp||{};
+  const h=document.getElementById('pdp-t-hint');
+  const alt=document.getElementById('pdp-t-alt');
+  if(!h)return;
+  const q=String.fromCharCode(39);
+  if(!st.cls||!st.period){h.innerHTML='Choose the class and period first — your name is then picked from the timetable.';if(alt)alt.innerHTML='';return;}
+  const cands=st.ttCands||[];
+  if(!cands.length){
+    h.innerHTML='\u{1f4c5} '+esc(st.cls)+' period '+st.period+(st.ttSubject?' ('+esc(st.ttSubject)+')':'')+' has no teacher on today’s timetable — choose your name.';
+    if(alt)alt.innerHTML='';return;
+  }
+  h.innerHTML='\u{1f4c5} From today’s timetable: '+esc(st.cls)+' period '+st.period+(st.ttSubject?' · '+esc(st.ttSubject):'')
+    +(cands.length>1?' — a split lesson, tap your name if it is not the one selected':'');
+  if(alt)alt.innerHTML=cands.length>1?cands.map(function(n){
+    return '<button type="button" class="btn '+(n===st.ttPicked?'bp':'bg2')+' bsm" onclick="pdpSetTeacher('+q+escJs(n)+q+')">'+esc(n)+'</button>';
+  }).join(''):'';
+}
+
 function pdpTouch(){
   const el=document.getElementById('pdp-t');
   if(el)window._pdp.teacher=el.value||'';
 }
 function pdpPeriod(p){
   window._pdp.period=p;
+  setTimeout(pdpAutoTeacher,0);
   const box=document.getElementById('pdp-p');
   if(!box)return;
   [].slice.call(box.querySelectorAll('button')).forEach(function(b){
@@ -15987,6 +16082,7 @@ function pdpClass(){
   window._pdp.cls=el?el.value:'';
   window._pdp.picked=[];
   pdpRenderStudents();
+  pdpAutoTeacher();
 }
 function pdpRenderStudents(){
   const box=document.getElementById('pdp-s');
