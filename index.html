@@ -8209,6 +8209,7 @@ async function flushPendingWrites(){
         // Never replace an append-only collection with this device's copy —
         // upsert its records instead, so nothing anyone else wrote is lost.
         if(isAppendOnlyKey(k))await pushAppendOnly(k,v);
+        else if(isRosterKey(k))await rosterMergedWrite(k,v);
         else await set(ref(db,fbPath+k),toFbValue(v));
         console.log('[Sync] Flushed pending write: '+k);
       }
@@ -8255,6 +8256,11 @@ async function syncDownAll(){
         if(shouldSyncKey(k)&&all[k]!==null&&all[k]!==undefined){
           if(stillPending.has(k)){console.warn('[Sync] Skipping pull for '+k+' — has unflushed local writes');return;}
           let v=all[k];
+          // Duty rosters: brought together with this device's copy day by day
+          if(isRosterKey(k)){
+            try{rosterAcceptIncoming(k,v);}catch(e){console.warn('[Sync] roster merge failed',e);}
+            return;
+          }
           // An explicit empty marker means the collection was genuinely emptied
           if(isFbEmptyMarker(v)){
             localStorage.setItem(DB._pfx+k,'[]');
@@ -8445,6 +8451,86 @@ function mergeById(a,b){
   return out;
 }
 
+// ── Duty rosters: merged by date, never shrunk ─────────────
+// A roster is one record per date, kept in a single list. Writing that whole
+// list from one device used to replace the school's copy, so a device holding
+// an old copy — one that had not yet received another day's roster — erased
+// that day for everyone. Every write of the list is now merged into what the
+// cloud holds, date by date, newest version winning, so a save can add or
+// change a day but never remove one. A day is only taken off the roster by
+// marking it deleted (its duties are kept inside the record, so it can be
+// brought back).
+function isRosterKey(k){return k==='duty_rosters'||String(k||'').indexOf('duty_rosters_')===0;}
+function rosterTs(r){
+  if(!r)return 0;
+  let best=0;
+  [r.deletedAt,r.restoredAt,r.updatedAt,r.createdAt].forEach(function(x){
+    const t=Date.parse(x||'');if(!isNaN(t)&&t>best)best=t;
+  });
+  return best;
+}
+// Union by date; the newer record wins, and on a tie the second list does
+function mergeRosters(a,b){
+  const map={},extra=[];
+  [a,b].forEach(function(list){
+    (Array.isArray(list)?list:[]).forEach(function(r){
+      if(!r||typeof r!=='object')return;
+      if(!r.date){extra.push(r);return;}
+      const cur=map[r.date];
+      if(!cur||rosterTs(r)>=rosterTs(cur))map[r.date]=r;
+    });
+  });
+  return Object.keys(map).sort().map(function(d){return map[d];}).concat(extra);
+}
+// Whatever shape the list arrives in, never read a stored roster as absent
+function rosterListOf(v){
+  let a=fbToArrayShape(fromFbValue(v));
+  if(a&&typeof a==='object'&&!Array.isArray(a)){
+    a=Object.keys(a).map(function(k){return a[k];});
+  }
+  return Array.isArray(a)?a.filter(function(r){return r&&typeof r==='object';}):[];
+}
+// Does this device hold a day, or a newer version of one, the cloud lacks?
+function rosterHasNewer(localArr,cloudArr){
+  const c={};
+  (cloudArr||[]).forEach(function(r){if(r&&r.date)c[r.date]=r;});
+  return (localArr||[]).some(function(r){return r&&r.date&&(!c[r.date]||rosterTs(r)>rosterTs(c[r.date]));});
+}
+// Bring an incoming cloud copy together with this device's, keep the result
+// here, and send up anything only this device has
+function rosterAcceptIncoming(k,incoming){
+  const localRaw=localStorage.getItem(DB._pfx+k);
+  let localArr=[];
+  try{localArr=rosterListOf(localRaw!==null?JSON.parse(localRaw):null);}catch(e){}
+  const cloudArr=rosterListOf(incoming);
+  const merged=mergeRosters(localArr,cloudArr);        // the cloud wins a tie
+  localStorage.setItem(DB._pfx+k,JSON.stringify(merged));
+  if(rosterHasNewer(localArr,cloudArr))rosterMergedWrite(k,localArr).catch(function(){});
+  return merged;
+}
+// Merge this device's list into the cloud's inside a transaction, then keep
+// the merged result here too
+async function rosterMergedWrite(k,local){
+  if(!fbReady()||!CURRENT_SCHOOL_ID)throw new Error('offline');
+  const F=window.__FB;
+  const path=getFirebaseSchoolPath()+k;
+  let merged=null;
+  try{
+    if(typeof F.runTransaction!=='function')throw new Error('no transactions');
+    await F.runTransaction(F.ref(F.db,path),function(cur){
+      merged=mergeRosters(rosterListOf(cur),local);
+      return merged.length?merged:{__empty:true};
+    });
+  }catch(e){
+    if(String(e&&e.message)==='offline')throw e;
+    const snap=await F.get(F.ref(F.db,path));
+    merged=mergeRosters(rosterListOf(snap.exists()?snap.val():null),local);
+    await F.set(F.ref(F.db,path),toFbValue(merged));
+  }
+  try{if(merged)localStorage.setItem(DB._pfx+k,JSON.stringify(merged));}catch(e){}
+  return merged;
+}
+
 // Collections written a record at a time by many people at once. A whole-array
 // push for one of these can only ever destroy what the writer had not seen, so
 // the sync layer upserts the records instead and never removes on a bulk write.
@@ -8510,7 +8596,7 @@ if(!DB._raw_set){
       addPendingWrite(k);
       const path=getFirebaseSchoolPath()+k;
       // Never replace an append-only collection wholesale — see above.
-      const write=isAppendOnlyKey(k)?pushAppendOnly(k,v):set(ref(db,path),toFbValue(v));
+      const write=isAppendOnlyKey(k)?pushAppendOnly(k,v):(isRosterKey(k)?rosterMergedWrite(k,v):set(ref(db,path),toFbValue(v)));
       write.then(()=>{
         removePendingWrite(k);
         SYNC_ECHO[k]=Date.now();
@@ -8540,7 +8626,7 @@ if(!DB._raw_set){
       SYNC_ECHO[k]=Date.now();
       addPendingWrite(k);
       const path=getFirebaseSchoolPath()+k;
-      const write=isAppendOnlyKey(k)?pushAppendOnly(k,v):set(ref(db,path),toFbValue(v));
+      const write=isAppendOnlyKey(k)?pushAppendOnly(k,v):(isRosterKey(k)?rosterMergedWrite(k,v):set(ref(db,path),toFbValue(v)));
       write.then(()=>{
         removePendingWrite(k);
         SYNC_ECHO[k]=Date.now();
@@ -8566,8 +8652,8 @@ function subscribeToCollection(k){
     let v=snap.val();
     // An explicit empty marker means every record really was deleted — accept
     // it rather than falling into the "missing key" healing below.
-    if(isFbEmptyMarker(v))v=[];
-    else if(v===null||v===undefined){
+    if(isFbEmptyMarker(v)&&!isRosterKey(k))v=[];
+    else if(v===null||v===undefined||isFbEmptyMarker(v)){
       // Firebase holds nothing at this path. Do NOT read that as "delete
       // everything locally" — far more often the key was simply never pushed
       // (Realtime DB also stores an empty list as null). Keep the local copy
@@ -8578,6 +8664,7 @@ function subscribeToCollection(k){
         if(local&&(!Array.isArray(local)||local.length>0)){
           console.warn('[Sync] Firebase has no '+k+' — keeping local copy and re-pushing');
           if(isAppendOnlyKey(k)){pushAppendOnly(k,local);return;}
+          if(isRosterKey(k)){rosterMergedWrite(k,local).catch(function(){});return;}
           const{db:dbH,ref:refH,set:setH}=window.__FB;
           setH(refH(dbH,getFirebaseSchoolPath()+k),local).catch(()=>{});
           return;
@@ -8604,10 +8691,13 @@ function subscribeToCollection(k){
         v=mergeById(v,Array.isArray(localArr)?localArr:[]);
       }catch(e){}
     }
+    if(isRosterKey(k)){
+      try{v=rosterAcceptIncoming(k,v);}catch(e){}
+    }
     // Reject stale incoming data: if local was written recently and incoming
     // has MORE items, it's likely a pre-delete echo from Firebase
     const localWriteTime=getLocalWriteTs(k);
-    if(!isAppendOnlyKey(k)&&localWriteTime&&Date.now()-localWriteTime<LWTS_WINDOW){
+    if(!isAppendOnlyKey(k)&&!isRosterKey(k)&&localWriteTime&&Date.now()-localWriteTime<LWTS_WINDOW){
       try{
         const local=JSON.parse(localStorage.getItem(_pfx+k)||'null');
         if(Array.isArray(local)&&Array.isArray(v)&&v.length>local.length){
@@ -10045,7 +10135,10 @@ function getAllSessions(){
   DB.get=function(k){
     if(SESSION_SCOPED_KEYS.includes(k)){
       const sid=window.__activeSessionId||getActiveSessionId();
-      return origGet(k+'_'+sid);
+      const v=origGet(k+'_'+sid);
+      // A roster day marked deleted is kept for recovery but not shown
+      if(k==='duty_rosters'&&Array.isArray(v))return v.filter(function(r){return !(r&&r.deleted);});
+      return v;
     }
     return origGet(k);
   };
@@ -10553,7 +10646,7 @@ function rDutyRoster(){
   const savedDates=allRosters.map(r=>r.date).filter(Boolean).sort().reverse();
   const savedOpts=savedDates.map(d=>'<option value="'+d+'">'+d+' ('+getDayOfWeek(d)+')</option>').join('');
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportDutiesM()">📊 Export Duties (Excel)</button><button class="btn bg2 bsm" onclick="dutyBlocksM()">⛔ Unavailable Times</button>'+(canEdit?'<button class="btn bp bsm" onclick="repeatWeekM()">🔁 Repeat Week</button>'+'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button><button class="btn bd3 bsm" onclick="clearAllRostersM()">🗑️ Clear All Rosters</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportDutiesM()">📊 Export Duties (Excel)</button><button class="btn bg2 bsm" onclick="dutyBlocksM()">⛔ Unavailable Times</button>'+(rrCanUse()?'<button class="btn bs bsm" onclick="rosterRecoverM()">♻️ Recover Rosters</button>':'')+(canEdit?'<button class="btn bp bsm" onclick="repeatWeekM()">🔁 Repeat Week</button>'+'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button><button class="btn bd3 bsm" onclick="clearAllRostersM()">🗑️ Clear All Rosters</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><label style="font-size:12px;font-weight:600">📅 Date:</label><input type="date" id="rd-date" value="'+window._rosterDate+'" onchange="onRosterDateChange()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
   +'<button class="btn bg2 bsm" onclick="rdShiftDate(-1)">← Prev</button><button class="btn bg2 bsm" onclick="rdShiftDate(1)">Next →</button><button class="btn bg2 bsm" onclick="rdToday()">Today</button>'
   +'<button class="btn bg2 bsm" onclick="exportRosterPDF()">📄 Print PDF</button>'
@@ -11303,9 +11396,12 @@ function rdReload(){
 }
 
 function clearDateRoster(date){
-  if(!confirm('Delete the saved roster for '+date+'?\nThis will remove all teacher assignments for this date. This cannot be undone.'))return;
+  if(!confirm('Clear the saved roster for '+date+'?\nIt comes off the roster, but its duties are kept and can be brought back with ♻️ Recover Rosters.'))return;
   const list=DB.get('duty_rosters')||[];
-  const updated=list.filter(r=>r.date!==date);
+  const now=new Date().toISOString(),by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  // Marked, not removed: every device merges the roster day by day, and the
+  // day's duties stay inside the record in case it was a mistake
+  const updated=list.map(r=>r&&r.date===date?Object.assign({},r,{deleted:true,deletedAt:now,deletedBy:by}):r);
   DB.set('duty_rosters',updated);
   logA('Cleared duty roster for '+date);
   delete window._workingRoster;
@@ -11313,12 +11409,179 @@ function clearDateRoster(date){
   rDutyRoster();
 }
 
+// ═══════════════════════════════════════════════════════════
+// RECOVER DUTY ROSTERS
+// Finds every copy of the rosters for a stretch of days that still exists —
+// the school's daily snapshots, rosters filed under another academic
+// session, days marked deleted, and anything held on this device — shows
+// what it found against what is on the roster now, and puts back only the
+// days chosen. Nothing else is touched and nothing is removed; a safety
+// snapshot is taken first.
+// ═══════════════════════════════════════════════════════════
+function rrCanUse(){return !!CU&&['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role);}
+function rrCount(r){return r&&!r.deleted?countRosterAssignments(r):(r?countRosterAssignments(Object.assign({},r,{deleted:false})):0);}
+
+function rosterRecoverM(){
+  if(!rrCanUse()){toast('Only the admin assistant, vice principals and the principal can recover rosters','danger');return;}
+  const weeks=(typeof allWeeksOrdered==='function')?allWeeksOrdered():[];
+  const st=window._rr||{};
+  if(!st.from){
+    // Week 3 of the term the roster is showing, else the week around it
+    const tw=getTermWeekForDate(window._rosterDate||ymd(new Date()));
+    const w3=tw?weeks.find(function(w){return w.termId===tw.termId&&Number(w.weekNo)===3;}):null;
+    const wk=w3||rosterWeekRange(window._rosterDate||ymd(new Date()));
+    st.from=wk?wk.from:ymd(new Date());st.to=wk?wk.to:ymd(new Date());
+  }
+  window._rr=st;
+  openM('<div class="mh"><h3>♻️ Recover Duty Rosters</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Searches every copy of the duty rosters that still exists — the daily snapshots kept on the server, rosters filed under another academic session, days marked deleted, and this device’s own storage — and shows what it finds for the days you choose. Only the days you tick are put back. Nothing else is changed or removed, and a safety snapshot is taken first.</div>'
+  +(weeks.length?'<div class="fg"><label>Week</label><select id="rr-w" onchange="rrWeek()"><option value="">— choose a week —</option>'
+    +weeks.map(function(w,i){return '<option value="'+i+'"'+(w.from===st.from&&w.to===st.to?' selected':'')+'>'+esc(w.label)+' ('+esc(w.from)+' → '+esc(w.to)+')</option>';}).join('')+'</select></div>':'')
+  +'<div class="fr f2"><div class="fg"><label>From</label><input type="date" id="rr-from" value="'+esc(st.from)+'"></div>'
+  +'<div class="fg"><label>To</label><input type="date" id="rr-to" value="'+esc(st.to)+'"></div></div>'
+  +'<button class="btn bp bsm" onclick="rrSearch()">\u{1f50d} Search for copies</button>'
+  +'<div id="rr-out" style="margin-top:12px"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bp" id="rr-apply" onclick="rrApply()" disabled>♻️ Restore the ticked days</button></div>',true);
+}
+function rrWeek(){
+  const w=allWeeksOrdered()[parseInt((document.getElementById('rr-w')||{}).value||'-1',10)];
+  if(!w)return;
+  document.getElementById('rr-from').value=w.from;document.getElementById('rr-to').value=w.to;
+}
+
+// Every physical key a roster list may sit under
+function rrRosterKeys(obj){
+  return Object.keys(obj||{}).filter(isRosterKey);
+}
+
+async function rrSearch(){
+  const from=(document.getElementById('rr-from')||{}).value||'';
+  const to=(document.getElementById('rr-to')||{}).value||'';
+  const box=document.getElementById('rr-out');
+  const btn=document.getElementById('rr-apply');
+  if(btn)btn.disabled=true;
+  if(!from||!to||to<from){box.innerHTML='<div class="al ad">Choose a valid range of dates.</div>';return;}
+  window._rr={from:from,to:to};
+  box.innerHTML='<div style="font-size:12px;color:var(--tx3)">⏳ Searching…</div>';
+  const found={};   // date -> [candidates]
+  const add=function(r,source,label,when){
+    if(!r||typeof r!=='object'||!r.date||r.date<from||r.date>to)return;
+    const n=rrCount(r);
+    if(!n)return;
+    (found[r.date]=found[r.date]||[]).push({roster:r,count:n,source:source,label:label,when:when||'',ts:rosterTs(r)});
+  };
+  const activeKey='duty_rosters_'+(window.__activeSessionId||getActiveSessionId());
+  const notes=[];
+  // 1. Days marked deleted in the live roster
+  rosterListOf((DB._raw_get||DB.get)(activeKey)).forEach(function(r){if(r.deleted)add(r,'deleted','Marked deleted',r.deletedAt||'');});
+  // 2. This device's storage, every session
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const lk=localStorage.key(i)||'';
+      if(lk.indexOf(DB._pfx)!==0)continue;
+      const k=lk.slice(DB._pfx.length);
+      if(!isRosterKey(k))continue;
+      let v=null;try{v=JSON.parse(localStorage.getItem(lk));}catch(e){}
+      rosterListOf(v).forEach(function(r){add(r,'device',k===activeKey?'This device':'This device · '+k.replace('duty_rosters_','session '),r.updatedAt||'');});
+    }
+  }catch(e){}
+  // 3. The cloud: other sessions' lists, and every daily snapshot
+  if(fbReady()&&CURRENT_SCHOOL_ID){
+    const F=window.__FB;
+    try{
+      const sess=(typeof getAllSessions==='function'?getAllSessions():[])||[];
+      const keys=['duty_rosters','duty_rosters_default'].concat(sess.map(function(s){return 'duty_rosters_'+s.id;}));
+      for(const k of Array.from(new Set(keys))){
+        if(k===activeKey)continue;
+        try{
+          const s=await F.get(F.ref(F.db,getFirebaseSchoolPath()+k));
+          if(s.exists())rosterListOf(s.val()).forEach(function(r){add(r,'session','Filed under '+k.replace('duty_rosters_','session '),r.updatedAt||'');});
+        }catch(e){}
+      }
+    }catch(e){}
+    try{
+      const s=await F.get(F.ref(F.db,getFirebaseSchoolPath()+'__snapshots'));
+      const all=s.exists()?(s.val()||{}):{};
+      const ids=Object.keys(all).sort().reverse();
+      notes.push(ids.length+' snapshot(s) searched'+(ids.length?' ('+ids[ids.length-1].slice(0,10)+' to '+ids[0].slice(0,10)+')':''));
+      ids.forEach(function(id){
+        const snap=all[id]||{};
+        rrRosterKeys(snap).forEach(function(k){
+          rosterListOf(snap[k]).forEach(function(r){add(r,'snapshot','Snapshot '+id.replace('_',' '),id);});
+        });
+      });
+    }catch(e){notes.push('the snapshots could not be read: '+(e&&e.message||e));}
+  }else notes.push('offline — only this device was searched');
+  // What is on the roster now
+  const live={};
+  (DB.get('duty_rosters')||[]).forEach(function(r){if(r&&r.date>=from&&r.date<=to)live[r.date]=r;});
+  const days=[];
+  let d=new Date(from+'T00:00:00');const end=new Date(to+'T00:00:00');let safety=62;
+  while(d<=end&&safety-->0){days.push(ymd(d));d.setDate(d.getDate()+1);}
+  const rows=days.map(function(date){
+    const cands=(found[date]||[]).sort(function(a,b){return b.count-a.count||b.ts-a.ts||String(b.when).localeCompare(String(a.when));});
+    const best=cands[0]||null;
+    const now=live[date]?rrCount(live[date]):0;
+    return {date:date,day:getDayOfWeek(date),now:now,best:best,copies:cands.length,
+      tick:!!best&&best.count>now};
+  }).filter(function(r){return r.best||r.now;});
+  window._rr.rows=rows;
+  if(!rows.length){
+    box.innerHTML='<div class="al aw">No roster was found for these dates in any copy'+(notes.length?' ('+esc(notes.join('; '))+')':'')+'.</div>';
+    return;
+  }
+  box.innerHTML='<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">'+esc(notes.join(' · '))+'</div>'
+   +'<div class="tw"><table style="font-size:11px"><thead><tr><th></th><th>Date</th><th>Day</th><th class="c">On the roster now</th><th class="c">Best copy found</th><th>From</th></tr></thead><tbody>'
+   +rows.map(function(r,i){
+     return '<tr><td><input type="checkbox" class="rr-tick" data-i="'+i+'"'+(r.tick?' checked':'')+(r.best?'':' disabled')+' style="width:auto;margin:0"></td>'
+      +'<td class="mono">'+esc(r.date)+'</td><td>'+esc(r.day||'')+'</td>'
+      +'<td class="c"'+(!r.now&&r.best?' style="color:var(--dn);font-weight:600"':'')+'>'+(r.now?r.now+' assignment(s)':'— empty —')+'</td>'
+      +'<td class="c">'+(r.best?'<strong>'+r.best.count+'</strong> assignment(s)':'—')+'</td>'
+      +'<td style="font-size:10px;color:var(--tx3)">'+(r.best?esc(r.best.label)+(r.copies>1?' · '+r.copies+' copies':''):'')+'</td></tr>';
+   }).join('')+'</tbody></table></div>'
+   +'<div style="font-size:10px;color:var(--tx3);margin-top:6px">Ticked by default: days where the copy found has more duties than the roster has now. A day you tick is replaced by that copy; every other day is left exactly as it is.</div>';
+  if(btn)btn.disabled=false;
+}
+
+async function rrApply(){
+  const st=window._rr||{};
+  const picks=[].slice.call(document.querySelectorAll('.rr-tick')).filter(function(c){return c.checked;})
+    .map(function(c){return (st.rows||[])[parseInt(c.getAttribute('data-i'),10)];}).filter(function(r){return r&&r.best;});
+  if(!picks.length){toast('Tick the days to restore','danger');return;}
+  if(!confirm('Restore '+picks.length+' day(s)?\n\n'+picks.map(function(p){return '  • '+p.date+' ('+p.day+'): '+p.best.count+' assignment(s) from '+p.best.label;}).join('\n')
+    +'\n\nOnly these days are changed. A safety snapshot is taken first.'))return;
+  const btn=document.getElementById('rr-apply');if(btn){btn.disabled=true;btn.textContent='Restoring…';}
+  let safety=null;
+  if(fbReady()&&CURRENT_SCHOOL_ID){try{safety=await createSnapshot('before recovering duty rosters');}catch(e){}}
+  const now=new Date().toISOString();
+  const by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  const list=(DB.get('duty_rosters')||[]).slice();
+  picks.forEach(function(p){
+    const r=JSON.parse(JSON.stringify(p.best.roster));
+    delete r.deleted;delete r.deletedAt;delete r.deletedBy;
+    r.updatedAt=now;r.restoredAt=now;r.restoredBy=by;r.restoredFrom=p.best.label;
+    const i=list.findIndex(function(x){return x&&x.date===r.date;});
+    if(i>=0)list[i]=r;else list.push(r);
+  });
+  DB.set('duty_rosters',list);
+  logA('Recovered duty rosters for '+picks.map(function(p){return p.date;}).join(', ')+(safety?' (safety snapshot '+safety+')':''));
+  closeM();
+  toast('Restored '+picks.length+' day(s)'+(safety?' · safety snapshot taken':''),'success');
+  delete window._workingRoster;
+  window._rosterDate=picks[0].date;
+  if(_page==='duty_roster')rDutyRoster();
+}
+
 function clearAllRostersM(){
   const all=DB.get('duty_rosters')||[];
   if(!all.length){toast('No rosters to clear','info');return;}
-  if(!confirm('⚠️ DELETE ALL '+all.length+' SAVED DUTY ROSTERS?\n\nThis will permanently remove every roster for every date. This cannot be undone.\n\nAre you sure?'))return;
-  if(!confirm('Final confirmation: Delete ALL '+all.length+' duty rosters?'))return;
-  DB.set('duty_rosters',[]);
+  if(!confirm('⚠️ CLEAR ALL '+all.length+' SAVED DUTY ROSTERS?\n\nEvery date comes off the roster. The duties are kept in the background and can be brought back with ♻️ Recover Rosters.\n\nAre you sure?'))return;
+  if(!confirm('Final confirmation: Clear ALL '+all.length+' duty rosters?'))return;
+  const now=new Date().toISOString(),by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  DB.set('duty_rosters',all.map(r=>r?Object.assign({},r,{deleted:true,deletedAt:now,deletedBy:by}):r));
   logA('Cleared all duty rosters ('+all.length+' deleted)');
   delete window._workingRoster;
   toast('All '+all.length+' rosters cleared','success');
