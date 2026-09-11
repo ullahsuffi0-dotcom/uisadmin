@@ -8149,7 +8149,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions',
-  'duty_places','duty_remarks','classroom_discipline','period_discipline','pd_exclusions','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
+  'duty_places','duty_remarks','duty_blocks','classroom_discipline','period_discipline','pd_exclusions','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -8177,7 +8177,7 @@ const AUTO_REFRESH_MAP = {
   teacher_achievements:['rTeacherAchievements'],settings:['rSettings'],
   reexam_schedules:['rReexam'],
   duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
-  duty_places:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
+  duty_places:['rDutyRoster'],duty_blocks:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
   classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],school_timetable:['rBreakDiscipline','rPeriodDiscipline'],sub_preferences:['rSubstitutions'],
   sessions:['rSessions'],active_session_id:['rSessions'],
   todos:['rMyTodos']
@@ -10553,7 +10553,7 @@ function rDutyRoster(){
   const savedDates=allRosters.map(r=>r.date).filter(Boolean).sort().reverse();
   const savedOpts=savedDates.map(d=>'<option value="'+d+'">'+d+' ('+getDayOfWeek(d)+')</option>').join('');
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportDutiesM()">📊 Export Duties (Excel)</button>'+(canEdit?'<button class="btn bp bsm" onclick="repeatWeekM()">🔁 Repeat Week</button>'+'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button><button class="btn bd3 bsm" onclick="clearAllRostersM()">🗑️ Clear All Rosters</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📋 Daily Duty Roster</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="exportDutiesM()">📊 Export Duties (Excel)</button><button class="btn bg2 bsm" onclick="dutyBlocksM()">⛔ Unavailable Times</button>'+(canEdit?'<button class="btn bp bsm" onclick="repeatWeekM()">🔁 Repeat Week</button>'+'<button class="btn bs bsm" onclick="manageDutyPlacesM()">⚙️ Manage Places</button><button class="btn bd3 bsm" onclick="clearAllRostersM()">🗑️ Clear All Rosters</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canEdit?'Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties on their dashboard.':'View the school\'s daily duty assignments.')+'</div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><label style="font-size:12px;font-weight:600">📅 Date:</label><input type="date" id="rd-date" value="'+window._rosterDate+'" onchange="onRosterDateChange()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
   +'<button class="btn bg2 bsm" onclick="rdShiftDate(-1)">← Prev</button><button class="btn bg2 bsm" onclick="rdShiftDate(1)">Next →</button><button class="btn bg2 bsm" onclick="rdToday()">Today</button>'
   +'<button class="btn bg2 bsm" onclick="exportRosterPDF()">📄 Print PDF</button>'
@@ -11241,6 +11241,7 @@ function onRosterDateChange(){
 
 function rdRender(){
   window._dutyWeekCache={};   // recompute weekly totals for this draw
+  window._dutyTtMap={};       // and timetable names matched to staff
   const date=window._rosterDate;
   const day=getDayOfWeek(date);
   const isWork=isWorkDay(date);
@@ -11337,8 +11338,8 @@ function renderDutySlot(roster,slot,canEdit){
     // Find remarks for each teacher at this spot/slot/date
     const spotRemarks=allRemarks.filter(rm=>rm.date===dateStr&&rm.slotId===slot.id&&rm.spot===spot);
     html+='<tr><td><strong>'+esc(spot)+'</strong></td><td>'+(canEdit
-      ?'<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center" id="dt-'+slot.id+'-'+escId(spot)+'">'+assigned.map((t,i)=>'<span class="badge bbl" style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;font-size:11px" title="'+esc(t)+' — '+esc(dutyWeekLabel(t))+' this week">'+esc(t)+'<span style="opacity:.75;font-size:10px">('+esc(dutyWeekLabel(t))+')</span> <button onclick="rmTeacherFromSpot(\''+slot.id+'\',\''+escJs(spot)+'\','+i+')" style="background:none;border:none;color:var(--tx2);cursor:pointer;font-size:14px;padding:0">×</button></span>').join('')+'<input type="text" placeholder="+ Add teacher" autocomplete="off" oninput="dutyTchSearch(this,\''+slot.id+'\',\''+escJs(spot)+'\')" style="flex:1;min-width:150px;padding:5px 9px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px"></div>'
-      :(assigned.length?assigned.map(t=>'<span class="badge bbl" style="font-size:11px;margin-right:4px" title="'+esc(dutyWeekLabel(t))+' this week">'+esc(t)+' <span style="opacity:.75;font-size:10px">('+esc(dutyWeekLabel(t))+')</span></span>').join(''):'<span style="color:var(--tx3);font-size:11px;font-style:italic">— Unassigned —</span>'))
+      ?'<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center" id="dt-'+slot.id+'-'+escId(spot)+'">'+assigned.map((t,i)=>'<span class="badge bbl" style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;font-size:11px" title="'+esc(t)+' — '+esc(dutyWeekLabel(t))+' this week">'+esc(t)+'<span style="opacity:.75;font-size:10px">('+esc(dutyWeekLabel(t))+')</span>'+dutyChipWarn(t,slot.id,spot,roster)+' <button onclick="rmTeacherFromSpot(\''+slot.id+'\',\''+escJs(spot)+'\','+i+')" style="background:none;border:none;color:var(--tx2);cursor:pointer;font-size:14px;padding:0">×</button></span>').join('')+'<input type="text" placeholder="+ Add teacher" autocomplete="off" oninput="dutyTchSearch(this,\''+slot.id+'\',\''+escJs(spot)+'\')" style="flex:1;min-width:150px;padding:5px 9px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:11px"></div>'
+      :(assigned.length?assigned.map(t=>'<span class="badge bbl" style="font-size:11px;margin-right:4px" title="'+esc(dutyWeekLabel(t))+' this week">'+esc(t)+' <span style="opacity:.75;font-size:10px">('+esc(dutyWeekLabel(t))+')</span>'+dutyChipWarn(t,slot.id,spot,roster)+'</span>').join(''):'<span style="color:var(--tx3);font-size:11px;font-style:italic">— Unassigned —</span>'))
     +'</td><td>'
     // VP Remarks column
     +(spotRemarks.length?spotRemarks.map(rm=>'<div style="font-size:10px;padding:3px 6px;background:'+(rm.rating==='good'?'#d4edda':rm.rating==='poor'?'#f8d7da':'#fff3cd')+';border-radius:4px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:flex-start;gap:4px"><div><strong>'+esc(rm.teacher)+'</strong>: '+esc(rm.remark)+(rm.rating?' <span class="badge '+(rm.rating==='good'?'bgn':rm.rating==='poor'?'brd':'bgo')+'" style="font-size:9px">'+esc(rm.rating)+'</span>':'')+'</div>'+(canRemark?'<div style="display:flex;gap:2px;flex-shrink:0"><button onclick="editDutyRemarkM(\''+escJs(rm.id)+'\')" style="background:none;border:none;cursor:pointer;font-size:11px;padding:0" title="Edit">✏️</button><button onclick="delDutyRemark(\''+escJs(rm.id)+'\')" style="background:none;border:none;cursor:pointer;font-size:11px;padding:0" title="Delete">🗑️</button></div>':'')+'</div>').join(''):'')
@@ -11392,7 +11393,7 @@ function dutyTchSearch(el,slotId,spot){
   }
   if(!matches.length){dd.innerHTML='<div style="padding:8px 11px;font-size:11px;color:var(--tx3)">No matches. Press Enter to add as-is.</div>';}
   else{
-    dd.innerHTML=matches.map(it=>'<div style="padding:7px 11px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--bd)" onmousedown="addTeacherToSpot(\''+slotId+'\',\''+escJs(spot)+'\',\''+escJs(it.name)+'\')"><strong>'+esc(it.name)+'</strong>'+(it.subject?' <span style="color:var(--tx3);font-size:10px">— '+esc(it.subject)+'</span>':'')+'</div>').join('');
+    dd.innerHTML=matches.map(it=>'<div style="padding:7px 11px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--bd)" onmousedown="addTeacherToSpot(\''+slotId+'\',\''+escJs(spot)+'\',\''+escJs(it.name)+'\')"><strong>'+esc(it.name)+'</strong>'+(it.subject?' <span style="color:var(--tx3);font-size:10px">— '+esc(it.subject)+'</span>':'')+dutyPickInfo(it.name,slotId,spot)+'</div>').join('');
   }
   // Allow Enter to add typed value
   el.onkeydown=(e)=>{
@@ -11502,7 +11503,328 @@ function showSlotClashM(name,slotId,slotLabel){
   return true;
 }
 
-function addTeacherToSpot(slotId,spot,name){
+// ═══════════════════════════════════════════════════════════
+// CHECKS WHILE BUILDING THE ROSTER
+// Picking someone for a spot is checked straight away against:
+//   · another duty at an overlapping time that day
+//   · a lesson at that time — from the class timetable, the day's
+//     substitutions, and the school's period and break times
+//   · a time the person has been marked unavailable for
+// and fairer choices are offered: people free at that time who have
+// less duty this week. Nothing here changes a saved roster.
+// ═══════════════════════════════════════════════════════════
+
+// Lesson times. Grades 1-3 break 9:15-9:30 after period 2; grades 4-12
+// break 10:00-10:15 after period 3 and for Salah 12:30-12:45 after period 6.
+const DUTY_PERIOD_TIMES={
+  junior:[[1,'7:45','8:30'],[2,'8:30','9:15'],[3,'9:30','10:15'],[4,'10:15','11:00'],[5,'11:00','11:45'],[6,'11:45','12:30'],[7,'12:45','13:30']],
+  senior:[[1,'7:45','8:30'],[2,'8:30','9:15'],[3,'9:15','10:00'],[4,'10:15','11:00'],[5,'11:00','11:45'],[6,'11:45','12:30'],[7,'12:45','13:30']]
+};
+// Afternoon times are often written 1:30 rather than 13:30
+function dutyClock(h,m){h=parseInt(h,10);m=parseInt(m,10);if(h<6)h+=12;return h*60+m;}
+function dutyClockStr(s){const p=String(s).split(':');return dutyClock(p[0],p[1]);}
+function dutyRange(timeStr){
+  const t=String(timeStr||'');
+  const m=t.match(/(\d{1,2})[:.](\d{2})\s*(?:[–—-]|to)\s*(\d{1,2})[:.](\d{2})/i);
+  if(m){const a=dutyClock(m[1],m[2]),b=dutyClock(m[3],m[4]);return {from:a,to:b>a?b:a+15};}
+  const one=t.match(/(\d{1,2})[:.](\d{2})/);
+  if(one){const a=dutyClock(one[1],one[2]);return {from:a,to:a+parseDutyMinutes(t)};}
+  return null;
+}
+function dutyOverlap(a,b){return !!a&&!!b&&a.from<b.to&&b.from<a.to;}
+function dutyHM(min){const h=Math.floor(min/60),m=min%60;return h+':'+(m<10?'0':'')+m;}
+function dutyPeriodRange(cls,p){
+  const g=pdGradeOf(cls);
+  const set=(g!==null&&g<=3)?DUTY_PERIOD_TIMES.junior:DUTY_PERIOD_TIMES.senior;
+  const row=set.find(function(x){return x[0]===Number(p);});
+  return row?{from:dutyClockStr(row[1]),to:dutyClockStr(row[2])}:null;
+}
+
+// Is this timetable name ("M.Elsayed") the person being assigned?
+function dutyIsPerson(ttName,aliases){
+  const n=normDutyName(ttName);
+  if(!n)return false;
+  if(aliases.has(n))return true;
+  if(!window._dutyTtMap)window._dutyTtMap={};
+  if(!(n in window._dutyTtMap)){
+    const m=(typeof pdMatchStaff==='function')?pdMatchStaff(ttName,getAssignableStaff()):null;
+    window._dutyTtMap[n]=m?normDutyName(m.name):'';
+  }
+  const mapped=window._dutyTtMap[n];
+  return !!mapped&&aliases.has(mapped);
+}
+
+// Lessons someone teaches that overlap a time on a date
+function dutyLessonsAt(name,date,range){
+  const out=[];
+  if(!name||!date||!range||typeof bdTimetableData!=='function')return out;
+  const aliases=getDutyNameAliases(name);
+  if(!aliases.size)return out;
+  const day=getDayOfWeek(date);
+  const tt=bdTimetableData();
+  const subs=(DB.get('substitutions')||[]).filter(function(s){return s&&s.date===date;});
+  Object.keys(tt).forEach(function(cls){
+    const row=tt[cls]&&tt[cls].d&&tt[cls].d[day];
+    if(!row)return;
+    row.forEach(function(cell,i){
+      const p=i+1;
+      if(!cell||!cell[1])return;
+      if(!cell[1].split(' / ').some(function(n){return dutyIsPerson(n,aliases);}))return;
+      // Absent that period and covered by someone else — not in the room
+      if(subs.some(function(s){return Number(s.periodNumber)===p&&bdSameClass(s.class||'',cls)&&s.absentName&&dutyIsPerson(s.absentName,aliases);}))return;
+      const pr=dutyPeriodRange(cls,p);
+      if(!dutyOverlap(pr,range))return;
+      out.push({cls:cls,p:p,subject:cell[0]||'',range:pr,source:'timetable'});
+    });
+  });
+  subs.forEach(function(s){
+    if(!s.substituteName||!dutyIsPerson(s.substituteName,aliases))return;
+    const pr=dutyPeriodRange(s.class,s.periodNumber);
+    if(!dutyOverlap(pr,range))return;
+    out.push({cls:s.class||'',p:Number(s.periodNumber),subject:s.subject||'',range:pr,source:'substitution'});
+  });
+  return out;
+}
+
+// Other duties the same day at an overlapping time. The place being filled
+// is skipped (a repeat there is caught separately).
+function dutyDutiesAt(name,roster,range,skipSlot,skipSpot){
+  const out=[];
+  if(!name||!roster||!range)return out;
+  const aliases=getDutyNameAliases(name);
+  if(!aliases.size)return out;
+  getDutySlots(roster).forEach(function(slot){
+    const sr=dutyRange(slot.time);
+    if(!dutyOverlap(sr,range))return;
+    if(slot.isClassDuty){
+      (roster.classDuties||[]).forEach(function(c,i){
+        if(!c||!c.teacher||!aliases.has(normDutyName(c.teacher)))return;
+        if(slot.id===skipSlot&&skipSpot==='#'+i)return;
+        out.push({slot:slot.label,time:slot.time,spot:'Class duty '+(c.classes||'')+(c.room?' (in '+c.room+')':'')});
+      });
+    }else{
+      const sd=(roster.slots||{})[slot.id]||{};
+      (slot.spots||[]).forEach(function(sp){
+        if(slot.id===skipSlot&&sp===skipSpot)return;
+        (sd[sp]||[]).forEach(function(n){
+          if(aliases.has(normDutyName(n)))out.push({slot:slot.label,time:slot.time,spot:sp});
+        });
+      });
+    }
+  });
+  return out;
+}
+
+// ── Times someone must not be given a duty ───────────────
+function getDutyBlocks(){const a=DB.get('duty_blocks');return Array.isArray(a)?a:[];}
+function dutyBlockFor(name,slotId,date){
+  const aliases=getDutyNameAliases(name);
+  if(!aliases.size)return null;
+  const day=getDayOfWeek(date);
+  return getDutyBlocks().find(function(b){
+    if(!b||!aliases.has(normDutyName(b.teacher)))return false;
+    if(b.slotId&&b.slotId!==slotId)return false;
+    if(b.days&&b.days.length&&b.days.indexOf(day)<0)return false;
+    if(b.from&&date<b.from)return false;
+    if(b.to&&date>b.to)return false;
+    return true;
+  })||null;
+}
+function dutyBlockText(b){
+  if(!b)return '';
+  const slot=b.slotId?(getDutySlots(window._rosterDate).find(function(s){return s.id===b.slotId;})||{label:b.slotLabel||b.slotId}).label:'every duty time';
+  return slot+(b.days&&b.days.length?' on '+b.days.join(', '):', every day')
+    +(b.from||b.to?' ('+(b.from||'…')+' to '+(b.to||'…')+')':'')+(b.reason?' — '+b.reason:'');
+}
+
+// Everything wrong with putting someone in a place
+function dutyProblems(name,slotId,spot,roster){
+  roster=roster||window._workingRoster||getRosterForDate(window._rosterDate);
+  const date=(roster&&roster.date)||window._rosterDate;
+  const slot=getDutySlots(roster||date).find(function(s){return s.id===slotId;});
+  const range=slot?dutyRange(slot.time):null;
+  const out={slot:slot,range:range,
+    duties:range?dutyDutiesAt(name,roster,range,slotId,spot):[],
+    lessons:range?dutyLessonsAt(name,date,range):[],
+    block:dutyBlockFor(name,slotId,date)};
+  out.any=!!(out.duties.length||out.lessons.length||out.block);
+  return out;
+}
+
+// Who a duty could fairly go to: teachers, whether on the teacher list or
+// only as a login account
+function dutyFairPool(){
+  const seen={},out=[];
+  const add=function(n){n=String(n||'').replace(/\s+/g,' ').trim();const k=normDutyName(n);if(!k||seen[k])return;seen[k]=1;out.push(n);};
+  (DB.get('teachers')||[]).forEach(function(t){if(t.active!==false)add(tchDisplayName(t));});
+  (DB.get('accounts')||[]).forEach(function(a){if(a.active!==false&&a.role==='teacher')add(((a.firstName||'')+' '+(a.lastName||'')).trim());});
+  return out;
+}
+// Free at that time, fewest minutes of duty this week first. lessOnly keeps
+// only those with less duty than the person chosen.
+function dutyFreeChoices(ctx,lessOnly,limit){
+  limit=limit||8;
+  const r=window._workingRoster;
+  const mine=teacherWeekMinutes(ctx.name);
+  const already=ctx.kind==='spot'?((((r||{}).slots||{})[ctx.slotId]||{})[ctx.spot]||[]):[];
+  const cands=dutyFairPool().filter(function(n){
+    return normDutyName(n)!==normDutyName(ctx.name)&&!already.some(function(a){return normDutyName(a)===normDutyName(n);});
+  }).map(function(n){return {name:n,minutes:teacherWeekMinutes(n)};})
+    .filter(function(x){return !lessOnly||x.minutes<mine;})
+    .sort(function(a,b){return a.minutes-b.minutes||a.name.localeCompare(b.name);});
+  const out=[];
+  for(let i=0;i<cands.length&&out.length<limit;i++){
+    if(!dutyProblems(cands[i].name,ctx.slotId,ctx.spot,r).any)out.push(cands[i]);
+  }
+  return out;
+}
+
+// Small flags beside a name in the suggestion list
+function dutyPickInfo(name,slotId,spot){
+  try{
+    const r=window._workingRoster;
+    if(!r)return '';
+    const p=dutyProblems(name,slotId,spot,r);
+    return ' <span style="font-size:10px;color:var(--tx3)">⏱ '+esc(fmtHM(teacherWeekMinutes(name)))+'</span>'
+      +(p.duties.length?' <span class="badge brd" style="font-size:9px">duty '+esc(p.duties[0].time)+'</span>':'')
+      +(p.lessons.length?' <span class="badge bgo" style="font-size:9px">class '+esc(p.lessons[0].cls)+' P'+p.lessons[0].p+'</span>':'')
+      +(p.block?' <span class="badge brd" style="font-size:9px">unavailable</span>':'');
+  }catch(e){return '';}
+}
+// A warning mark on a name already on the roster
+function dutyChipWarn(name,slotId,spot,roster){
+  try{
+    const p=dutyProblems(name,slotId,spot,roster);
+    if(!p.any)return '';
+    const bits=[];
+    p.duties.forEach(function(d){bits.push('Also on duty: '+d.slot+' · '+d.spot);});
+    p.lessons.forEach(function(l){bits.push('Has a class: '+l.cls+' '+(l.subject||'')+' P'+l.p+' ('+dutyHM(l.range.from)+'–'+dutyHM(l.range.to)+')');});
+    if(p.block)bits.push('Marked unavailable: '+dutyBlockText(p.block));
+    return ' <span style="color:#c62828;font-weight:700;cursor:help" title="'+esc(bits.join('\n'))+'">⚠</span>';
+  }catch(e){return '';}
+}
+
+// The pop-up. Returns true when it is showing, so the caller waits.
+function dutyCheckFirst(ctx){
+  const r=window._workingRoster;
+  if(!r||!ctx.name)return false;
+  const p=dutyProblems(ctx.name,ctx.slotId,ctx.spot,r);
+  const fairOnly=!p.any;
+  if(fairOnly&&window._dutyNoFair)return false;
+  const alts=dutyFreeChoices(ctx,fairOnly);
+  if(fairOnly&&!alts.length)return false;
+  ctx.alts=alts;ctx.p=p;
+  window._dutyCk=ctx;
+  const mine=teacherWeekMinutes(ctx.name);
+  const where=(p.slot?p.slot.label:ctx.slotId)+(ctx.kind==='spot'?' · '+ctx.spot:' · class duty')+(p.slot&&p.slot.time?' ('+p.slot.time+')':'');
+  openM('<div class="mh"><h3>'+(p.any?'⚠️ Check before assigning':'⚖️ Share the duties fairly')+'</h3><button class="mc" onclick="dutyCkCancel()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div style="font-size:12px;margin-bottom:10px">Assigning <strong>'+esc(ctx.name)+'</strong> to <strong>'+esc(where)+'</strong> · '
+  +esc(ctx.name)+' has <strong>'+esc(fmtHM(mine))+'</strong> of duty this week.</div>'
+  +(p.duties.length?'<div class="al ad"><strong>'+esc(ctx.name)+' already has a duty at this time:</strong><br>'
+     +p.duties.map(function(d){return '• '+esc(d.slot)+' — '+esc(d.spot);}).join('<br>')+'</div>':'')
+  +(p.lessons.length?'<div class="al ad"><strong>'+esc(ctx.name)+' has a class at this time:</strong><br>'
+     +p.lessons.map(function(l){return '• '+esc(l.cls)+(l.subject?' '+esc(l.subject):'')+' — period '+l.p+' ('+dutyHM(l.range.from)+'–'+dutyHM(l.range.to)+')'+(l.source==='substitution'?' · substitution':'');}).join('<br>')+'</div>':'')
+  +(p.block?'<div class="al ad"><strong>'+esc(ctx.name)+' is marked unavailable</strong> for '+esc(dutyBlockText(p.block))+'.</div>':'')
+  +(alts.length
+    ?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 5px">'
+      +(fairOnly?'Free at this time with less duty than '+esc(ctx.name):'Free at this time — least duty this week first')+'</div>'
+      +'<div style="border:1px solid var(--bd);border-radius:var(--rs)">'
+      +alts.map(function(a,i){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--bd)">'
+         +'<div style="flex:1;min-width:0;font-size:12px"><strong>'+esc(a.name)+'</strong> <span style="color:var(--tx3);font-size:11px">· '+esc(fmtHM(a.minutes))+' this week</span></div>'
+         +'<button class="btn bp bxs" onclick="dutyCkUse('+i+')">Assign instead</button></div>';
+      }).join('')+'</div>'
+    :(p.any?'<div class="al aw" style="margin-top:8px">Nobody on the teacher list is free at this time.</div>':''))
+  +(fairOnly?'<label style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--tx3);margin-top:10px;cursor:pointer"><input type="checkbox" id="duty-nofair" style="width:auto;margin:0"> Stop suggesting fairer choices until the page is reloaded</label>':'')
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="dutyCkCancel()">'+T('cancel')+'</button>'
+  +'<button class="btn '+(p.any?'bd3':'bp')+'" onclick="dutyCkUse(-1)">'+(p.any?'Assign '+esc(ctx.name)+' anyway':'Keep '+esc(ctx.name))+'</button></div>');
+  return true;
+}
+function dutyCkUse(i){
+  const c=window._dutyCk;
+  if(!c)return;
+  const nf=document.getElementById('duty-nofair');
+  if(nf&&nf.checked)window._dutyNoFair=true;
+  const n=i<0?c.name:(c.alts[i]||{}).name;
+  window._dutyCk=null;
+  closeM();
+  if(!n)return;
+  if(c.kind==='spot'){addTeacherToSpot(c.slotId,c.spot,n,true);return;}
+  updClassDuty(c.idx,'teacher',n);
+  window._cdLastReported=n;
+  rdRender();
+  reportClassDutyLoad(n);
+}
+function dutyCkCancel(){
+  const c=window._dutyCk;
+  window._dutyCk=null;
+  closeM();
+  if(c&&c.kind==='class'){updClassDuty(c.idx,'teacher','');window._cdLastReported='';rdRender();}
+  else if(c)rdRender();          // clears the half-typed name and its suggestions
+}
+
+// ── Managing unavailable times ───────────────────────────
+function dutyBlocksM(){
+  const canEdit=['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role);
+  const slots=getDutySlots(window._rosterDate);
+  const list=getDutyBlocks().slice().sort(function(a,b){return String(a.teacher).localeCompare(String(b.teacher));});
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>⛔ Unavailable Times</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Mark a time when someone must not be given a duty — a regular commitment, a medical reason, a standing arrangement. Anyone picked for that time gets a warning straight away and is left out of the fairer-choice suggestions.</div>'
+  +(canEdit?'<div style="background:var(--sf2);border-radius:var(--rs);padding:11px;margin-bottom:12px">'
+    +'<div class="fr f2"><div class="fg"><label>Teacher *</label><input id="db-t" list="db-staff" autocomplete="off" placeholder="Type a name">'
+    +'<datalist id="db-staff">'+getAssignableStaff().map(function(s){return '<option value="'+esc(s.name)+'">';}).join('')+'</datalist></div>'
+    +'<div class="fg"><label>Duty time</label><select id="db-s"><option value="">— Every duty time —</option>'
+    +slots.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.label)+'</option>';}).join('')+'</select></div></div>'
+    +'<div class="fg"><label>Days <span style="font-weight:400;color:var(--tx3)">(none ticked = every day)</span></label><div style="display:flex;gap:10px;flex-wrap:wrap">'
+    +DUTY_DAYS.map(function(d){return '<label style="display:flex;gap:5px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" class="db-day" value="'+d+'" style="width:auto;margin:0">'+d+'</label>';}).join('')+'</div></div>'
+    +'<div class="fr f3"><div class="fg"><label>From (optional)</label><input type="date" id="db-from"></div>'
+    +'<div class="fg"><label>Until (optional)</label><input type="date" id="db-to"></div>'
+    +'<div class="fg"><label>Reason</label><input id="db-why" placeholder="e.g. Medical"></div></div>'
+    +'<button class="btn bp bsm" onclick="dutyBlockAdd()">+ Add</button></div>':'')
+  +(list.length?'<div class="tw" style="max-height:300px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Teacher</th><th>Not available for</th><th>Added by</th>'+(canEdit?'<th></th>':'')+'</tr></thead><tbody>'
+    +list.map(function(b){
+      return '<tr><td><strong>'+esc(b.teacher)+'</strong></td><td>'+esc(dutyBlockText(b))+'</td>'
+       +'<td style="font-size:10px;color:var(--tx3)">'+esc(b.by||'—')+'</td>'
+       +(canEdit?'<td><button class="btn bd3 bxs" onclick="dutyBlockDel('+q+escJs(b.id)+q+')">Remove</button></td>':'')+'</tr>';
+    }).join('')+'</tbody></table></div>'
+   :'<div class="emp" style="padding:16px"><div class="ei">⛔</div><p style="font-size:11px">Nobody is marked unavailable.</p></div>')
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>');
+}
+function dutyBlockAdd(){
+  const t=((document.getElementById('db-t')||{}).value||'').replace(/\s+/g,' ').trim();
+  const slotId=(document.getElementById('db-s')||{}).value||'';
+  const days=[].slice.call(document.querySelectorAll('.db-day')).filter(function(c){return c.checked;}).map(function(c){return c.value;});
+  const from=(document.getElementById('db-from')||{}).value||'';
+  const to=(document.getElementById('db-to')||{}).value||'';
+  const why=((document.getElementById('db-why')||{}).value||'').trim();
+  if(!t){toast('Type the teacher’s name','danger');return;}
+  if(from&&to&&to<from){toast('The end date is before the start date','danger');return;}
+  const slot=getDutySlots(window._rosterDate).find(function(s){return s.id===slotId;});
+  const list=getDutyBlocks();
+  list.push({id:nid('dbk'),teacher:t,slotId:slotId,slotLabel:slot?slot.label:'',days:days,from:from,to:to,reason:why,
+    by:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),created:new Date().toISOString()});
+  DB.set('duty_blocks',list);
+  logA('Marked '+t+' unavailable for '+(slot?slot.label:'every duty time')+(days.length?' on '+days.join(', '):''));
+  toast('Saved','success');
+  dutyBlocksM();
+  if(_page==='duty_roster')rdRender();
+}
+function dutyBlockDel(id){
+  const b=getDutyBlocks().find(function(x){return x.id===id;});
+  if(!b)return;
+  if(!confirm('Remove this unavailable time for '+b.teacher+'?'))return;
+  DB.set('duty_blocks',getDutyBlocks().filter(function(x){return x.id!==id;}));
+  logA('Removed an unavailable duty time for '+b.teacher);
+  toast('Removed','danger');
+  dutyBlocksM();
+  if(_page==='duty_roster')rdRender();
+}
+
+function addTeacherToSpot(slotId,spot,name,force){
   if(!window._workingRoster)window._workingRoster={date:window._rosterDate,day:getDayOfWeek(window._rosterDate),slots:{},classDuties:[]};
   const r=window._workingRoster;
   if(!r.slots)r.slots={};
@@ -11513,6 +11835,9 @@ function addTeacherToSpot(slotId,spot,name){
     toast(name+' already assigned to this spot','danger');
     return;
   }
+  // Another duty then, a class then, or marked unavailable — say so before
+  // assigning, and offer people who are free and have less duty
+  if(!force&&dutyCheckFirst({kind:'spot',slotId:slotId,spot:spot,name:name}))return;
   r.slots[slotId][spot].push(name);
   rdRender(); // Re-render UI
   // Report this teacher's load for the week, and flag a repeat of the same slot
@@ -11565,10 +11890,16 @@ function classDutyTchSearch(el,idx){
   const matches=items.filter(n=>n.toLowerCase().includes(q)).slice(0,6);
   if(!matches.length){dd.style.display='none';return;}
   dd.style.display='block';
-  dd.innerHTML=matches.map(n=>'<div style="padding:6px 10px;cursor:pointer;font-size:11px" onmousedown="pickClassDutyTch('+idx+',\''+escJs(n)+'\')">'+esc(n)+'</div>').join('');
+  const cds=getDutySlots(window._workingRoster).find(function(s){return s.isClassDuty;});
+  dd.innerHTML=matches.map(n=>'<div style="padding:6px 10px;cursor:pointer;font-size:11px" onmousedown="pickClassDutyTch('+idx+',\''+escJs(n)+'\')">'+esc(n)+(cds?dutyPickInfo(n,cds.id,'#'+idx):'')+'</div>').join('');
 }
 
 function pickClassDutyTch(idx,name){
+  const cds=getDutySlots(window._workingRoster).find(function(s){return s.isClassDuty;});
+  if(cds&&dutyCheckFirst({kind:'class',idx:idx,slotId:cds.id,spot:'#'+idx,name:name})){
+    const dd=document.getElementById('cdsd-'+idx);if(dd)dd.style.display='none';
+    return;
+  }
   updClassDuty(idx,'teacher',name);
   rdRender();
   reportClassDutyLoad(name);
@@ -11598,6 +11929,8 @@ function classDutyTchCommit(idx,value){
   if(!v)return;
   if(window._cdLastReported===v)return;   // don't repeat on refocus
   window._cdLastReported=v;
+  const cds=getDutySlots(window._workingRoster).find(function(s){return s.isClassDuty;});
+  if(cds&&dutyCheckFirst({kind:'class',idx:idx,slotId:cds.id,spot:'#'+idx,name:v}))return;
   reportClassDutyLoad(v);
 }
 
