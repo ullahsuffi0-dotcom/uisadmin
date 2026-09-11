@@ -11555,6 +11555,119 @@ function dutyPeriodRange(cls,p){
   return row?{from:dutyClockStr(row[1]),to:dutyClockStr(row[2])}:null;
 }
 
+// ── Names written slightly differently ───────────────────
+// The timetable and the staff list spell some names differently: Muneer and
+// Munir, Shokry and Shokri, Abdulwakeel and Abdul Wakeel, Abdelqawy and Abdul
+// Qawi, M.Hafiz and Mohammed Abdelhafiz. Two names are taken to be the same
+// person when every word of the timetable name matches a word of the staff
+// name (or several words written together) allowing for an initial, a
+// shortened word, a spelling a letter or two apart, or the same consonants.
+// Used for warnings, so it errs on the side of saying "this may be them".
+const DUTY_NAME_SAME={mohd:'mohammed',md:'mohammed',muhd:'mohammed',mhd:'mohammed',mohamed:'mohammed',
+  muhammad:'mohammed',mohammad:'mohammed',muhammed:'mohammed',mohamad:'mohammed',mohammed:'mohammed',
+  mohamd:'mohammed',muhamad:'mohammed',ahmad:'ahmed',abd:'abdul',abdel:'abdul',abdal:'abdul'};
+const DUTY_NAME_SKIP={al:1,el:1,bin:1,ibn:1,bint:1,mr:1,mrs:1,ms:1,miss:1,dr:1,sir:1,t:0};
+function dutyNameTokens(s){
+  const raw=String(s||'').toLowerCase();
+  const plain=(raw.normalize?raw.normalize('NFD').replace(/[̀-ͯ]/g,''):raw)
+    .replace(/[^a-z\s.\-']/g,' ').replace(/[.\-']/g,' ');
+  return plain.split(/\s+/).filter(Boolean)
+    .filter(function(t){return !DUTY_NAME_SKIP[t];})
+    .map(function(t){return DUTY_NAME_SAME[t]||t;});
+}
+// Spellings brought together: a final y is a vowel (Shokry, Galaly), one
+// inside a name is not (Ayman); Dawood reads as Daud, Muneer as Munir.
+function dutySpell(t){
+  return t.replace(/q/g,'k').replace(/ph/g,'f').replace(/y$/,'i').replace(/([aeiou])w([aeiou])/g,'$1u$2')
+    .replace(/ou|oo/g,'u').replace(/ee|ie/g,'i').replace(/(.)\1+/g,'$1');
+}
+function dutySkel(t){
+  t=dutySpell(t);
+  return t[0]+t.slice(1).replace(/[aeiou]/g,'').replace(/(.)\1+/g,'$1');
+}
+// For words run together only a close spelling counts, not a shared ending
+function dutyTokSimStrict(a,b){
+  if(a===b)return true;
+  const x=dutySpell(a),y=dutySpell(b);
+  if(x===y)return true;
+  const d=dutyEdit(x,y);
+  return Math.min(x.length,y.length)>=7?d<=2:d<=1;
+}
+function dutyEdit(a,b){
+  if(a===b)return 0;
+  if(Math.abs(a.length-b.length)>3)return 9;
+  let prev=[];for(let j=0;j<=b.length;j++)prev.push(j);
+  for(let i=1;i<=a.length;i++){
+    const cur=[i];
+    for(let j=1;j<=b.length;j++){
+      cur.push(Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)));
+    }
+    prev=cur;
+  }
+  return prev[b.length];
+}
+function dutyTokSim(a,b){
+  if(!a||!b)return false;
+  if(a===b)return true;
+  if(a.length===1||b.length===1)return a[0]===b[0];
+  const s=a.length<b.length?a:b,l=a.length<b.length?b:a;
+  if(s.length>=4&&l.indexOf(s)===0&&l.length-s.length<=3)return true;   // Hosn / Hosni
+  if(s.length>=5&&l.slice(-s.length)===s)return true;                   // Hafiz / Abdelhafiz
+  // Munir / Muneer, Daud / Dawood — same consonants and close in spelling
+  if(s.length>=3){
+    const x=dutySkel(a),y=dutySkel(b);
+    if(x===y&&(x.length>=3||(x.length>=2&&s.length>=4))&&dutyEdit(dutySpell(a),dutySpell(b))<=2)return true;
+  }
+  const d=dutyEdit(a,b);
+  return (s.length>=4&&d<=1)||(s.length>=7&&d<=2);                     // Shokry / Shokri
+}
+function dutyNamesMatch(ttName,person){
+  const key=String(ttName)+'|'+String(person);
+  if(!window._dutyNmCache)window._dutyNmCache={};
+  if(key in window._dutyNmCache)return window._dutyNmCache[key];
+  const A=dutyNameTokens(ttName),B=dutyNameTokens(person);
+  let ok=false;
+  if(A.length&&B.length){
+    const ja=A.join(''),jb=B.join('');
+    if(ja===jb||(Math.min(ja.length,jb.length)>=6&&A.length>1&&dutyTokSim(ja,jb)))ok=true;
+    else{
+      ok=true;
+      const used={};
+      for(let x=0;x<A.length&&ok;x++){
+        const a=A[x];
+        let hit=-1;
+        for(let i=0;i<B.length&&hit<0;i++){if(!used[i]&&dutyTokSim(a,B[i]))hit=i;}
+        if(hit>=0){used[hit]=1;continue;}
+        // several words written as one: "Abdulwakeel" = "Abdul Wakeel"
+        let run=false;
+        if(a.length>=5){
+          for(let i=0;i<B.length&&!run;i++){
+            let cat='';
+            for(let j=i;j<B.length&&j<i+3;j++){
+              if(used[j])break;
+              cat+=B[j];
+              if(j>i&&dutyTokSimStrict(a,cat)){for(let k=i;k<=j;k++)used[k]=1;run=true;break;}
+            }
+          }
+        }
+        // or the other way round: "Abdul Rehman" = "Abdulrehman"
+        if(!run&&a.length>1){
+          let cat=a;
+          for(let j=x+1;j<A.length&&j<x+3&&!run&&A[j].length>1;j++){
+            cat+=A[j];
+            for(let i=0;i<B.length;i++){if(!used[i]&&dutyTokSimStrict(cat,B[i])){used[i]=1;x=j;run=true;break;}}
+          }
+        }
+        if(!run)ok=false;
+      }
+      // a timetable of only initials says too little to go on
+      if(ok&&!A.some(function(t){return t.length>1;}))ok=false;
+    }
+  }
+  window._dutyNmCache[key]=ok;
+  return ok;
+}
+
 // Is this timetable name ("M.Elsayed") the person being assigned?
 function dutyIsPerson(ttName,aliases){
   const n=normDutyName(ttName);
@@ -11566,7 +11679,11 @@ function dutyIsPerson(ttName,aliases){
     window._dutyTtMap[n]=m?normDutyName(m.name):'';
   }
   const mapped=window._dutyTtMap[n];
-  return !!mapped&&aliases.has(mapped);
+  if(mapped&&aliases.has(mapped))return true;
+  // Spelt a little differently from any name this person goes by
+  let hit=false;
+  aliases.forEach(function(a){if(!hit&&dutyNamesMatch(ttName,a))hit=true;});
+  return hit;
 }
 
 // Lessons someone teaches that overlap a time on a date
@@ -16343,6 +16460,8 @@ function pdMatchStaff(ttName,opts){
       else if(have.some(function(h){return h.length>=3&&w.length>=3&&(h.indexOf(w)===0||w.indexOf(h)===0);}))score+=6;
       else{score=-1;break;}
     }
+    // Not word for word, but the same name spelt a little differently
+    if(score<0&&typeof dutyNamesMatch==='function'&&dutyNamesMatch(ttName,o.name))score=3;
     if(score>bestScore){best=o;bestScore=score;tie=false;}
     else if(score>0&&score===bestScore)tie=true;
   });
