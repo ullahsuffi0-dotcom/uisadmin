@@ -10667,9 +10667,24 @@ function maEventsOn(date){
 }
 const MA_HOLIDAY=/holiday|vacation|national|founding|eid|off|closed|break|leave|عطلة|إجازة|اجازة/i;
 function maClassLabel(c){return String(c||'').replace(/-/g,'');}
-function maStudents(cls){
-  return (DB.get('students')||[]).filter(function(s){return grSec(s.grade,s.section)===cls;})
-    .sort(function(a,b){return (Number(a.csn)||9999)-(Number(b.csn)||9999)||fN(a).localeCompare(fN(b));});
+// The order the register is printed in: 'cs' (class serial) or 'alpha'.
+// Alphabetical numbers the CS column 1, 2, 3… on the printout only — the
+// student records keep their own serial numbers.
+function maOrder(){return (window._ma&&window._ma.order)||'cs';}
+function maStudents(cls,order){
+  const list=(DB.get('students')||[]).filter(function(s){return grSec(s.grade,s.section)===cls;});
+  if((order||maOrder())==='alpha'){
+    return list.sort(function(a,b){
+      return fN(a).replace(/\s+/g,' ').trim().localeCompare(fN(b).replace(/\s+/g,' ').trim(),'en',{sensitivity:'base'});
+    });
+  }
+  return list.sort(function(a,b){return (Number(a.csn)||9999)-(Number(b.csn)||9999)||fN(a).localeCompare(fN(b));});
+}
+function maCS(s,i){return maOrder()==='alpha'?String(i+1):String(s.csn||i+1);}
+function maSetOrder(v){
+  window._ma.order=v==='alpha'?'alpha':'cs';
+  try{localStorage.setItem('sms7_ma_order',window._ma.order);}catch(e){}
+  rMonthlyAttendance();
 }
 
 function rMonthlyAttendance(){
@@ -10677,6 +10692,7 @@ function rMonthlyAttendance(){
   if(perm==='disabled'){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">\u{1f512}</div><p>Access restricted</p></div>';return;}
   const classes=getAllClasses();
   const st=window._ma||(window._ma={month:ymd(new Date()).slice(0,7),classes:null});
+  if(!st.order){try{st.order=localStorage.getItem('sms7_ma_order')==='alpha'?'alpha':'cs';}catch(e){st.order='cs';}}
   if(!st.classes)st.classes=classes.slice();
   st.classes=st.classes.filter(function(c){return classes.indexOf(c)>=0;});
   const days=maSchoolDays(st.month);
@@ -10695,8 +10711,11 @@ function rMonthlyAttendance(){
    +'<button class="btn bp bsm" onclick="maPDF()">\u{1f4c4} Create PDF</button></div>'
    +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Choose the month and the classes. Each class prints on one A4 landscape page, with its students from the student records and every school day of the month. Fridays and Saturdays are left out; untick any other day to skip it.</div></div>'
    // month
-   +'<div class="card" style="margin-bottom:12px"><div class="fr f2">'
+   +'<div class="card" style="margin-bottom:12px"><div class="fr f3">'
    +'<div class="fg"><label>Month *</label><input type="month" id="ma-month" value="'+esc(st.month)+'" onchange="maMonth(this.value)"></div>'
+   +'<div class="fg"><label>Order of students</label><select id="ma-order" onchange="maSetOrder(this.value)">'
+   +'<option value="cs"'+(maOrder()==='cs'?' selected':'')+'>By class serial number (CS)</option>'
+   +'<option value="alpha"'+(maOrder()==='alpha'?' selected':'')+'>Alphabetical (A–Z) — CS numbered automatically</option></select></div>'
    +'<div class="fg"><label>Summary</label><div style="font-size:13px;padding-top:6px"><strong>'+st.classes.length+'</strong> class(es) · <strong>'+kept.length+'</strong> school day(s)'
      +(skips.length?' · '+skips.length+' skipped':'')+' · '+st.classes.reduce(function(n,c){return n+maStudents(c).length;},0)+' student(s)</div></div>'
    +'</div></div>'
@@ -10735,12 +10754,12 @@ function rMonthlyAttendance(){
 function maPreviewCard(cls,kept,month){
   if(!cls)return '';
   const list=maStudents(cls);
-  return '<div class="card"><div class="sh2"><h3>\u{1f441}️ Preview — Class '+esc(maClassLabel(cls))+'</h3>'
+  return '<div class="card"><div class="sh2"><h3>\u{1f441}️ Preview — Class '+esc(maClassLabel(cls))+(maOrder()==='alpha'?' · alphabetical':'')+'</h3>'
    +'<button class="btn bs bsm" onclick="maPDF(['+String.fromCharCode(39)+escJs(cls)+String.fromCharCode(39)+'])">\u{1f4c4} PDF for this class only</button></div>'
    +'<div class="tw" style="max-height:320px;overflow:auto"><table style="font-size:10px"><thead><tr><th>CS</th><th>First Name</th><th>Last Name</th><th>Class</th>'
    +kept.map(function(d){return '<th class="c" style="padding:3px 2px">'+esc((getDayOfWeek(d)||'').slice(0,3))+'<br>'+esc(d.slice(8))+'</th>';}).join('')+'</tr></thead><tbody>'
    +(list.length?list.map(function(s,i){
-     return '<tr><td>'+esc(String(s.csn||i+1))+'</td><td>'+esc(s.firstName||'')+'</td><td>'+esc(s.lastName||'')+'</td><td>'+esc(maClassLabel(cls))+'</td>'
+     return '<tr><td>'+esc(maCS(s,i))+'</td><td>'+esc(s.firstName||'')+'</td><td>'+esc(s.lastName||'')+'</td><td>'+esc(maClassLabel(cls))+'</td>'
       +kept.map(function(){return '<td></td>';}).join('')+'</tr>';
    }).join(''):'<tr><td colspan="'+(4+kept.length)+'" style="text-align:center;color:var(--tx3)">No students in this class.</td></tr>')
    +'</tbody></table></div></div>';
@@ -10786,14 +10805,14 @@ function maPageHTML(cls,kept,month,settings){
    +'<div class="hd">'+(isImg?'<img src="'+logo+'" class="logo">':(logo?'<div class="logo em">'+esc(logo)+'</div>':''))
    +'<div><div class="sn">'+esc(settings.schoolName||'School')+'</div>'+(settings.schoolNameAr?'<div class="ar">'+esc(settings.schoolNameAr)+'</div>':'')+'</div></div>'
    +'<div class="ttl">Attendance Register — Class '+esc(maClassLabel(cls))+'  •  Academic Year '+esc(settings.academicYear||'')+'  •  '+esc(maMonthLabel(month))+'  •  Total Students: '+n+'</div>'
-   +(tt&&tt.ct?'<div class="ct">Class teacher: '+esc(tt.ct)+'</div>':'')
+   +'<div class="ct">'+(maOrder()==='alpha'?'Students listed alphabetically':'Students listed by class serial number')+(tt&&tt.ct?'  •  Class teacher: '+esc(tt.ct):'')+'</div>'
    +'<table style="font-size:'+font+'pt"><colgroup><col style="width:7mm"><col style="width:32mm"><col style="width:60mm"><col style="width:10mm">'
    +kept.map(function(){return '<col>';}).join('')+'</colgroup>'
    +'<thead><tr><th>CS</th><th>First Name</th><th>Last Name</th><th>Class</th>'
    +kept.map(function(d){return '<th class="d"><span>'+esc((getDayOfWeek(d)||'').slice(0,3))+'</span>'+esc(d.slice(8)+'-'+maMonthLabel(month).slice(0,3))+'</th>';}).join('')+'</tr></thead>'
    +'<tbody>'
    +list.map(function(s,i){
-     return '<tr style="height:'+rowH+'mm"><td class="c">'+esc(String(s.csn||i+1))+'</td><td class="nm"'+maFit(s.firstName,32,font)+'>'+esc(s.firstName||'')+'</td><td class="nm"'+maFit(s.lastName,60,font)+'>'+esc(s.lastName||'')+'</td><td class="c">'+esc(maClassLabel(cls))+'</td>'
+     return '<tr style="height:'+rowH+'mm"><td class="c">'+esc(maCS(s,i))+'</td><td class="nm"'+maFit(s.firstName,32,font)+'>'+esc(s.firstName||'')+'</td><td class="nm"'+maFit(s.lastName,60,font)+'>'+esc(s.lastName||'')+'</td><td class="c">'+esc(maClassLabel(cls))+'</td>'
       +kept.map(function(){return '<td></td>';}).join('')+'</tr>';
    }).join('')
    +'<tr class="tot" style="height:'+rowH+'mm"><td colspan="4">CLASS TOTALS — '+n+' STUDENTS</td>'+kept.map(function(){return '<td></td>';}).join('')+'</tr>'
