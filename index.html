@@ -15900,6 +15900,7 @@ function renderPdPortal(){
   const teachers=pdTeacherOptions();
   const st=window._pdp||(window._pdp={cls:'',period:0,marks:null,picked:[],teacher:'',behaviours:[]});
   if(st.marks===undefined)st.marks=null;
+  if(!st.date)st.date=ymd(new Date());
   if(!Array.isArray(st.behaviours))st.behaviours=[];
   const q=String.fromCharCode(39);
   const wrap=document.createElement('div');
@@ -15920,35 +15921,39 @@ function renderPdPortal(){
   +'<div style="margin-top:10px;font-size:11px;color:var(--dn)">* Required</div>'
   +'</div></div>'
   +'<div id="pdp-body">'
-  // 1 — class
-  +pdpQ('1. Class','',
+  // 1 — date: today, unless the lesson being recorded was on another day
+  +pdpQ('1. Date','Today is filled in. Change it only if you are recording a lesson from another day.',
+    '<input type="date" id="pdp-d" value="'+esc(st.date)+'" max="'+esc(ymd(new Date()))+'" onchange="pdpDate()">'
+    +'<div id="pdp-d-day" style="font-size:12px;color:var(--tx3);margin-top:6px">'+esc(pdpDateLabel(st.date))+'</div>',true)
+  // 2 — class
+  +pdpQ('2. Class','',
     (classes.length
       ?'<select id="pdp-c" onchange="pdpClass()"><option value="">— Choose the class —</option>'
         +classes.map(function(c){return '<option value="'+esc(c)+'"'+(c===st.cls?' selected':'')+'>'+esc(c)+'</option>';}).join('')
         +'</select>'
       :'<div style="font-size:12px;color:var(--tx3)">Loading the class list…</div>'),true)
-  // 2 — period
-  +pdpQ('2. Period','',
+  // 3 — period
+  +pdpQ('3. Period','',
     '<div style="display:flex;gap:6px;flex-wrap:wrap" id="pdp-p">'
     +PD_PERIODS.map(function(p){
       return '<button type="button" class="btn '+(st.period===p?'bp':'bg2')+'" data-p="'+p+'" onclick="pdpPeriod('+p+')" style="flex:1;min-width:62px;justify-content:center">'+p+'</button>';
     }).join('')+'</div>',true)
-  // 3 — who: picked from the timetable once class and period are known
-  +pdpQ('3. Your name','Filled in from the timetable when you choose the class and period. Change it if someone else taught this lesson.',
+  // 4 — who: picked from the timetable once class and period are known
+  +pdpQ('4. Your name','Filled in from the timetable when you choose the class and period. Change it if someone else taught this lesson.',
     (teachers.length
       ?'<select id="pdp-t" onchange="pdpTouch()"><option value="">— Choose your name —</option>'
         +teachers.map(function(t){return '<option value="'+esc(t.name)+'" data-id="'+esc(t.id)+'"'+(t.name===st.teacher?' selected':'')+'>'+esc(t.name)+'</option>';}).join('')
         +'</select>'
       :'<input id="pdp-t" placeholder="Type your name" value="'+esc(st.teacher)+'" oninput="pdpTouch()">')
     +'<div id="pdp-t-hint" style="font-size:12px;color:var(--tx3);margin-top:7px"></div><div id="pdp-t-alt" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>',true)
-  // 4 — rating
-  +pdpQ('4. Discipline marks out of '+PD_MAX,PD_MARK_GUIDE,
+  // 5 — marks
+  +pdpQ('5. Discipline marks out of '+PD_MAX,PD_MARK_GUIDE,
     pdMarksPicker('pdp-r',st.marks,'pdpMarks'),true)
-  // 5 — students
-  +pdpQ('5. Any student who caused a problem?','Leave this empty if the class was fine.',
+  // 6 — students
+  +pdpQ('6. Any student who caused a problem?','Leave this empty if the class was fine.',
     '<div id="pdp-s"></div>',false)
-  // 6 — note
-  +pdpQ('6. Anything to add?','Tap whatever happened. Add your own words underneath if you need to.',
+  // 7 — note
+  +pdpQ('7. Anything to add?','Tap whatever happened. Add your own words underneath if you need to.',
     '<div id="pd-beh-portal">'+pdBehaviourBox('portal',st.behaviours||[])+'</div>'
     +'<textarea id="pdp-n" placeholder="In your own words (optional)…" style="min-height:70px;margin-top:8px">'+esc(st.note||'')+'</textarea>',false)
   +'</div>'
@@ -16028,7 +16033,7 @@ function pdpSetTeacher(name){
 function pdpAutoTeacher(){
   const st=window._pdp;
   if(!st||!st.cls||!st.period){pdpTtHint();return;}
-  const t=bdTeacherAt(st.cls,ymd(new Date()),st.period);
+  const t=bdTeacherAt(st.cls,st.date||ymd(new Date()),st.period);
   const cands=bdTeacherList(t.name).filter(function(x){return x!=='(not recorded)';});
   st.ttCands=cands;st.ttSubject=t.subject||'';
   if(cands.length){pdpSetTeacher(cands[0]);return;}
@@ -16049,14 +16054,40 @@ function pdpTtHint(){
   if(!st.cls||!st.period){h.innerHTML='Choose the class and period first — your name is then picked from the timetable.';if(alt)alt.innerHTML='';return;}
   const cands=st.ttCands||[];
   if(!cands.length){
-    h.innerHTML='\u{1f4c5} '+esc(st.cls)+' period '+st.period+(st.ttSubject?' ('+esc(st.ttSubject)+')':'')+' has no teacher on today’s timetable — choose your name.';
+    h.innerHTML='\u{1f4c5} '+esc(st.cls)+' period '+st.period+(st.ttSubject?' ('+esc(st.ttSubject)+')':'')+' has no teacher on the timetable for '+esc(pdpDayWord(st.date))+' — choose your name.';
     if(alt)alt.innerHTML='';return;
   }
-  h.innerHTML='\u{1f4c5} From today’s timetable: '+esc(st.cls)+' period '+st.period+(st.ttSubject?' · '+esc(st.ttSubject):'')
+  h.innerHTML='\u{1f4c5} From the timetable for '+esc(pdpDayWord(st.date))+': '+esc(st.cls)+' period '+st.period+(st.ttSubject?' · '+esc(st.ttSubject):'')
     +(cands.length>1?' — a split lesson, tap your name if it is not the one selected':'');
   if(alt)alt.innerHTML=cands.length>1?cands.map(function(n){
     return '<button type="button" class="btn '+(n===st.ttPicked?'bp':'bg2')+' bsm" onclick="pdpSetTeacher('+q+escJs(n)+q+')">'+esc(n)+'</button>';
   }).join(''):'';
+}
+
+function pdpDayWord(d){
+  const today=ymd(new Date());
+  if(!d||d===today)return 'today';
+  return getDayOfWeek(d)||d;
+}
+function pdpDateLabel(d){
+  if(!d)return '';
+  const today=ymd(new Date());
+  const day=getDayOfWeek(d)||'';
+  const off=day==='Friday'||day==='Saturday';
+  if(d===today)return day+' — today'+(off?' (not a school day)':'');
+  if(off)return day+' — not a school day';
+  return day+(d<today?' — an earlier day':'');
+}
+function pdpDate(){
+  const el=document.getElementById('pdp-d');
+  const today=ymd(new Date());
+  let v=el?el.value:'';
+  if(!v){v=today;if(el)el.value=v;}
+  if(v>today){toast('The date cannot be in the future','danger');v=today;if(el)el.value=v;}
+  window._pdp.date=v;
+  const lab=document.getElementById('pdp-d-day');
+  if(lab)lab.textContent=pdpDateLabel(v);
+  pdpAutoTeacher();
 }
 
 function pdpTouch(){
@@ -16245,9 +16276,13 @@ function pdpSubmit(){
   if(!cls){toast('Choose the class','danger');return;}
   if(!st.period){toast('Choose the period','danger');return;}
   if(st.marks===null||st.marks===undefined){toast('Give the class a mark out of '+PD_MAX,'danger');return;}
+  const dEl=document.getElementById('pdp-d');
+  const date=(dEl&&dEl.value)||st.date||ymd(new Date());
+  if(date>ymd(new Date())){toast('The date cannot be in the future','danger');return;}
+  st.date=date;
   const btn=document.getElementById('pdp-go');
   if(btn){btn.disabled=true;btn.textContent='Sending…';}
-  const rec={id:nid('pdi'),date:ymd(new Date()),period:st.period,className:cls,
+  const rec={id:nid('pdi'),date:date,period:st.period,className:cls,
     marks:st.marks,rating:pdRatingForMarks(st.marks),
     students:st.picked.map(function(p){return {id:p.id||'',name:p.name,infractionId:''};}),
     behaviours:(st.behaviours||[]).slice(),
@@ -16266,6 +16301,7 @@ function pdpDone(rec,replaced){
    +'<div style="font-size:46px;margin-bottom:10px">✅</div>'
    +'<div style="font-size:18px;font-weight:700;color:var(--su);margin-bottom:8px">Recorded</div>'
    +'<div style="font-size:13px;color:var(--tx2);line-height:1.7"><strong>'+esc(rec.className)+'</strong> · Period '+esc(String(rec.period))
+   +'<br>'+esc(rec.date)+' · '+esc(getDayOfWeek(rec.date)||'')
    +'<br>Marks: <strong>'+pdFmt(pdMarksOf(rec))+' / '+PD_MAX+'</strong>'
    +((rec.students||[]).length?'<br>Named: '+esc(rec.students.map(function(s){return s.name;}).join(', ')):'')
    +((rec.behaviours||[]).length?'<br><span style="font-size:12px;color:var(--tx3)">'+esc(rec.behaviours.join(' · '))+'</span>':'')
@@ -16278,7 +16314,8 @@ function pdpDone(rec,replaced){
 
 function pdpAgain(){
   const t=window._pdp?window._pdp.teacher:'';
-  window._pdp={cls:'',period:0,marks:null,picked:[],teacher:t,note:'',behaviours:[]};
+  const d=window._pdp?window._pdp.date:'';
+  window._pdp={cls:'',period:0,marks:null,picked:[],teacher:t,note:'',behaviours:[],date:d||ymd(new Date())};
   renderPdPortal();
 }
 
