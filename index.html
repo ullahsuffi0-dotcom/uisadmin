@@ -2276,8 +2276,130 @@ function stuMatches(s,q){
 function buildStuTbl(students){
   if(!students.length)return'<div class="emp"><div class="ei">👨‍🎓</div><p>'+T('no_records')+'</p></div>';
   const cE=['superadmin','principal'].includes(CU.role),cV=['superadmin','principal','vice_principal','student_advisor','academic_supervisor','quality_supervisor'].includes(CU.role),cR=['superadmin','principal','vice_principal','student_advisor'].includes(CU.role);
-  return'<div class="tw"><table><thead><tr><th>SN</th><th>CS</th><th>'+T('first_name')+'</th><th>'+T('last_name')+'</th><th>'+T('grade')+'</th><th>'+T('nationality')+'</th><th>'+T('father_phone')+'</th><th>'+T('mother_phone')+'</th><th>Advisor</th><th>Actions</th></tr></thead><tbody>'+students.map(s=>{const adv=gA(s.advisorId);return'<tr><td class="mono" style="color:var(--tx3)">'+(s.sn||'—')+'</td><td class="mono" style="color:var(--tx3)">'+(s.csn||'—')+'</td><td><strong>'+s.firstName+'</strong></td><td>'+s.lastName+'</td><td><span class="badge bbl">Gr '+grSec(s.grade,s.section)+'</span></td><td style="font-size:11px">'+(s.nationality||'—')+'</td><td class="mono" style="font-size:11px">'+(s.fatherPhone||'—')+'</td><td class="mono" style="font-size:11px">'+(s.motherPhone||'—')+'</td><td style="font-size:11px;color:var(--tx3)">'+(adv?adv.firstName+' '+adv.lastName:'—')+'</td><td style="display:flex;gap:4px">'+(cV?'<button class="btn bg2 bxs" onclick="vStuRec(\''+s.id+'\')">📋</button>':'')+(cE?'<button class="btn bg2 bxs" onclick="editStuM(\''+s.id+'\')">'+T('edit')+'</button>':'')+(cR?'<button class="btn bg2 bxs" onclick="qRef(\''+s.id+'\')">Refer</button>':'')+'</td></tr>';}).join('')+'</tbody></table></div>';
+  return'<div class="tw"><table><thead><tr><th>SN</th><th>CS</th><th>'+T('first_name')+'</th><th>'+T('last_name')+'</th><th>'+T('grade')+'</th><th>'+T('nationality')+'</th><th>'+T('father_phone')+'</th><th>'+T('mother_phone')+'</th><th>Advisor</th><th>Actions</th></tr></thead><tbody>'+students.map(s=>{const adv=gA(s.advisorId);return'<tr><td class="mono" style="color:var(--tx3)">'+(s.sn||'—')+'</td><td class="mono" style="color:var(--tx3)">'+(s.csn||'—')+'</td><td><strong>'+s.firstName+'</strong></td><td>'+s.lastName+'</td><td><span class="badge bbl">Gr '+grSec(s.grade,s.section)+'</span></td><td style="font-size:11px">'+(s.nationality||'—')+'</td><td class="mono" style="font-size:11px">'+(s.fatherPhone||'—')+'</td><td class="mono" style="font-size:11px">'+(s.motherPhone||'—')+'</td><td style="font-size:11px;color:var(--tx3)">'+(adv?adv.firstName+' '+adv.lastName:'—')+'</td><td style="display:flex;gap:4px">'+(cV?'<button class="btn bg2 bxs" onclick="vStuRec(\''+s.id+'\')">📋</button>'
+      +'<button class="btn bg2 bxs" title="Message the parents on WhatsApp" style="color:#25D366" onclick="stuMsgM(\''+s.id+'\')">📲</button>':'')+(cE?'<button class="btn bg2 bxs" onclick="editStuM(\''+s.id+'\')">'+T('edit')+'</button>':'')+(cR?'<button class="btn bg2 bxs" onclick="qRef(\''+s.id+'\')">Refer</button>':'')+'</td></tr>';}).join('')+'</tbody></table></div>';
 }
+// ═══════════════════════════════════════════════════════════
+// MESSAGE A STUDENT'S PARENTS ON WHATSAPP
+// From the Students list: pick the student, choose the father's or mother's
+// number (or type another), start from a ready message or write your own, and
+// it opens in WhatsApp to read before sending. Nothing about the student is
+// changed; the activity log records that a message was opened.
+// ═══════════════════════════════════════════════════════════
+const STU_MSG_TPL=[
+  {id:'general',l:'General message',
+   en:'Dear parent, greetings from {school}. We would like to speak with you about your son/daughter {student} of class {class}.',
+   ar:'ولي الأمر الكريم، تحية طيبة من {school}. نود التواصل معكم بخصوص ابنكم/ابنتكم {student} من الصف {class}.'},
+  {id:'absence',l:'Absence',
+   en:'Dear parent, greetings from {school}. Your son/daughter {student} of class {class} was absent today, {date}. Kindly inform us of the reason.',
+   ar:'ولي الأمر الكريم، تحية طيبة من {school}. ابنكم/ابنتكم {student} من الصف {class} تغيب اليوم {date}. نرجو إفادتنا بالسبب.'},
+  {id:'late',l:'Coming late',
+   en:'Dear parent, greetings from {school}. Your son/daughter {student} of class {class} has been arriving late to school. Kindly ensure they arrive before the assembly.',
+   ar:'ولي الأمر الكريم، تحية طيبة من {school}. ابنكم/ابنتكم {student} من الصف {class} يتأخر عن الحضور. نرجو الحرص على الحضور قبل الطابور.'},
+  {id:'meeting',l:'Meeting request',
+   en:'Dear parent, greetings from {school}. We kindly request your presence at the school to discuss your son/daughter {student} of class {class}. Please let us know a suitable time.',
+   ar:'ولي الأمر الكريم، تحية طيبة من {school}. نرجو حضوركم إلى المدرسة لمناقشة أمور ابنكم/ابنتكم {student} من الصف {class}. نرجو إفادتنا بالوقت المناسب.'},
+  {id:'behaviour',l:'Behaviour',
+   en:'Dear parent, greetings from {school}. We would like to discuss the conduct of your son/daughter {student} of class {class} with you.',
+   ar:'ولي الأمر الكريم، تحية طيبة من {school}. نود مناقشة سلوك ابنكم/ابنتكم {student} من الصف {class} معكم.'},
+  {id:'wellDone',l:'Well done',
+   en:'Dear parent, greetings from {school}. We are pleased to tell you that your son/daughter {student} of class {class} has done very well. Congratulations, and thank you for your support.',
+   ar:'ولي الأمر الكريم، تحية طيبة من {school}. يسعدنا إبلاغكم بتميز ابنكم/ابنتكم {student} من الصف {class}. مبارك لكم، وشكراً لدعمكم.'},
+  {id:'health',l:'Health',
+   en:'Dear parent, greetings from {school}. Your son/daughter {student} of class {class} is unwell and is with the school nurse. Kindly contact the school.',
+   ar:'ولي الأمر الكريم، تحية طيبة من {school}. ابنكم/ابنتكم {student} من الصف {class} يشكو من التعب وهو الآن لدى المشرف الصحي. نرجو التواصل مع المدرسة.'}
+];
+function stuMsgFill(t,s,lang){
+  const set=DB.get('settings')||{};
+  const school=(lang==='ar'&&set.schoolNameAr)?set.schoolNameAr:(set.schoolName||'the school');
+  return String(t||'')
+    .replace(/\{student\}/g,fN(s).replace(/\s+/g,' ').trim())
+    .replace(/\{class\}/g,grSec(s.grade,s.section))
+    .replace(/\{school\}/g,school)
+    .replace(/\{date\}/g,ymd(new Date()));
+}
+function stuMsgPhones(s){
+  const out=[],seen={};
+  const add=function(label,ph){
+    const c=cleanPhone(ph);
+    if(!c||seen[c])return;
+    seen[c]=1;out.push({label:label,phone:ph,clean:c});
+  };
+  add('Father',s.fatherPhone);
+  add('Mother',s.motherPhone);
+  return out;
+}
+function stuMsgM(sid){
+  const s=gS(sid);
+  if(!s){toast('Student not found','danger');return;}
+  const phones=stuMsgPhones(s);
+  const st=window._stuMsg={sid:sid,lang:'en',tpl:'general'};
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>\u{1f4f2} Message the parents — '+esc(fN(s))+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">The message opens in WhatsApp already written — read it there before sending. Nothing is sent from here, and nothing about the student is changed.</div>'
+  +'<div style="font-size:12px;margin-bottom:10px"><strong>'+esc(fN(s))+'</strong> · Class '+esc(grSec(s.grade,s.section))+(s.csn?' · CS '+esc(String(s.csn)):'')+'</div>'
+  +'<div class="fg"><label>Send to *</label>'
+  +(phones.length?'<div style="display:flex;flex-direction:column;gap:5px">'
+    +phones.map(function(p,i){
+      return '<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--bd);border-radius:var(--rs);cursor:pointer;font-size:12px">'
+       +'<input type="radio" name="stumsg-to" value="'+esc(p.phone)+'"'+(i===0?' checked':'')+' onchange="stuMsgOther(false)" style="width:auto;margin:0">'
+       +'<strong>'+esc(p.label)+'</strong><span class="mono" style="color:var(--tx3)">'+esc(p.phone)+'</span></label>';
+    }).join('')
+    +'<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--bd);border-radius:var(--rs);cursor:pointer;font-size:12px">'
+    +'<input type="radio" name="stumsg-to" value="" onchange="stuMsgOther(true)" style="width:auto;margin:0">Another number</label></div>'
+   :'<div class="al aw">No phone number is saved for this student — type one below.</div>')
+  +'<input id="stumsg-other" placeholder="e.g. 0501234567" type="tel" style="margin-top:6px;'+(phones.length?'display:none':'')+'"></div>'
+  +'<div class="fr f2">'
+  +'<div class="fg"><label>Message</label><select id="stumsg-tpl" onchange="stuMsgPick()">'
+   +STU_MSG_TPL.map(function(t){return '<option value="'+t.id+'">'+esc(t.l)+'</option>';}).join('')+'</select></div>'
+  +'<div class="fg"><label>Language</label><select id="stumsg-lang" onchange="stuMsgPick()">'
+   +'<option value="en">English</option><option value="ar">العربية</option></select></div>'
+  +'</div>'
+  +'<div class="fg"><label>What will be sent *</label><textarea id="stumsg-text" style="min-height:110px"></textarea>'
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:3px">Edit it as you like before opening WhatsApp.</div></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bp" onclick="stuMsgSend()" style="background:#25D366;border-color:#25D366">\u{1f4f2} Open WhatsApp →</button></div>',true);
+  stuMsgPick();
+}
+function stuMsgOther(on){
+  const el=document.getElementById('stumsg-other');
+  if(!el)return;
+  el.style.display=on?'':'none';
+  if(on)el.focus();
+}
+function stuMsgPick(){
+  const st=window._stuMsg;
+  const s=gS(st.sid);
+  if(!s)return;
+  st.tpl=(document.getElementById('stumsg-tpl')||{}).value||'general';
+  st.lang=(document.getElementById('stumsg-lang')||{}).value||'en';
+  const t=STU_MSG_TPL.find(function(x){return x.id===st.tpl;})||STU_MSG_TPL[0];
+  const box=document.getElementById('stumsg-text');
+  if(box)box.value=stuMsgFill(t[st.lang]||t.en,s,st.lang);
+}
+function stuMsgSend(){
+  const st=window._stuMsg;
+  const s=gS(st.sid);
+  if(!s){toast('Student not found','danger');return;}
+  const picked=document.querySelector('input[name="stumsg-to"]:checked');
+  const other=((document.getElementById('stumsg-other')||{}).value||'').trim();
+  const phone=(picked&&picked.value)?picked.value:other;
+  const msg=((document.getElementById('stumsg-text')||{}).value||'').trim();
+  if(!phone){toast('Choose a number, or type one','danger');return;}
+  if(!msg){toast('The message is empty','danger');return;}
+  const url=buildWaUrl(phone,msg);
+  if(!url){toast('That phone number is not valid','danger');return;}
+  // Opened inside the click, or the browser blocks it
+  window.open(url,'_blank','noopener,noreferrer');
+  const who=(cleanPhone(phone)===cleanPhone(s.fatherPhone))?'father'
+    :((cleanPhone(phone)===cleanPhone(s.motherPhone))?'mother':'another number');
+  logA('Opened a WhatsApp message to the parents of '+fN(s)+' ('+who+')');
+  closeM();
+  toast('Message opened in WhatsApp','success');
+}
+
 function vStuRec(id){
   const s=gS(id);if(!s)return;
   const inf=(DB.get('infractions')||[]).filter(i=>i.studentId===id),refs=(DB.get('referrals')||[]).filter(r=>r.studentId===id),nbs=(DB.get('notebook_checks')||[]).filter(n=>n.studentId===id),cmps=(DB.get('complaints')||[]).filter(c=>c.studentName===fN(s)),adv=gA(s.advisorId);
