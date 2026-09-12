@@ -2207,7 +2207,9 @@ function expAllAccountCards(){
 function rStudents(){
   const students=vpFilter(DB.get('students')||[]);const canEdit=['superadmin','principal'].includes(CU.role);
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;gap:8px;flex:1"><input id="stq" placeholder="🔍 '+T('search')+'…" oninput="fltStu()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="stgf" onchange="fltStuGrade()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>String(s.grade)))].sort(function(a,b){return (parseInt(a)||0)-(parseInt(b)||0)||a.localeCompare(b);}).map(g=>'<option value="'+esc(g)+'">Gr '+esc(g)+'</option>').join('')+'</select>'
-  +'<select id="stsf" onchange="fltStu()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)">'+stuSectionOpts(students,'','')+'</select></div>'+(canEdit?'<div style="display:flex;gap:6px;margin-left:8px;flex-wrap:wrap">'+(CU.role==='superadmin'?'<button class="btn bg2 bsm" onclick="bulkStuM()" title="Super Admin: bulk delete or replace all students">⚙️ Bulk</button>':'')+'<button class="btn bg2 bsm" onclick="impStuM()">📥 CSV</button><button class="btn bp bsm" onclick="addStuM()">+ Add</button></div>':'')+'</div><div id="stcount" style="font-size:11px;color:var(--tx3);margin-top:6px"></div></div><div class="card" id="stw">'+buildStuTbl(students)+'</div>';
+  +'<select id="stsf" onchange="fltStu()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)">'+stuSectionOpts(students,'','')+'</select></div>'
+  +'<div style="display:flex;gap:6px;margin-left:8px"><button class="btn bs bsm" onclick="clListM()" title="Print the students of each class, one page per class">\u{1f4c4} Class Lists (PDF)</button></div>'
+  +(canEdit?'<div style="display:flex;gap:6px;margin-left:8px;flex-wrap:wrap">'+(CU.role==='superadmin'?'<button class="btn bg2 bsm" onclick="bulkStuM()" title="Super Admin: bulk delete or replace all students">⚙️ Bulk</button>':'')+'<button class="btn bg2 bsm" onclick="impStuM()">📥 CSV</button><button class="btn bp bsm" onclick="addStuM()">+ Add</button></div>':'')+'</div><div id="stcount" style="font-size:11px;color:var(--tx3);margin-top:6px"></div></div><div class="card" id="stw">'+buildStuTbl(students)+'</div>';
   window.fltStu=function(){
     const q=(document.getElementById('stq').value||'').toLowerCase().trim();
     const gr=document.getElementById('stgf').value;
@@ -11309,6 +11311,189 @@ function mlPDF(only){
    +'</body></html>');
   w.document.close();
   logA('Created the '+st.exam.trim()+' marks list ('+classes.length+' class(es))');
+}
+
+// ═══════════════════════════════════════════════════════════
+// CLASS LISTS — the students of each class on paper
+// From the Students tab: pick the classes and the details wanted, and every
+// class prints on its own page with its students from the student records,
+// by class serial number or alphabetically. Only reads the records.
+// ═══════════════════════════════════════════════════════════
+const CL_FIELDS=[
+  {id:'no',l:'No.',w:12,get:function(s,i){return String(i+1);}},
+  {id:'csn',l:'CS',w:12,get:function(s){return String(s.csn||'');}},
+  {id:'sn',l:'School SN',w:20,get:function(s){return String(s.sn||'');}},
+  {id:'name',l:'Student name',w:0,get:function(s){return fN(s).replace(/\s+/g,' ').trim();}},
+  {id:'gender',l:'Gender',w:20,get:function(s){return s.gender||'';}},
+  {id:'nationality',l:'Nationality',w:28,get:function(s){return s.nationality||'';}},
+  {id:'fatherPhone',l:'Father phone',w:32,get:function(s){return s.fatherPhone||'';}},
+  {id:'motherPhone',l:'Mother phone',w:32,get:function(s){return s.motherPhone||'';}},
+  {id:'advisor',l:'Student advisor',w:36,get:function(s){const a=gA(s.advisorId);return a?((a.firstName||'')+' '+(a.lastName||'')).trim():'';}},
+  {id:'notes',l:'Notes',w:45,get:function(){return '';}}
+];
+function clState(){
+  let saved={};
+  try{saved=JSON.parse(localStorage.getItem('sms7_cl_opts')||'{}')||{};}catch(e){saved={};}
+  const st=window._cl||(window._cl={});
+  if(!st.fields)st.fields=Array.isArray(saved.fields)&&saved.fields.length?saved.fields.slice():['no','name','nationality','fatherPhone'];
+  st.fields=CL_FIELDS.map(function(f){return f.id;}).filter(function(id){return st.fields.indexOf(id)>=0;});
+  if(!st.order)st.order=saved.order==='alpha'?'alpha':'cs';
+  if(st.title===undefined)st.title=saved.title||'Class List';
+  if(!st.classes)st.classes=clClasses();
+  return st;
+}
+function clRemember(st){
+  try{localStorage.setItem('sms7_cl_opts',JSON.stringify({fields:st.fields,order:st.order,title:st.title}));}catch(e){}
+}
+// Classes this user may see — a vice principal sees the ones assigned to them
+function clClasses(){
+  const seen={},out=[];
+  vpFilter(DB.get('students')||[]).forEach(function(s){
+    const c=grSec(s.grade,s.section);
+    if(c&&c!=='-'&&!seen[c]){seen[c]=1;out.push(c);}
+  });
+  return out.sort(function(a,b){
+    return (pdGradeOf(a)||99)-(pdGradeOf(b)||99)||a.localeCompare(b);
+  });
+}
+function clStudents(cls,order){
+  const list=vpFilter(DB.get('students')||[]).filter(function(s){return grSec(s.grade,s.section)===cls;});
+  if(order==='alpha')return list.sort(function(a,b){
+    return fN(a).replace(/\s+/g,' ').trim().localeCompare(fN(b).replace(/\s+/g,' ').trim(),'en',{sensitivity:'base'});
+  });
+  return list.sort(function(a,b){return (Number(a.csn)||9999)-(Number(b.csn)||9999)||fN(a).localeCompare(fN(b));});
+}
+
+function clListM(){
+  const st=clState();
+  const classes=clClasses();
+  st.classes=st.classes.filter(function(c){return classes.indexOf(c)>=0;});
+  if(!classes.length){toast('No students on the roll yet','danger');return;}
+  const grades={};
+  classes.forEach(function(c){const g=String(c).split('-')[0];(grades[g]=grades[g]||[]).push(c);});
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>\u{1f4c4} Class Lists</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Every class on its own page, with its students from the student records. Nothing is changed — this only prints what is already there.</div>'
+  +'<div class="fr f2">'
+  +'<div class="fg"><label>Heading</label><input value="'+esc(st.title)+'" placeholder="Class List" onchange="clSet('+q+'title'+q+',this.value.trim())"></div>'
+  +'<div class="fg"><label>Order of students</label><select onchange="clSet('+q+'order'+q+',this.value)">'
+   +'<option value="cs"'+(st.order==='cs'?' selected':'')+'>By class serial number</option>'
+   +'<option value="alpha"'+(st.order==='alpha'?' selected':'')+'>Alphabetical (A–Z)</option></select></div>'
+  +'</div>'
+  +'<div class="fg"><label>Details to show</label><div style="display:flex;flex-wrap:wrap;gap:6px">'
+  +CL_FIELDS.map(function(f){
+    const on=st.fields.indexOf(f.id)>=0;
+    return '<label style="display:flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid '+(on?'var(--ac)':'var(--bd)')+';border-radius:var(--rs);cursor:pointer;font-size:12px;background:'+(on?'var(--ac2)':'var(--sf2)')+'">'
+     +'<input type="checkbox" '+(on?'checked':'')+(f.id==='name'?' disabled':'')+' onchange="clField('+q+f.id+q+',this.checked)" style="width:auto;margin:0">'+esc(f.l)+'</label>';
+  }).join('')+'</div></div>'
+  +'<div class="fg"><label>Classes</label>'
+  +'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px"><button class="btn bg2 bxs" onclick="clAll(true)">Select all</button>'
+  +'<button class="btn bg2 bxs" onclick="clAll(false)">Clear</button>'
+  +Object.keys(grades).sort(function(a,b){return (+a||99)-(+b||99)||a.localeCompare(b);}).map(function(g){
+    return '<button class="btn bg2 bxs" onclick="clGrade('+q+escJs(g)+q+')">Grade '+esc(g)+'</button>';
+  }).join('')+'</div>'
+  +'<div style="display:flex;flex-wrap:wrap;gap:6px;max-height:170px;overflow:auto">'
+  +classes.map(function(c){
+    const on=st.classes.indexOf(c)>=0;
+    return '<label style="display:flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--bd);border-radius:var(--rs);cursor:pointer;font-size:12px;background:'+(on?'var(--ac2)':'var(--sf2)')+'">'
+     +'<input type="checkbox" '+(on?'checked':'')+' onchange="clToggle('+q+escJs(c)+q+',this.checked)" style="width:auto;margin:0">'
+     +'<strong>'+esc(maClassLabel(c))+'</strong><span style="color:var(--tx3);font-size:10px">'+clStudents(c,st.order).length+'</span></label>';
+  }).join('')+'</div></div>'
+  +'<div style="font-size:12px"><strong>'+st.classes.length+'</strong> class(es) · '
+   +st.classes.reduce(function(n,c){return n+clStudents(c,st.order).length;},0)+' student(s) · one page each</div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bp" onclick="clPDF()">\u{1f4c4} Create PDF</button></div>',true);
+}
+function clSet(k,v){const st=clState();st[k]=v;clRemember(st);clListM();}
+function clField(id,on){
+  const st=clState();
+  if(id==='name')return;
+  st.fields=CL_FIELDS.map(function(f){return f.id;}).filter(function(f){return f===id?on:st.fields.indexOf(f)>=0;});
+  if(st.fields.indexOf('name')<0)st.fields.push('name');
+  st.fields=CL_FIELDS.map(function(f){return f.id;}).filter(function(f){return st.fields.indexOf(f)>=0;});
+  clRemember(st);clListM();
+}
+function clToggle(c,on){
+  const st=clState();const i=st.classes.indexOf(c);
+  if(on&&i<0)st.classes.push(c);if(!on&&i>=0)st.classes.splice(i,1);
+  const order=clClasses();st.classes.sort(function(a,b){return order.indexOf(a)-order.indexOf(b);});
+  clListM();
+}
+function clAll(on){clState().classes=on?clClasses():[];clListM();}
+function clGrade(g){clState().classes=clClasses().filter(function(c){return String(c).split('-')[0]===g;});clListM();}
+
+function clPageHTML(cls,st,settings){
+  const fields=CL_FIELDS.filter(function(f){return st.fields.indexOf(f.id)>=0;});
+  const list=clStudents(cls,st.order);
+  const n=list.length;
+  const rowH=Math.max(3.4,Math.min(7,182/Math.max(n,1)));
+  const font=Math.max(6.5,Math.min(10.5,rowH*1.55));
+  const tt=(typeof bdTimetable==='function')?bdTimetable(cls):null;
+  const logo=settings.logo||'';
+  const isImg=logo&&logo.startsWith&&logo.startsWith('data:');
+  return '<section class="page">'
+   +'<div class="hd">'+(isImg?'<img src="'+logo+'" class="lg">':(logo?'<div class="lg em">'+esc(logo)+'</div>':''))
+   +'<div><div class="sn">'+esc(settings.schoolName||'School')+'</div>'
+   +(settings.schoolNameAr?'<div class="ar">'+esc(settings.schoolNameAr)+'</div>':'')+'</div></div>'
+   +'<div class="ttl">'+esc(st.title||'Class List')+' — Class '+esc(maClassLabel(cls))+'</div>'
+   +'<div class="sub">'+esc(settings.academicYear?'Academic Year '+settings.academicYear+'  •  ':'')+'Total students: '+n
+     +(tt&&tt.ct?'  •  Class teacher: '+esc(tt.ct):'')+'</div>'
+   +'<table style="font-size:'+font+'pt"><colgroup>'
+   +fields.map(function(f){return '<col'+(f.w?' style="width:'+f.w+'mm"':'')+'>';}).join('')+'</colgroup>'
+   +'<thead><tr>'+fields.map(function(f){return '<th>'+esc(f.l)+'</th>';}).join('')+'</tr></thead><tbody>'
+   +(n?list.map(function(s,i){
+     return '<tr style="height:'+rowH+'mm">'+fields.map(function(f){
+       return '<td class="'+(f.id==='name'?'nm':'c')+'">'+esc(f.get(s,i))+'</td>';
+     }).join('')+'</tr>';
+   }).join(''):'<tr><td colspan="'+fields.length+'" style="text-align:center;padding:6mm">No students in this class.</td></tr>')
+   +'</tbody></table>'
+   +'<div class="ft"><span>Printed '+esc(ymd(new Date()))+'</span><span>Class teacher: ____________________</span><span>Signature: ____________________</span></div>'
+   +'</section>';
+}
+function clPDF(){
+  const st=clState();
+  if(!st.classes.length){toast('Choose at least one class','danger');return;}
+  const settings=DB.get('settings')||{};
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to open the PDF','danger');return;}
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(st.title||'Class List')+'</title><style>'
+   +'@page{size:A4 portrait;margin:10mm}'
+   +'*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#1a2b3c}'
+   +'.page{height:277mm;overflow:hidden;page-break-after:always;display:flex;flex-direction:column}'
+   +'.page:last-of-type{page-break-after:auto}'
+   +'.hd{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:2mm}'
+   +'.lg{width:13mm;height:13mm;object-fit:contain}.lg.em{font-size:10mm;line-height:13mm;text-align:center}'
+   +'.sn{font-size:14pt;font-weight:bold;color:#1a5f7a;text-align:center}.ar{font-size:9.5pt;color:#555;text-align:center;direction:rtl}'
+   +'.ttl{background:#1a5f7a;color:#fff;text-align:center;font-weight:bold;font-size:11pt;padding:1.8mm;border-radius:1mm}'
+   +'.sub{font-size:9pt;color:#444;text-align:center;margin:1.5mm 0 2mm}'
+   +'table{width:100%;border-collapse:collapse;table-layout:fixed}'
+   +'th,td{border:.25mm solid #7f8c99;padding:0 1.5mm;white-space:nowrap;overflow:hidden}'
+   +'th{background:#d9eaf7;font-size:.9em;height:7.5mm;text-align:center}'
+   +'td.c{text-align:center}td.nm{text-overflow:clip}'
+   +'tbody tr:nth-child(even) td{background:#f5f8fb}'
+   +'.ft{display:flex;justify-content:space-between;font-size:8pt;color:#444;margin-top:auto;padding-top:3mm}'
+   +'.bar{padding:8px;background:#eef4f8;text-align:center}.bar button{padding:7px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px}'
+   +'@media print{.bar{display:none}}'
+   +'@media screen{body{background:#888}.page{background:#fff;width:190mm;margin:8px auto;box-shadow:0 1px 6px rgba(0,0,0,.3)}}'
+   +'</style></head><body>'
+   +'<div class="bar"><button onclick="window.print()">\u{1f5a8}️ Print / Save as PDF</button> <span style="font-size:12px;color:#333;margin-left:8px">'+st.classes.length+' class(es) · A4 portrait, one page per class</span></div>'
+   +st.classes.map(function(c){return clPageHTML(c,st,settings);}).join('')
+   // Tighten any class too long for its page, then shrink anything cut off
+   +'<script>function clFit(){'
+   +'[].forEach.call(document.querySelectorAll("section.page"),function(p){'
+   +'var rows=p.querySelectorAll("tbody tr"),n=0;'
+   +'while(p.scrollHeight>p.clientHeight+0.5&&n<40){[].forEach.call(rows,function(tr){'
+   +'var h=tr.getBoundingClientRect().height;tr.style.height=(h*0.95)+"px";'
+   +'[].forEach.call(tr.children,function(td){var f=parseFloat(getComputedStyle(td).fontSize);td.style.fontSize=Math.max(7,f*0.96)+"px";});});n++;}});'
+   +'[].forEach.call(document.querySelectorAll("td.nm,th"),function(td){'
+   +'var f=parseFloat(getComputedStyle(td).fontSize),n=0;'
+   +'while(td.scrollWidth>td.clientWidth+0.5&&n<40){f*=0.94;td.style.fontSize=f+"px";n++;}});'
+   +'}clFit();window.addEventListener("load",clFit);<\/script>'
+   +'</body></html>');
+  w.document.close();
+  logA('Printed class lists for '+st.classes.length+' class(es)');
 }
 
 // ─── DUTY ROSTER PAGE — Admin Assistant builds, Principal/VP view ─────
