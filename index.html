@@ -10958,7 +10958,7 @@ function maPageHTML(cls,kept,month,settings){
    +kept.map(function(d){return '<th class="d"><span>'+esc((getDayOfWeek(d)||'').slice(0,3))+'</span>'+esc(d.slice(8)+'-'+maMonthLabel(month).slice(0,3))+'</th>';}).join('')+'</tr></thead>'
    +'<tbody>'
    +list.map(function(s,i){
-     return '<tr style="height:'+rowH+'mm"><td class="c">'+esc(maCS(s,i))+'</td><td class="nm"'+maFit(s.firstName,32,font)+'>'+esc(s.firstName||'')+'</td><td class="nm"'+maFit(s.lastName,60,font)+'>'+esc(s.lastName||'')+'</td><td class="c">'+esc(maClassLabel(cls))+'</td>'
+     return '<tr style="height:'+rowH+'mm"><td class="c">'+esc(maCS(s,i))+'</td><td class="nm">'+esc(s.firstName||'')+'</td><td class="nm">'+esc(s.lastName||'')+'</td><td class="c">'+esc(maClassLabel(cls))+'</td>'
       +kept.map(function(){return '<td></td>';}).join('')+'</tr>';
    }).join('')
    +'<tr class="tot" style="height:'+rowH+'mm"><td colspan="4">CLASS TOTALS — '+n+' STUDENTS</td>'+kept.map(function(){return '<td></td>';}).join('')+'</tr>'
@@ -10977,6 +10977,11 @@ function maPDF(only){
   const settings=DB.get('settings')||{};
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to open the PDF','danger');return;}
+  const MA_SAME_FONT='function sameFont(box,sel){var c=box.querySelectorAll(sel);if(!c.length)return;'
+   +'var f=parseFloat(getComputedStyle(c[0]).fontSize),n=0,over=function(){var o=false;'
+   +'[].forEach.call(c,function(x){if(x.scrollWidth>x.clientWidth+0.5)o=true;});return o;};'
+   +'[].forEach.call(c,function(x){x.style.fontSize=f+"px";});'
+   +'while(over()&&n<60){f*=0.96;[].forEach.call(c,function(x){x.style.fontSize=f+"px";});n++;}}';
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Attendance Register — '+esc(maMonthLabel(st.month))+'</title><style>'
    +'@page{size:A4 landscape;margin:7mm}'
    +'*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#1a2b3c}'
@@ -11001,10 +11006,11 @@ function maPDF(only){
    +'</style></head><body>'
    +'<div class="bar"><button onclick="window.print()">\u{1f5a8}️ Print / Save as PDF</button> <span style="font-size:12px;color:#333;margin-left:8px">'+classes.length+' class(es) · '+kept.length+' school day(s) · A4 landscape, one page per class</span></div>'
    +classes.map(function(c){return maPageHTML(c,kept,st.month,settings);}).join('')
-   // Measure every name once laid out and shrink any that would be cut off
-   +'<script>(function(){[].forEach.call(document.querySelectorAll("td.nm"),function(td){'
-   +'var f=parseFloat(getComputedStyle(td).fontSize),n=0;'
-   +'while(td.scrollWidth>td.clientWidth+0.5&&n<40){f*=0.94;td.style.fontSize=f+"px";n++;}});})();<\/script>'
+   // Measure the names once laid out and give every student on the page the
+   // same size — the longest name decides it
+   +'<script>'+MA_SAME_FONT
+   +'function maFitNames(){[].forEach.call(document.querySelectorAll("section.page"),function(p){sameFont(p,"td.nm");});}'
+   +'maFitNames();window.addEventListener("load",maFitNames);<\/script>'
    +'</body></html>');
   w.document.close();
   logA('Created the monthly attendance list for '+maMonthLabel(st.month)+' ('+classes.length+' class(es))');
@@ -11167,6 +11173,11 @@ function fuPDF(only){
   const dates=fuDates(st);
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to open the PDF','danger');return;}
+  const FU_SAME_FONT='function sameFont(box,sel){var c=box.querySelectorAll(sel);if(!c.length)return;'
+   +'var f=parseFloat(getComputedStyle(c[0]).fontSize),n=0,over=function(){var o=false;'
+   +'[].forEach.call(c,function(x){if(x.scrollWidth>x.clientWidth+0.5)o=true;});return o;};'
+   +'[].forEach.call(c,function(x){x.style.fontSize=f+"px";});'
+   +'while(over()&&n<60){f*=0.96;[].forEach.call(c,function(x){x.style.fontSize=f+"px";});n++;}}';
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Students Follow Up Record — '+esc(st.term)+' term '+esc(st.year||'')+'</title><style>'
    +'@page{size:A4 landscape;margin:7.5mm 10mm 8.8mm 10mm}'
    +'*{box-sizing:border-box}body{margin:0;font-family:Calibri,Carlito,Arial,sans-serif;color:#000}'
@@ -11201,16 +11212,14 @@ function fuPDF(only){
    +classes.map(function(c){return fuPageHTML(c,st,dates);}).join('')
    // Once laid out: tighten the rows of any class that would spill onto a
    // second page, then shrink any name that would be cut off
-   +'<script>(function(){'
+   +'<script>'+FU_SAME_FONT+'function fuFit(){'
    +'[].forEach.call(document.querySelectorAll("section.page"),function(p){'
    +'var rows=p.querySelectorAll(".main tbody tr"),n=0;'
    +'while(p.scrollHeight>p.clientHeight+0.5&&n<40){[].forEach.call(rows,function(tr){'
    +'var h=parseFloat(tr.style.height)||tr.getBoundingClientRect().height*0.2646;tr.style.height=(h*0.95)+"mm";'
    +'var f=parseFloat(getComputedStyle(tr).fontSize);tr.style.fontSize=Math.max(7,f*0.96)+"px";});n++;}});'
-   +'[].forEach.call(document.querySelectorAll("td.nm"),function(td){'
-   +'var f=parseFloat(getComputedStyle(td).fontSize),n=0;'
-   +'while(td.scrollWidth>td.clientWidth+0.5&&n<40){f*=0.94;td.style.fontSize=f+"px";n++;}});'
-   +'})();<\/script>'
+   +'[].forEach.call(document.querySelectorAll("section.page"),function(p){sameFont(p,"td.nm");});'
+   +'}fuFit();window.addEventListener("load",fuFit);<\/script>'
    +'</body></html>');
   w.document.close();
   logA('Created the student follow up record ('+st.term+' term, '+classes.length+' class(es))');
@@ -11397,6 +11406,11 @@ function mlPDF(only){
   const letter=st.paper==='letter';
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to open the PDF','danger');return;}
+  const ML_SAME_FONT='function sameFont(box,sel){var c=box.querySelectorAll(sel);if(!c.length)return;'
+   +'var f=parseFloat(getComputedStyle(c[0]).fontSize),n=0,over=function(){var o=false;'
+   +'[].forEach.call(c,function(x){if(x.scrollWidth>x.clientWidth+0.5)o=true;});return o;};'
+   +'[].forEach.call(c,function(x){x.style.fontSize=f+"px";});'
+   +'while(over()&&n<60){f*=0.96;[].forEach.call(c,function(x){x.style.fontSize=f+"px";});n++;}}';
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(st.exam.trim())+' Marks List</title><style>'
    +'@page{size:'+(letter?'letter':'A4')+' portrait;margin:3.2mm '+(letter?'12.7mm':'10mm')+' 6.4mm}'
    +'*{box-sizing:border-box}body{margin:0;font-family:Calibri,Carlito,Arial,sans-serif;color:#000}'
@@ -11426,10 +11440,8 @@ function mlPDF(only){
    +'while(p.scrollHeight>p.clientHeight+0.5&&n<40){[].forEach.call(rows,function(tr){'
    +'var h=tr.getBoundingClientRect().height;tr.style.height=(h*0.95)+"px";'
    +'[].forEach.call(tr.children,function(td){var f=parseFloat(getComputedStyle(td).fontSize);td.style.fontSize=Math.max(8,f*0.96)+"px";});});n++;}});'
-   +'[].forEach.call(document.querySelectorAll("td.nm,.ml th"),function(td){'
-   +'var f=parseFloat(getComputedStyle(td).fontSize),n=0;'
-   +'while(td.scrollWidth>td.clientWidth+0.5&&n<40){f*=0.94;td.style.fontSize=f+"px";n++;}});'
-   +'}mlFit();window.addEventListener("load",mlFit);<\/script>'
+   +'[].forEach.call(document.querySelectorAll("section.page"),function(p){sameFont(p,"td.nm");sameFont(p,".ml th");});'
+   +'}'+ML_SAME_FONT+'mlFit();window.addEventListener("load",mlFit);<\/script>'
    +'</body></html>');
   w.document.close();
   logA('Created the '+st.exam.trim()+' marks list ('+classes.length+' class(es))');
@@ -11580,6 +11592,11 @@ function clPDF(){
   const settings=DB.get('settings')||{};
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to open the PDF','danger');return;}
+  const CL_SAME_FONT='function sameFont(box,sel){var c=box.querySelectorAll(sel);if(!c.length)return;'
+   +'var f=parseFloat(getComputedStyle(c[0]).fontSize),n=0,over=function(){var o=false;'
+   +'[].forEach.call(c,function(x){if(x.scrollWidth>x.clientWidth+0.5)o=true;});return o;};'
+   +'[].forEach.call(c,function(x){x.style.fontSize=f+"px";});'
+   +'while(over()&&n<60){f*=0.96;[].forEach.call(c,function(x){x.style.fontSize=f+"px";});n++;}}';
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(st.title||'Class List')+'</title><style>'
    +'@page{size:A4 portrait;margin:10mm}'
    +'*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#1a2b3c}'
@@ -11609,10 +11626,8 @@ function clPDF(){
    +'while(p.scrollHeight>p.clientHeight+0.5&&n<40){[].forEach.call(rows,function(tr){'
    +'var h=tr.getBoundingClientRect().height;tr.style.height=(h*0.95)+"px";'
    +'[].forEach.call(tr.children,function(td){var f=parseFloat(getComputedStyle(td).fontSize);td.style.fontSize=Math.max(7,f*0.96)+"px";});});n++;}});'
-   +'[].forEach.call(document.querySelectorAll("td.nm,th"),function(td){'
-   +'var f=parseFloat(getComputedStyle(td).fontSize),n=0;'
-   +'while(td.scrollWidth>td.clientWidth+0.5&&n<40){f*=0.94;td.style.fontSize=f+"px";n++;}});'
-   +'}clFit();window.addEventListener("load",clFit);<\/script>'
+   +'[].forEach.call(document.querySelectorAll("section.page"),function(p){sameFont(p,"td.nm");sameFont(p,"th");});'
+   +'}'+CL_SAME_FONT+'clFit();window.addEventListener("load",clFit);<\/script>'
    +'</body></html>');
   w.document.close();
   logA('Printed class lists for '+st.classes.length+' class(es)');
