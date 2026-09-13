@@ -5123,6 +5123,349 @@ function buildAttList(students,absentSet,canM,attDate,lateSet,lateTimes){
 // ═══════════════════════════════════════════════════════════
 // LATE COMERS — its own page, sharing the attendance day record
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// LATE COMERS QR — the code at the gate
+// Scanning opens a plain form: grade, then section, then the student who has
+// just walked in, with the time filled in. No signing in, so whoever is on the
+// gate can record an arrival in seconds.
+//
+// A phone at the gate never writes the attendance register itself — a whole
+// register pushed from a device that has not seen the day's marking could undo
+// it. Each scan is saved on its own, under its own key, and the Late Comers
+// tab puts them on the register. Only ever adds: a student already marked is
+// left exactly as they are.
+// ═══════════════════════════════════════════════════════════
+function getLateArrivals(){
+  const l=DB.get('late_arrivals');
+  return (Array.isArray(l)?l:[]).filter(function(r){return r&&r.id&&!r.deleted;});
+}
+// One row per student per day: a second scan of the same student updates that
+// row rather than adding another.
+function lateArrivalId(date,sid){return 'lta_'+String(date||'').replace(/-/g,'')+'_'+String(sid||'');}
+function lateMergeRecord(cloud,local,rec){
+  const by={};
+  [].concat(Array.isArray(cloud)?cloud:[],Array.isArray(local)?local:[]).forEach(function(r){
+    if(!r||!r.id)return;
+    const old=by[r.id];
+    if(!old||String(r.created||'')>=String(old.created||''))by[r.id]=r;
+  });
+  const prev=by[rec.id]||null;
+  by[rec.id]=Object.assign({},prev||{},rec);
+  return {list:Object.keys(by).map(function(k){return by[k];}),replaced:prev};
+}
+async function appendLateArrival(rec){
+  const local=getLateArrivals();
+  if(typeof fbReady==='function'&&fbReady()&&CURRENT_SCHOOL_ID){
+    try{
+      const{db,ref,set,get}=window.__FB;
+      const base=getFirebaseSchoolPath()+'late_arrivals';
+      let existing=null;
+      try{const snap=await get(ref(db,base));existing=(typeof pdListFromFb==='function')?pdListFromFb(snap.exists()?snap.val():null):null;}catch(e){}
+      const m=lateMergeRecord(existing,local,rec);
+      await set(ref(db,base+'/'+rec.id),m.list.find(function(r){return r.id===rec.id;})||rec);
+      DB.set('late_arrivals',m.list,{localOnly:true});
+      return m.replaced;
+    }catch(e){/* saved locally below */}
+  }
+  const m=lateMergeRecord(null,local,rec);
+  DB.set('late_arrivals',m.list);
+  return m.replaced;
+}
+// Put the scans of a day on the register. Adds only — a student already on the
+// late list keeps the time already recorded, and nobody is ever taken off.
+function lateApplyScans(date){
+  const scans=getLateArrivals().filter(function(r){return r.date===date&&!r.applied;});
+  if(!scans.length)return 0;
+  const all=DB.get('attendance')||[];
+  let i=all.findIndex(function(a){return a&&a.date===date;});
+  if(i<0){all.push({date:date,absentIds:[],lateIds:[],lateTimes:{},marked:false,markedBy:'',markedAt:''});i=all.length-1;}
+  const rec=all[i];
+  if(!Array.isArray(rec.lateIds))rec.lateIds=[];
+  if(!Array.isArray(rec.absentIds))rec.absentIds=[];
+  if(!rec.lateTimes||typeof rec.lateTimes!=='object')rec.lateTimes={};
+  let added=0;
+  const done=[];
+  scans.forEach(function(r){
+    if(!r.studentId)return;
+    if(rec.lateIds.indexOf(r.studentId)<0){
+      rec.lateIds.push(r.studentId);
+      // arriving late means they are here, so they are not absent
+      rec.absentIds=rec.absentIds.filter(function(x){return x!==r.studentId;});
+      added++;
+    }
+    if(!rec.lateTimes[r.studentId]&&r.time)rec.lateTimes[r.studentId]=r.time;
+    done.push(Object.assign({},r,{applied:true,appliedAt:new Date().toISOString()}));
+  });
+  if(added)DB.set('attendance',all);
+  // Remember they are on the register, so a time an office later corrects by
+  // hand is not put back by the next visit to this tab
+  if(done.length){
+    const byId={};done.forEach(function(r){byId[r.id]=r;});
+    DB.set('late_arrivals',getLateArrivals().map(function(r){return byId[r.id]||r;}),{localOnly:true});
+    if(typeof pushAppendOnly==='function')pushAppendOnly('late_arrivals',done);
+  }
+  return added;
+}
+
+// ── The form the gate sees ────────────────────────────────
+function lateQrUrl(){
+  let u=window.location.origin+window.location.pathname+'?late=1';
+  if(CURRENT_SCHOOL_ID)u+='&sch='+encodeURIComponent(CURRENT_SCHOOL_ID);
+  return u;
+}
+function checkLateMode(){
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('late')==='1'){renderLatePortal();return true;}
+  return false;
+}
+// Grades and sections come from the roll and the timetable together, so the
+// list is complete even before the whole roll has reached the phone.
+function lateGrades(){
+  const seen={},out=[];
+  portalClasses().forEach(function(c){
+    const g=String(c).split('-')[0].trim();
+    if(g&&!seen[g]){seen[g]=1;out.push(g);}
+  });
+  return out.sort(function(a,b){return (parseInt(a,10)||99)-(parseInt(b,10)||99)||a.localeCompare(b);});
+}
+function lateSections(grade){
+  const seen={},out=[];
+  portalClasses().forEach(function(c){
+    const p=String(c).split('-');
+    if(String(p[0]).trim()!==String(grade))return;
+    const sec=(p[1]||'').trim();
+    if(sec&&!seen[sec]){seen[sec]=1;out.push(sec);}
+  });
+  return out.sort();
+}
+function lateStudentsOf(grade,section){
+  return (DB.get('students')||[]).filter(function(s){
+    return s&&String(s.grade)===String(grade)&&String(s.section||'')===String(section);
+  }).sort(function(a,b){return fN(a).localeCompare(fN(b));});
+}
+function lateNowTime(){
+  const n=new Date();
+  return ('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2);
+}
+function renderLatePortal(){
+  const s=DB.get('settings')||{};
+  const lp=document.getElementById('lp');if(lp)lp.classList.add('hidden');
+  const ap=document.getElementById('app');if(ap)ap.classList.add('hidden');
+  const old=document.getElementById('ltp');if(old)old.remove();
+  const grades=lateGrades();
+  const staff=(typeof bdPortalStaff==='function')?bdPortalStaff():[];
+  window.__portalClassSig=portalClasses().join(',');
+  const st=window._ltp||(window._ltp={grade:'',section:'',sid:'',by:'',note:''});
+  if(!st.date)st.date=ymd(new Date());
+  if(!st.time)st.time=lateNowTime();
+  const wrap=document.createElement('div');
+  wrap.id='ltp';
+  wrap.style.cssText='min-height:100vh;background:var(--bg);padding:18px 14px 40px';
+  wrap.innerHTML='<style>#ltp select,#ltp input,#ltp textarea{width:100%;box-sizing:border-box;padding:10px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:14px;font-family:inherit}#ltp .card{border-radius:10px}#ltp .pill{padding:9px 14px;border-radius:20px;border:1px solid var(--bd);background:var(--sf2);color:var(--tx);font-size:14px;cursor:pointer}#ltp .pill.on{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:700}</style>'
+  +'<div style="max-width:620px;margin:0 auto">'
+  +'<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;border-top:9px solid var(--ac)">'
+  +'<div style="padding:20px">'
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
+  +'<div style="width:46px;height:46px;background:linear-gradient(135deg,var(--ac),var(--pu));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex-shrink:0">'
+  +(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'\u{1f3eb}'))+'</div>'
+  +'<div style="min-width:0"><div style="font-size:13px;color:var(--tx2)">'+esc(s.schoolName||'School')+'</div>'
+  +'<div style="font-size:11px;color:var(--tx3)">'+esc(s.schoolNameAr||'')+'</div></div></div>'
+  +'<h1 style="font-size:23px;font-weight:700;color:var(--tx);margin-bottom:6px">Late Comers</h1>'
+  +'<p style="font-size:13px;color:var(--tx2);line-height:1.6">Record a student who has arrived late: the grade, the section, then the name.</p>'
+  +'<div style="margin-top:10px;font-size:11px;color:var(--dn)">* Required</div>'
+  +'</div></div>'
+  +'<div id="ltp-body">'
+  +pdpQ('1. Date','Today is filled in. Change it only for an earlier day.',
+    '<input type="date" id="ltp-d" value="'+esc(st.date)+'" max="'+esc(ymd(new Date()))+'" onchange="ltpDate()">'
+    +'<div id="ltp-d-day" style="font-size:12px;color:var(--tx3);margin-top:6px">'+esc(pdpDateLabel(st.date))+'</div>',true)
+  +pdpQ('2. Grade','',
+    (grades.length
+      ?'<div style="display:flex;gap:7px;flex-wrap:wrap">'+grades.map(function(g){
+         const q=String.fromCharCode(39);
+         return '<button type="button" class="pill'+(String(g)===String(st.grade)?' on':'')+'" onclick="ltpGrade('+q+esc(String(g))+q+')">Grade '+esc(g)+'</button>';
+       }).join('')+'</div>'
+      :'<div style="font-size:12px;color:var(--tx3)">Loading the class list…</div>'),true)
+  +pdpQ('3. Section','',
+    '<div id="ltp-sec" style="display:flex;gap:7px;flex-wrap:wrap"></div>',true)
+  +pdpQ('4. Student','',
+    '<div id="ltp-stu"></div>',true)
+  +pdpQ('5. Time of arrival','The time now is filled in — change it if the student arrived earlier.',
+    '<input type="time" id="ltp-t" value="'+esc(st.time)+'" onchange="window._ltp.time=this.value">',true)
+  +pdpQ('6. Your name','So the arrival is recorded in your name.',
+    (staff.length
+      ?'<select id="ltp-by" onchange="ltpTouch()"><option value="">— Choose your name —</option>'
+        +staff.map(function(x){return '<option value="'+esc(x.name)+'"'+(x.name===st.by?' selected':'')+'>'+esc(x.name)+(x.detail?' — '+esc(x.detail):'')+'</option>';}).join('')
+        +'</select>'
+      :'<input id="ltp-by" placeholder="Type your name" value="'+esc(st.by||'')+'" oninput="ltpTouch()">'),true)
+  +pdpQ('7. Reason given','',
+    '<textarea id="ltp-n" placeholder="Optional — traffic, transport, medical…" style="min-height:60px">'+esc(st.note||'')+'</textarea>',false)
+  +'</div>'
+  +'<button class="btn bp" id="ltp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:4px" onclick="ltpSubmit()">Record arrival →</button>'
+  +'<div style="text-align:center;margin-top:16px;font-size:11px;color:var(--tx3)"><a href="?" style="color:var(--ac);text-decoration:none">Staff sign in →</a></div>'
+  +'</div>';
+  document.body.appendChild(wrap);
+  ltpSections();
+}
+function ltpDate(){
+  const el=document.getElementById('ltp-d');
+  const today=ymd(new Date());
+  let v=el?el.value:'';
+  if(!v){v=today;if(el)el.value=v;}
+  if(v>today){toast('The date cannot be in the future','danger');v=today;if(el)el.value=v;}
+  window._ltp.date=v;
+  const lab=document.getElementById('ltp-d-day');
+  if(lab)lab.textContent=pdpDateLabel(v);
+}
+function ltpGrade(g){
+  const st=window._ltp;
+  st.grade=String(g);st.section='';st.sid='';
+  renderLatePortal();
+}
+function ltpSections(){
+  const st=window._ltp;
+  const box=document.getElementById('ltp-sec');
+  if(!box)return;
+  if(!st.grade){box.innerHTML='<div style="font-size:12px;color:var(--tx3)">Choose the grade first.</div>';ltpStudents();return;}
+  const secs=lateSections(st.grade);
+  if(!secs.length){box.innerHTML='<div style="font-size:12px;color:var(--tx3)">No sections found for grade '+esc(st.grade)+'.</div>';ltpStudents();return;}
+  if(secs.length===1&&!st.section)st.section=secs[0];
+  box.innerHTML=secs.map(function(x){
+    const q=String.fromCharCode(39);
+    return '<button type="button" class="pill'+(x===st.section?' on':'')+'" onclick="ltpSection('+q+esc(x)+q+')">'+esc(st.grade)+'-'+esc(x)+'</button>';
+  }).join('');
+  ltpStudents();
+}
+function ltpSection(x){
+  const st=window._ltp;
+  st.section=x;st.sid='';
+  ltpSections();
+}
+function ltpStudents(){
+  const st=window._ltp;
+  const box=document.getElementById('ltp-stu');
+  if(!box)return;
+  if(!st.grade||!st.section){box.innerHTML='<div style="font-size:12px;color:var(--tx3)">Choose the grade and the section first.</div>';return;}
+  const list=lateStudentsOf(st.grade,st.section);
+  if(!list.length){box.innerHTML='<div style="font-size:12px;color:var(--tx3)">No students on the roll for '+esc(st.grade)+'-'+esc(st.section)+' yet. Wait a moment and choose the section again.</div>';return;}
+  const already=getLateArrivals().filter(function(r){return r.date===st.date;}).map(function(r){return r.studentId;});
+  box.innerHTML='<select id="ltp-s" onchange="window._ltp.sid=this.value"><option value="">— Choose the student —</option>'
+   +list.map(function(x){
+     return '<option value="'+esc(x.id)+'"'+(x.id===st.sid?' selected':'')+'>'+esc(fN(x))
+       +(x.classSN?' · SN '+esc(String(x.classSN)):'')
+       +(already.indexOf(x.id)>=0?' (already recorded)':'')+'</option>';
+   }).join('')
+   +'</select>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-top:6px">'+list.length+' student(s) in '+esc(st.grade)+'-'+esc(st.section)+'</div>';
+}
+function ltpTouch(){
+  const el=document.getElementById('ltp-by');
+  if(el)window._ltp.by=el.value||'';
+}
+function ltpSubmit(){
+  const st=window._ltp;
+  const date=((document.getElementById('ltp-d')||{}).value||'')||ymd(new Date());
+  const sid=((document.getElementById('ltp-s')||{}).value||'').trim();
+  const time=((document.getElementById('ltp-t')||{}).value||'').trim()||lateNowTime();
+  const by=((document.getElementById('ltp-by')||{}).value||'').trim();
+  const note=((document.getElementById('ltp-n')||{}).value||'').trim();
+  if(!date||date>ymd(new Date())){toast('Choose a valid date','danger');return;}
+  if(!st.grade){toast('Choose the grade','danger');return;}
+  if(!st.section){toast('Choose the section','danger');return;}
+  if(!sid){toast('Choose the student','danger');return;}
+  if(!by){toast('Choose your name','danger');return;}
+  st.date=date;st.sid=sid;st.time=time;st.by=by;st.note=note;
+  const stu=(DB.get('students')||[]).find(function(x){return x&&x.id===sid;});
+  const btn=document.getElementById('ltp-go');
+  if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  const rec={id:lateArrivalId(date,sid),date:date,studentId:sid,
+    studentName:stu?fN(stu):'',className:grSec(st.grade,st.section),
+    grade:st.grade,section:st.section,time:time,reason:note,
+    recordedBy:by,source:'qr',applied:false,created:new Date().toISOString()};
+  appendLateArrival(rec).catch(function(){return null;}).then(function(replaced){ltpDone(rec,replaced);});
+}
+function ltpDone(rec,replaced){
+  const body=document.getElementById('ltp-body');
+  const go=document.getElementById('ltp-go');
+  if(go)go.remove();
+  if(!body)return;
+  body.innerHTML='<div class="card" style="padding:26px;text-align:center" id="ltp-done">'
+   +'<div style="font-size:46px;margin-bottom:10px">✅</div>'
+   +'<div style="font-size:18px;font-weight:700;color:var(--su);margin-bottom:8px">Recorded</div>'
+   +'<div style="font-size:13px;color:var(--tx2);line-height:1.7"><strong>'+esc(rec.studentName||'Student')+'</strong> · '+esc(rec.className)
+   +'<br>'+esc(rec.date)+' · '+esc(getDayOfWeek(rec.date)||'')
+   +'<br>Arrived at <strong>'+esc(rec.time)+'</strong>'
+   +(rec.reason?'<br>'+esc(rec.reason):'')+'</div>'
+   +(replaced?'<div class="al aw" style="margin-top:12px;text-align:left">ℹ️ This student was already recorded late today'+(replaced.recordedBy?' by '+esc(replaced.recordedBy):'')+'. The time has been updated.</div>':'')
+   +'<div style="margin-top:16px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">'
+   +'<button class="btn bp" onclick="ltpAgain()">Record another student</button></div></div>';
+}
+function ltpAgain(){
+  const p=window._ltp||{};
+  window._ltp={grade:p.grade||'',section:p.section||'',sid:'',by:p.by||'',note:'',date:p.date||ymd(new Date()),time:lateNowTime()};
+  renderLatePortal();
+}
+
+// ── The poster for the gate ───────────────────────────────
+function lateQrM(){
+  const url=lateQrUrl();
+  const qr='https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data='+encodeURIComponent(url);
+  window._ltQrUrl=url;
+  openM('<div class="mh"><h3>\u{1f4f1} Late Comers QR Code</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">One code for the whole school. Whoever is on the gate scans it, picks the grade, then the section, then the student — no signing in. The arrivals appear here and go on the register with the time.</div>'
+  +'<div style="text-align:center;padding:8px"><img src="'+qr+'" alt="" style="width:220px;height:220px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
+  +'<div style="background:var(--sf2);padding:8px;border-radius:var(--rs);font-size:10px;color:var(--ac);word-break:break-all;border:1px solid var(--bd)">'+esc(url)+'</div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bs" onclick="lateCopyQrLink()">\u{1f4cb} Copy Link</button>'
+  +'<button class="btn bp" onclick="latePrintPoster()">\u{1f5a8}️ Print Poster</button></div>',true);
+}
+function lateCopyQrLink(){
+  const url=window._ltQrUrl||lateQrUrl();
+  try{navigator.clipboard.writeText(url).then(function(){toast('Link copied','success');},function(){prompt('Copy this link:',url);});}
+  catch(e){prompt('Copy this link:',url);}
+}
+function latePrintPoster(){
+  const s=DB.get('settings')||{};
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to print the poster','danger');return;}
+  const qr='https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=20&data='+encodeURIComponent(lateQrUrl());
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Late Comers QR</title><style>'
+   +'@page{size:A4;margin:0}body{margin:0;font-family:Arial,sans-serif;color:#1a3a5c}'
+   +'.poster{padding:22mm 18mm;text-align:center;box-sizing:border-box}'
+   +'.school{font-size:22px;font-weight:bold}'
+   +'.title{font-size:34px;font-weight:bold;color:#1a5f7a;margin-top:12px}'
+   +'.sub{font-size:16px;color:#555;margin:8px 0 20px}'
+   +'.qr{display:inline-block;border:8px solid #1a5f7a;border-radius:18px;padding:16px;background:#fff}'
+   +'.qr img{width:300px;height:300px;display:block}'
+   +'.steps{margin:20px auto 0;font-size:16px;line-height:2;display:inline-block;text-align:left}'
+   +'</style></head><body><div class="poster">'
+   +'<div class="school">'+esc(s.schoolName||'School')+'</div>'
+   +'<div class="title">Late Comers</div>'
+   +'<div class="sub">Scan at the gate — no sign-in needed</div>'
+   +'<div class="qr"><img src="'+qr+'" alt=""></div>'
+   +'<div><div class="steps">1. Scan the code<br>2. Choose the grade<br>3. Choose the section<br>4. Choose the student<br>5. Check the time and send</div></div>'
+   +'</div><script>setTimeout(function(){window.print();},900);<\/script></body></html>');
+  w.document.close();
+}
+// What the gate has sent in, for the day being looked at
+function lateScanCard(date,canM){
+  const scans=getLateArrivals().filter(function(r){return r.date===date;})
+    .sort(function(a,b){return String(a.time||'').localeCompare(String(b.time||''));});
+  if(!scans.length)return '';
+  return '<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>\u{1f4f1} Scanned at the gate</h3>'
+   +'<span style="font-size:11px;color:var(--tx3)">'+scans.length+' arrival(s) on '+esc(date)+'</span></div>'
+   +'<div class="tw"><table style="font-size:11px"><thead><tr><th>Time</th><th>Student</th><th>Class</th><th>Reason</th><th>Recorded by</th></tr></thead><tbody>'
+   +scans.map(function(r){
+     const stu=(DB.get('students')||[]).find(function(x){return x&&x.id===r.studentId;});
+     return '<tr><td class="mono">'+esc(r.time||'')+'</td><td><strong>'+esc(stu?fN(stu):(r.studentName||'—'))+'</strong></td>'
+      +'<td>'+esc(r.className||'')+'</td><td style="color:var(--tx2)">'+esc(r.reason||'')+'</td>'
+      +'<td style="color:var(--tx2)">'+esc(r.recordedBy||'')+'</td></tr>';
+   }).join('')
+   +'</tbody></table></div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-top:8px">These are on the late list below with their times. Changing a name here is done on the list — the gate never alters what the office has marked.</div></div>';
+}
+
 function rLateComers(){
   clearExcusedCache();
   const canM=['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role);
@@ -5130,6 +5473,10 @@ function rLateComers(){
   if(!canV){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
   const today=new Date().toISOString().split('T')[0];
   const sel=window._lateDate||today;
+  // Arrivals scanned at the gate go on the register here, where somebody who
+  // may change them is looking. Adds only — nothing already marked is touched.
+  let _ltNew=0;
+  if(canM){try{_ltNew=lateApplyScans(sel);}catch(e){console.warn('[Late] scans',e);}}
   const students=vpFilter(DB.get('students')||[]);
   const allAtt=DB.get('attendance')||[];
   const dayRec=allAtt.find(a=>a.date===sel)||{date:sel,absentIds:[],lateIds:[]};
@@ -5149,6 +5496,7 @@ function rLateComers(){
    '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>⏰ '+T('late_comers')+'</h3>'
    +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label style="font-size:11px;color:var(--tx3)">Date:</label>'
    +'<input type="date" id="late-date" value="'+sel+'" max="'+today+'" onchange="window._lateDate=this.value;rLateComers()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'
+   +'<button class="btn bg2 bsm" onclick="lateQrM()">📱 Late Comers QR</button>'
    +(canM?'<button class="btn bg2 bsm" onclick="lateTplM()">⚙️ Message Template</button>':'')+'</div></div>'
    +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canM?'Mark students who arrived late, then notify their parents by WhatsApp.':'View late arrivals.')+'</div></div>'
 
@@ -5161,6 +5509,8 @@ function rLateComers(){
 
    +(canM&&lateCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--gdbg,#fff8e1),var(--sf));border-color:var(--gd)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--gd);margin-bottom:3px">📲 Notify Parents</div><div style="font-size:11px;color:var(--tx2)">Opens WhatsApp for each late student\'s parents.'+(excusedLate?'<br><strong style="color:var(--su)">'+excusedLate+' excused student(s) will be skipped.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendLateWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendLateWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendLateWaAll(\'both\')">📱 Both ('+(toNotify*2)+')</button></div></div></div>':'')
 
+   +(_ltNew?'<div class="al ag" style="margin-bottom:12px">✅ <strong>'+_ltNew+'</strong> student(s) scanned at the gate have been added to the late list for '+esc(sel)+'.</div>':'')
+   +lateScanCard(sel,canM)
    +buildNotifiedCard('late',sel,canM)
    +'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🔍 Mark Late Students</h3>'
    +(canM?'<button class="btn bs bsm" onclick="bulkMarkM(\'late\')">➕ Mark Several Late</button>':'')+(canM&&lateCount?'<button class="btn bg2 bsm" onclick="clearAllLate()">↺ Clear All</button>':'')+'</div>'
@@ -8457,7 +8807,7 @@ const SYNC_KEYS = [
   'early_pickups','announcements','discipline_reports','activity_log','infraction_forms',
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
-  'sessions','active_session_id','behaviour','duty_rosters','substitutions','user_permissions',
+  'sessions','active_session_id','behaviour','duty_rosters','substitutions','user_permissions','late_arrivals',
   'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
@@ -8922,7 +9272,7 @@ async function rosterMergedWrite(k,local){
 // Collections written a record at a time by many people at once. A whole-array
 // push for one of these can only ever destroy what the writer had not seen, so
 // the sync layer upserts the records instead and never removes on a bulk write.
-const APPEND_ONLY_KEYS=['period_discipline','break_discipline','tt_name_links'];
+const APPEND_ONLY_KEYS=['period_discipline','break_discipline','tt_name_links','late_arrivals'];
 function isAppendOnlyKey(k){return APPEND_ONLY_KEYS.indexOf(k)>=0;}
 
 // Upsert each record under its own key. Concurrent writers touch different
@@ -9699,6 +10049,7 @@ function qExp(type,fmt){document.getElementById('exptype').value=type;doExp(fmt)
     else if(p.get('excuse')==='1'){window.__earlyPortal='excuse';}
     else if(p.get('pd')==='1'){window.__earlyPortal='pd';}
     else if(p.get('bd')==='1'){window.__earlyPortal='bd';}
+    else if(p.get('late')==='1'){window.__earlyPortal='late';}
     // Portal links carry the school so they work on a device that has never
     // signed in — otherwise there is no school context and no data.
     const sch=p.get('sch');
@@ -9729,6 +10080,8 @@ window.__doSeedAndStart=async function(){
     checkPdMode();
   }else if(window.__earlyPortal==='bd'&&typeof checkBdMode==='function'){
     checkBdMode();
+  }else if(window.__earlyPortal==='late'&&typeof checkLateMode==='function'){
+    checkLateMode();
   }else if(window.__earlyPortal==='excuse'&&typeof checkExcuseMode==='function'){
     checkExcuseMode();
   }else if(typeof checkExcuseMode==='function'&&checkExcuseMode()){
@@ -18087,6 +18440,7 @@ function portalRefreshOpen(){
   try{
     if(document.getElementById('pdp')&&!document.getElementById('pdp-done')&&typeof renderPdPortal==='function')renderPdPortal();
     else if(document.getElementById('bdp')&&!document.getElementById('bdp-done')&&typeof renderBdPortal==='function')renderBdPortal();
+    else if(document.getElementById('ltp')&&!document.getElementById('ltp-done')&&typeof renderLatePortal==='function')renderLatePortal();
   }catch(e){console.warn('[Portal] refresh failed',e);}
 }
 
