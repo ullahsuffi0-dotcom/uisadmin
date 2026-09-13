@@ -8955,6 +8955,10 @@ function subscribeToCollection(k){
       if(!k.endsWith(expectedSuffix))return;
       logicalKey=k.substring(0,k.length-expectedSuffix.length);
     }
+    // A QR form open on a phone that is still receiving the school's data
+    if((logicalKey==='students'||logicalKey==='school_timetable')&&typeof portalRefreshOpen==='function'){
+      try{portalRefreshOpen();}catch(e){}
+    }
     const renderers=AUTO_REFRESH_MAP[logicalKey]||[];
     const curPage='r'+(_page||'').split('_').map(p=>p.charAt(0).toUpperCase()+p.slice(1)).join('');
     if(renderers.includes(curPage)){
@@ -9087,6 +9091,9 @@ async function bootFirebaseSync(){
   }
   if(window.__earlyPortal==='pd'&&document.getElementById('pdp')&&!document.getElementById('pdp-done')){
     try{renderPdPortal();}catch(e){}
+  }
+  if(document.getElementById('bdp')&&!document.getElementById('bdp-done')&&typeof renderBdPortal==='function'){
+    try{renderBdPortal();}catch(e){}
   }
   SYNC_INITIAL_LOAD=true;
   SYNC_ENABLED=true;
@@ -17899,6 +17906,44 @@ function pdExport(){
 // ═══════════════════════════════════════════════════════════
 function pdPortalUrl(){return portalUrl('pd');}
 
+// ── The classes a QR form offers ──────────────────────────
+// A phone that has just scanned the code may not have the whole roll yet, so a
+// form built only from the students on it showed a handful of classes. The list
+// is the school's classes: those on the roll together with every class on the
+// timetable, so it is complete from the first moment, and the form is rebuilt
+// if the roll or the timetable arrives afterwards.
+function portalClasses(){
+  const seen={},out=[];
+  const add=function(c){
+    const k=String(c||'').trim();
+    if(!k||k==='-'||k==='undefined-undefined'||seen[k])return;
+    seen[k]=1;out.push(k);
+  };
+  getAllClasses().forEach(add);
+  try{
+    if(typeof bdTimetableData==='function')Object.keys(bdTimetableData()).forEach(add);
+  }catch(e){}
+  return out.sort(function(a,b){
+    const ga=pdGradeOf(a),gb=pdGradeOf(b);
+    return (ga===null?99:ga)-(gb===null?99:gb)||String(a).localeCompare(String(b));
+  });
+}
+// Rebuild an open QR form when the class list changes underneath it, keeping
+// whatever has been filled in so far
+function portalClassesChanged(){
+  const sig=portalClasses().join(',');
+  if(window.__portalClassSig===sig)return false;
+  window.__portalClassSig=sig;
+  return true;
+}
+function portalRefreshOpen(){
+  if(!portalClassesChanged())return;
+  try{
+    if(document.getElementById('pdp')&&!document.getElementById('pdp-done')&&typeof renderPdPortal==='function')renderPdPortal();
+    else if(document.getElementById('bdp')&&!document.getElementById('bdp-done')&&typeof renderBdPortal==='function')renderBdPortal();
+  }catch(e){console.warn('[Portal] refresh failed',e);}
+}
+
 // ═══════════════════════════════════════════════════════════
 // BREAK LEAVING PORTAL — the QR by the classroom door
 // Scanning opens this plain form, like the class discipline one, so an admin
@@ -17935,8 +17980,9 @@ function renderBdPortal(){
   const ap=document.getElementById('app');if(ap)ap.classList.add('hidden');
   const old=document.getElementById('bdp');if(old)old.remove();
   const params=new URLSearchParams(window.location.search);
-  const classes=getAllClasses();
+  const classes=portalClasses();
   const staff=bdPortalStaff();
+  window.__portalClassSig=classes.join(',');
   const st=window._bdp||(window._bdp={cls:'',slot:'',marks:null,rater:'',note:''});
   // A class named in the link is only used if it is on the roll
   if(!st.cls){const pre=params.get('cls')||'';if(pre&&classes.indexOf(pre)>=0)st.cls=pre;}
@@ -18123,10 +18169,11 @@ function pdTeacherOptions(){
 // a cold phone fills itself in without the teacher reloading.
 function renderPdPortal(){
   const s=DB.get('settings')||{};
+  window.__portalClassSig=portalClasses().join(',');
   const lp=document.getElementById('lp');if(lp)lp.classList.add('hidden');
   const ap=document.getElementById('app');if(ap)ap.classList.add('hidden');
   const old=document.getElementById('pdp');if(old)old.remove();
-  const classes=getAllClasses();
+  const classes=portalClasses();
   const teachers=pdTeacherOptions();
   const st=window._pdp||(window._pdp={cls:'',period:0,marks:null,picked:[],teacher:'',behaviours:[]});
   if(st.marks===undefined)st.marks=null;
