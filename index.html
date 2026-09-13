@@ -4004,11 +4004,10 @@ function renderExcusePortal(){
   +'<p style="font-size:11px;color:var(--tx3);margin-top:2px">'+esc(s.schoolNameAr||'')+'</p></div>'
   +'<div class="card" id="ep-card" style="padding:20px">'
   +'<div class="al ai" style="margin-bottom:14px">📝 Please complete this form to submit an excuse for your son\'s absence. The school will review it.</div>'
-  +(stu?'<div class="al ag" style="margin-bottom:12px">👨‍🎓 <strong>'+esc(fN(stu))+'</strong> — Grade '+esc(grSec(stu.grade,stu.section))+'</div><input type="hidden" id="ep-sid" value="'+esc(stu.id)+'"><input type="hidden" id="ep-sname" value="'+esc(fN(stu))+'">'
-    :'<input type="hidden" id="ep-sid" value="'+esc(sid)+'"><div class="fg"><label>Student Full Name *</label><input id="ep-sname" placeholder="Your son\'s full name"></div>')
-  +'<div class="fg"><label>Class / Section *</label>'
-  +'<input id="ep-class" placeholder="e.g. 5-A" value="'+esc(stu?grSec(stu.grade,stu.section):'')+'">'
-  +'<div style="font-size:10px;color:var(--tx3);margin-top:3px">Write the grade and section, e.g. 5-A</div></div>'
+  +(stu?'<div class="al ag" style="margin-bottom:12px">👨‍🎓 <strong>'+esc(fN(stu))+'</strong> — Grade '+esc(grSec(stu.grade,stu.section))+'</div>'
+      +'<input type="hidden" id="ep-sid" value="'+esc(stu.id)+'"><input type="hidden" id="ep-sname" value="'+esc(fN(stu))+'">'
+      +'<input type="hidden" id="ep-class" value="'+esc(grSec(stu.grade,stu.section))+'">'
+    :epPicker())
   +'<div class="fr f2"><div class="fg"><label>Parent Name *</label><input id="ep-pname" placeholder="Your full name"></div>'
   +'<div class="fg"><label>Parent Phone *</label><input id="ep-pphone" type="tel" placeholder="05XXXXXXXX"></div></div>'
   +'<div class="fr f2"><div class="fg"><label>Absent From *</label><input type="date" id="ep-from" value="'+esc(d)+'"></div>'
@@ -4021,6 +4020,70 @@ function renderExcusePortal(){
   +'</div>'
   +'<div style="text-align:center;margin-top:18px;font-size:11px;color:var(--tx3)"><a href="?" style="color:var(--ac);text-decoration:none">Staff Login →</a></div></div>';
   document.body.appendChild(pp);
+  if(!stu)epFillSections();
+}
+
+// Grade, then section, then the name — the same three steps as the gate form.
+// The lists come from the roll together with the timetable, so they are right
+// from the first moment even before the whole roll has reached the phone.
+function epPicker(){
+  const st=window._ep||(window._ep={grade:'',section:'',sid:''});
+  const grades=(typeof lateGrades==='function')?lateGrades():[];
+  return '<input type="hidden" id="ep-sid" value="'+esc(st.sid||'')+'">'
+   +'<input type="hidden" id="ep-sname" value="">'
+   +'<input type="hidden" id="ep-class" value="">'
+   +'<div class="fg"><label>Grade *</label>'
+   +(grades.length
+     ?'<select id="ep-grade" onchange="epGradePick(this.value)"><option value="">— Choose the grade —</option>'
+       +grades.map(function(g){return '<option value="'+esc(g)+'"'+(String(g)===String(st.grade)?' selected':'')+'>Grade '+esc(g)+'</option>';}).join('')
+       +'</select>'
+     :'<div style="font-size:12px;color:var(--tx3)">Loading the class list…</div>')+'</div>'
+   +'<div class="fg"><label>Section *</label><div id="ep-secbox"></div></div>'
+   +'<div class="fg"><label>Student *</label><div id="ep-stubox"></div></div>';
+}
+function epGradePick(g){
+  const st=window._ep||(window._ep={});
+  st.grade=String(g||'');st.section='';st.sid='';
+  epFillSections();
+}
+function epSectionPick(x){
+  const st=window._ep||(window._ep={});
+  st.section=String(x||'');st.sid='';
+  epFillStudents();
+}
+function epStudentPick(id){
+  const st=window._ep||(window._ep={});
+  st.sid=String(id||'');
+  const s=(DB.get('students')||[]).find(function(x){return x&&x.id===st.sid;});
+  const set=function(k,v){const el=document.getElementById(k);if(el)el.value=v;};
+  set('ep-sid',s?s.id:'');
+  set('ep-sname',s?fN(s):'');
+  set('ep-class',s?grSec(s.grade,s.section):(st.grade&&st.section?grSec(st.grade,st.section):''));
+}
+function epFillSections(){
+  const st=window._ep||(window._ep={});
+  const box=document.getElementById('ep-secbox');
+  if(!box)return;
+  if(!st.grade){box.innerHTML='<div style="font-size:12px;color:var(--tx3)">Choose the grade first.</div>';epFillStudents();return;}
+  const secs=(typeof lateSections==='function')?lateSections(st.grade):[];
+  if(!secs.length){box.innerHTML='<div style="font-size:12px;color:var(--tx3)">No sections found for grade '+esc(st.grade)+'.</div>';epFillStudents();return;}
+  if(secs.length===1&&!st.section)st.section=secs[0];
+  box.innerHTML='<select id="ep-section" onchange="epSectionPick(this.value)"><option value="">— Choose the section —</option>'
+   +secs.map(function(x){return '<option value="'+esc(x)+'"'+(x===st.section?' selected':'')+'>'+esc(st.grade)+'-'+esc(x)+'</option>';}).join('')
+   +'</select>';
+  epFillStudents();
+}
+function epFillStudents(){
+  const st=window._ep||(window._ep={});
+  const box=document.getElementById('ep-stubox');
+  if(!box)return;
+  if(!st.grade||!st.section){box.innerHTML='<div style="font-size:12px;color:var(--tx3)">Choose the grade and the section first.</div>';return;}
+  const list=(typeof lateStudentsOf==='function')?lateStudentsOf(st.grade,st.section):[];
+  if(!list.length){box.innerHTML='<div style="font-size:12px;color:var(--tx3)">No students listed for '+esc(st.grade)+'-'+esc(st.section)+' yet. Please wait a moment and choose the section again.</div>';return;}
+  box.innerHTML='<select id="ep-student" onchange="epStudentPick(this.value)"><option value="">— Choose your son —</option>'
+   +list.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.id===st.sid?' selected':'')+'>'+esc(fN(x))+'</option>';}).join('')
+   +'</select>';
+  if(st.sid)epStudentPick(st.sid);
 }
 
 function epSubmit(){
@@ -4036,8 +4099,8 @@ function epSubmit(){
   const detail=document.getElementById('ep-reason').value.trim();
   // Keep .reason a plain sentence so every existing list and export reads it unchanged
   const reason=(rcat===EXCUSE_REASON_OTHER)?detail:(rcat+(detail?' — '+detail:''));
-  if(!sname){toast('Enter the student name','danger');return;}
-  if(!sclass){toast('Enter the class and section','danger');return;}
+  if(!sname){toast('Choose your son from the list','danger');return;}
+  if(!sclass){toast('Choose the grade and the section','danger');return;}
   if(!pname||!pphone){toast('Enter your name and phone','danger');return;}
   if(!from||!to){toast('Select both dates','danger');return;}
   if(to<from){toast('End date cannot be before start date','danger');return;}
