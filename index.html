@@ -872,8 +872,8 @@ function rPlatformSettings(){
 }
 const RL={superadmin:{en:'Super Admin',ar:'مدير النظام'},principal:{en:'Principal',ar:'مدير المدرسة'},vice_principal:{en:'Vice Principal',ar:'وكيل المدرسة'},academic_supervisor:{en:'Academic Supervisor',ar:'المشرف الأكاديمي'},student_advisor:{en:'Student Advisor',ar:'المرشد الطلابي'},activity_incharge:{en:'Activity Incharge',ar:'مسؤول الأنشطة'},quality_supervisor:{en:'Quality Supervisor',ar:'مشرف الجودة'},quality_incharge:{en:'Quality Incharge',ar:'مسؤول الجودة'},admin_assistant:{en:'Admin Assistant',ar:'المساعد الإداري'},teacher:{en:'Teacher',ar:'معلم'}};
 function rL(r){return RL[r]?.[_lang]||RL[r]?.en||r;}
-const TR={en:{dashboard:'Dashboard',activity_log:'Activity Log',students:'Students',accounts:'Staff Accounts',complaints:'Complaints',tasks:'Tasks',infractions:'Infractions',referrals:'Referrals',class_visits:'Class Visits',notebook_checks:'Notebook Checks',activities:'Activities',early_pickup:'Early Pickup',exam_absent:'Exam Absent List',announcements:'Announcements',settings:'Settings',infraction_forms:'Infraction Forms',visit_forms:'Visit Forms',behaviour:'Behaviour & Counseling',discipline_reports:'Discipline Reports',task_requests:'Task Requests',my_profile:'My Profile',export_data:'Export Data',academic_calendar:'Academic Calendar',parent_qr:'Parent QR Portal',activity_reports:'Activity Reports',teachers:'Teachers',teacher_reports:'View Reports by Teacher',daily_attendance:'Daily Attendance',monthly_attendance:'Monthly Attendance List',student_followup:'Student Follow Up Record',marks_list:'Marks List',late_comers:'Late Comers',student_health:'Student Health',remedial_plans:'Remedial Plans',vp_reports:'Reports to Principal',warning_letters:'Explanation Letters',teacher_achievements:'Teacher Achievements',reexam_schedule:'Re-exam Schedule',reexam_received:'Re-exam Received',pickup_qr:'Pickup QR Poster',sessions:'Academic Sessions',my_class_visits:'My Class Visits',my_warnings:'My Explanation Letters',my_remedials:'My Remedial Plans',my_achievements:'My Achievements',duty_roster:'Duty Roster',substitutions:'Substitutions',my_duties:'My Duties &amp; Substitutions',my_todos:'To Do List',student_discipline_report:'Student Discipline Report',classroom_discipline:'Student Discipline Reports',period_discipline:'Class Period Discipline',break_discipline:'Break Class Leaving Discipline',my_discipline_reports:'Student Discipline Report',permissions:'Permissions',sign_in:'Sign In',sign_out:'Sign Out',save:'Save',cancel:'Cancel',edit:'Edit',delete:'Delete',view:'View',add:'Add',search:'Search',close:'Close',first_name:'First Name',last_name:'Last Name',nationality:'Nationality',father_phone:'Father Phone',mother_phone:'Mother Phone',serial_no:'Serial No.',class_sn:'Class SN',username:'Username',password:'Password',name:'Name',email:'Email',phone:'Phone',role:'Role',status:'Status',date:'Date',grade:'Grade',section:'Section',subject:'Subject',description:'Description',assigned_to:'Assigned To',assigned_by:'Assigned By',due_date:'Due Date',priority:'Priority',pending:'Pending',in_progress:'In Progress',completed:'Completed',open:'Open',resolved:'Resolved',closed:'Closed',active:'Active',inactive:'Inactive',select_student:'Search student by name or grade…',no_records:'No records found',acknowledge:'Acknowledge',export_excel:'Export Excel',export_pdf:'Export PDF',date_from:'From Date',date_to:'To Date',language:'Language',color_theme:'Color Theme',change_password:'Change Password',current_password:'Current Password',new_password:'New Password',confirm_password:'Confirm Password',save_profile:'Save Profile',remarks:'Remarks',action_taken:'Action Taken',infraction_type:'Infraction Type',degree:'Degree',teacher:'Teacher',period:'Period',observations:'Observations',strengths:'Strengths',improvements:'Areas for Improvement',follow_up:'Follow-up',rating:'Rating',academic_ack:'Academic Supervisor Ack',principal_ack:'Principal Ack',complaint_type:'Complaint Type',track_number:'Track No.',parent_name:'Parent Name',add_remark:'Add Remark',remark_history:'Remark History',reason:'Reason',note:'Note',live_feed:'Live Activity Feed',total_students:'Total Students',open_complaints:'Open Complaints',active_tasks:'Active Tasks',overview:'Overview',management:'Management',system:'System',academic:'Academic',my_work:'My Work',discipline:'Discipline',monitoring:'Monitoring',exam_subject:'Exam Subject',absent_date:'Absent Date',school_name:'School Name',academic_year:'Academic Year',upload_logo:'Upload Logo',logo_emoji:'Logo Emoji',live_mode:'Live Mode',event_name:'Event Name',event_date:'Event Date',days_left:'days left',upcoming_events:'Upcoming Events',add_event:'Add Event',guardian:'Guardian'},
-ar:{dashboard:'لوحة التحكم',activity_log:'سجل الأنشطة',students:'الطلاب',accounts:'حسابات الموظفين',complaints:'الشكاوى',tasks:'المهام',infractions:'المخالفات',referrals:'الإحالات',class_visits:'زيارات الفصول',notebook_checks:'فحص الكراسات',activities:'الأنشطة',early_pickup:'الانصراف المبكر',exam_absent:'غياب الاختبارات',announcements:'الإعلانات',settings:'الإعدادات',infraction_forms:'نماذج المخالفات',visit_forms:'نماذج الزيارات',behaviour:'المتابعة السلوكية',discipline_reports:'تقارير الانضباط',task_requests:'طلبات المهام',my_profile:'ملفي الشخصي',export_data:'تصدير البيانات',academic_calendar:'التقويم الأكاديمي',parent_qr:'بوابة أولياء الأمور',activity_reports:'تقارير الأنشطة',teachers:'المعلمون',teacher_reports:'عرض التقارير حسب المعلم',daily_attendance:'الحضور اليومي',monthly_attendance:'كشف الحضور الشهري',student_followup:'سجل متابعة الطلاب',marks_list:'كشف الدرجات',late_comers:'المتأخرون',student_health:'الصحة الطلابية',remedial_plans:'الخطط العلاجية',vp_reports:'التقارير إلى المدير',warning_letters:'خطابات الاستفسار',teacher_achievements:'إنجازات المعلمين',reexam_schedule:'جدول الإختبارات التعويضية',reexam_received:'الإختبارات التعويضية المستلمة',pickup_qr:'رمز QR للخروج المبكر',sessions:'الفصول الدراسية',my_class_visits:'زياراتي الصفية',my_warnings:'خطابات الاستفسار الخاصة بي',my_remedials:'خططي العلاجية',my_achievements:'إنجازاتي',duty_roster:'جدول المناوبات',substitutions:'المناوبات الاحتياطية',my_duties:'مناوباتي وحصصي',my_todos:'قائمة المهام',student_discipline_report:'تقرير انضباط الطالب',classroom_discipline:'تقارير انضباط الطلاب',period_discipline:'انضباط الفصل لكل حصة',break_discipline:'انضباط خروج الفصول للاستراحة',my_discipline_reports:'تقرير انضباط الطالب',permissions:'الصلاحيات',sign_in:'تسجيل الدخول',sign_out:'تسجيل الخروج',save:'حفظ',cancel:'إلغاء',edit:'تعديل',delete:'حذف',view:'عرض',add:'إضافة',search:'بحث',close:'إغلاق',first_name:'الاسم الأول',last_name:'اسم العائلة',nationality:'الجنسية',father_phone:'هاتف الأب',mother_phone:'هاتف الأم',serial_no:'الرقم التسلسلي',class_sn:'رقم الفصل',username:'اسم المستخدم',password:'كلمة المرور',name:'الاسم',email:'البريد الإلكتروني',phone:'الهاتف',role:'الوظيفة',status:'الحالة',date:'التاريخ',grade:'الصف',section:'الفصل',subject:'المادة',description:'الوصف',assigned_to:'مُكلَّف إلى',assigned_by:'مُكلَّف من',due_date:'تاريخ الاستحقاق',priority:'الأولوية',pending:'معلق',in_progress:'جارٍ',completed:'مكتمل',open:'مفتوح',resolved:'محلول',closed:'مغلق',active:'نشط',inactive:'غير نشط',select_student:'ابحث عن طالب…',no_records:'لا توجد سجلات',acknowledge:'إقرار',export_excel:'تصدير Excel',export_pdf:'تصدير PDF',date_from:'من تاريخ',date_to:'إلى تاريخ',language:'اللغة',color_theme:'نظام الألوان',change_password:'تغيير كلمة المرور',current_password:'كلمة المرور الحالية',new_password:'كلمة المرور الجديدة',confirm_password:'تأكيد كلمة المرور',save_profile:'حفظ الملف الشخصي',remarks:'ملاحظات',action_taken:'الإجراء المتخذ',infraction_type:'نوع المخالفة',degree:'الدرجة',teacher:'المعلم',period:'الحصة',observations:'الملاحظات',strengths:'نقاط القوة',improvements:'مجالات التحسين',follow_up:'متابعة',rating:'التقييم',academic_ack:'إقرار المشرف الأكاديمي',principal_ack:'إقرار المدير',complaint_type:'نوع الشكوى',track_number:'رقم التتبع',parent_name:'اسم ولي الأمر',add_remark:'إضافة ملاحظة',remark_history:'سجل الملاحظات',reason:'السبب',note:'ملاحظة',live_feed:'سجل الأنشطة الحي',total_students:'إجمالي الطلاب',open_complaints:'الشكاوى المفتوحة',active_tasks:'المهام النشطة',overview:'نظرة عامة',management:'الإدارة',system:'النظام',academic:'الأكاديمي',my_work:'عملي',discipline:'الانضباط',monitoring:'المراقبة',exam_subject:'مادة الاختبار',absent_date:'تاريخ الغياب',school_name:'اسم المدرسة',academic_year:'العام الدراسي',upload_logo:'رفع الشعار',logo_emoji:'شعار رمزي',live_mode:'وضع البث المباشر',event_name:'اسم الحدث',event_date:'تاريخ الحدث',days_left:'يوم متبقي',upcoming_events:'الأحداث القادمة',add_event:'إضافة حدث',guardian:'ولي الأمر'}};
+const TR={en:{dashboard:'Dashboard',activity_log:'Activity Log',students:'Students',accounts:'Staff Accounts',complaints:'Complaints',tasks:'Tasks',infractions:'Infractions',referrals:'Referrals',class_visits:'Class Visits',notebook_checks:'Notebook Checks',activities:'Activities',early_pickup:'Early Pickup',exam_absent:'Exam Absent List',announcements:'Announcements',settings:'Settings',infraction_forms:'Infraction Forms',visit_forms:'Visit Forms',behaviour:'Behaviour & Counseling',discipline_reports:'Discipline Reports',task_requests:'Task Requests',my_profile:'My Profile',export_data:'Export Data',academic_calendar:'Academic Calendar',parent_qr:'Parent QR Portal',activity_reports:'Activity Reports',teachers:'Teachers',teacher_reports:'View Reports by Teacher',daily_attendance:'Daily Attendance',excused_students:'Excused Students',monthly_attendance:'Monthly Attendance List',student_followup:'Student Follow Up Record',marks_list:'Marks List',late_comers:'Late Comers',student_health:'Student Health',remedial_plans:'Remedial Plans',vp_reports:'Reports to Principal',warning_letters:'Explanation Letters',teacher_achievements:'Teacher Achievements',reexam_schedule:'Re-exam Schedule',reexam_received:'Re-exam Received',pickup_qr:'Pickup QR Poster',sessions:'Academic Sessions',my_class_visits:'My Class Visits',my_warnings:'My Explanation Letters',my_remedials:'My Remedial Plans',my_achievements:'My Achievements',duty_roster:'Duty Roster',substitutions:'Substitutions',my_duties:'My Duties &amp; Substitutions',my_todos:'To Do List',student_discipline_report:'Student Discipline Report',classroom_discipline:'Student Discipline Reports',period_discipline:'Class Period Discipline',break_discipline:'Break Class Leaving Discipline',my_discipline_reports:'Student Discipline Report',permissions:'Permissions',sign_in:'Sign In',sign_out:'Sign Out',save:'Save',cancel:'Cancel',edit:'Edit',delete:'Delete',view:'View',add:'Add',search:'Search',close:'Close',first_name:'First Name',last_name:'Last Name',nationality:'Nationality',father_phone:'Father Phone',mother_phone:'Mother Phone',serial_no:'Serial No.',class_sn:'Class SN',username:'Username',password:'Password',name:'Name',email:'Email',phone:'Phone',role:'Role',status:'Status',date:'Date',grade:'Grade',section:'Section',subject:'Subject',description:'Description',assigned_to:'Assigned To',assigned_by:'Assigned By',due_date:'Due Date',priority:'Priority',pending:'Pending',in_progress:'In Progress',completed:'Completed',open:'Open',resolved:'Resolved',closed:'Closed',active:'Active',inactive:'Inactive',select_student:'Search student by name or grade…',no_records:'No records found',acknowledge:'Acknowledge',export_excel:'Export Excel',export_pdf:'Export PDF',date_from:'From Date',date_to:'To Date',language:'Language',color_theme:'Color Theme',change_password:'Change Password',current_password:'Current Password',new_password:'New Password',confirm_password:'Confirm Password',save_profile:'Save Profile',remarks:'Remarks',action_taken:'Action Taken',infraction_type:'Infraction Type',degree:'Degree',teacher:'Teacher',period:'Period',observations:'Observations',strengths:'Strengths',improvements:'Areas for Improvement',follow_up:'Follow-up',rating:'Rating',academic_ack:'Academic Supervisor Ack',principal_ack:'Principal Ack',complaint_type:'Complaint Type',track_number:'Track No.',parent_name:'Parent Name',add_remark:'Add Remark',remark_history:'Remark History',reason:'Reason',note:'Note',live_feed:'Live Activity Feed',total_students:'Total Students',open_complaints:'Open Complaints',active_tasks:'Active Tasks',overview:'Overview',management:'Management',system:'System',academic:'Academic',my_work:'My Work',discipline:'Discipline',monitoring:'Monitoring',exam_subject:'Exam Subject',absent_date:'Absent Date',school_name:'School Name',academic_year:'Academic Year',upload_logo:'Upload Logo',logo_emoji:'Logo Emoji',live_mode:'Live Mode',event_name:'Event Name',event_date:'Event Date',days_left:'days left',upcoming_events:'Upcoming Events',add_event:'Add Event',guardian:'Guardian'},
+ar:{dashboard:'لوحة التحكم',activity_log:'سجل الأنشطة',students:'الطلاب',accounts:'حسابات الموظفين',complaints:'الشكاوى',tasks:'المهام',infractions:'المخالفات',referrals:'الإحالات',class_visits:'زيارات الفصول',notebook_checks:'فحص الكراسات',activities:'الأنشطة',early_pickup:'الانصراف المبكر',exam_absent:'غياب الاختبارات',announcements:'الإعلانات',settings:'الإعدادات',infraction_forms:'نماذج المخالفات',visit_forms:'نماذج الزيارات',behaviour:'المتابعة السلوكية',discipline_reports:'تقارير الانضباط',task_requests:'طلبات المهام',my_profile:'ملفي الشخصي',export_data:'تصدير البيانات',academic_calendar:'التقويم الأكاديمي',parent_qr:'بوابة أولياء الأمور',activity_reports:'تقارير الأنشطة',teachers:'المعلمون',teacher_reports:'عرض التقارير حسب المعلم',daily_attendance:'الحضور اليومي',excused_students:'الطلاب المعذورون',monthly_attendance:'كشف الحضور الشهري',student_followup:'سجل متابعة الطلاب',marks_list:'كشف الدرجات',late_comers:'المتأخرون',student_health:'الصحة الطلابية',remedial_plans:'الخطط العلاجية',vp_reports:'التقارير إلى المدير',warning_letters:'خطابات الاستفسار',teacher_achievements:'إنجازات المعلمين',reexam_schedule:'جدول الإختبارات التعويضية',reexam_received:'الإختبارات التعويضية المستلمة',pickup_qr:'رمز QR للخروج المبكر',sessions:'الفصول الدراسية',my_class_visits:'زياراتي الصفية',my_warnings:'خطابات الاستفسار الخاصة بي',my_remedials:'خططي العلاجية',my_achievements:'إنجازاتي',duty_roster:'جدول المناوبات',substitutions:'المناوبات الاحتياطية',my_duties:'مناوباتي وحصصي',my_todos:'قائمة المهام',student_discipline_report:'تقرير انضباط الطالب',classroom_discipline:'تقارير انضباط الطلاب',period_discipline:'انضباط الفصل لكل حصة',break_discipline:'انضباط خروج الفصول للاستراحة',my_discipline_reports:'تقرير انضباط الطالب',permissions:'الصلاحيات',sign_in:'تسجيل الدخول',sign_out:'تسجيل الخروج',save:'حفظ',cancel:'إلغاء',edit:'تعديل',delete:'حذف',view:'عرض',add:'إضافة',search:'بحث',close:'إغلاق',first_name:'الاسم الأول',last_name:'اسم العائلة',nationality:'الجنسية',father_phone:'هاتف الأب',mother_phone:'هاتف الأم',serial_no:'الرقم التسلسلي',class_sn:'رقم الفصل',username:'اسم المستخدم',password:'كلمة المرور',name:'الاسم',email:'البريد الإلكتروني',phone:'الهاتف',role:'الوظيفة',status:'الحالة',date:'التاريخ',grade:'الصف',section:'الفصل',subject:'المادة',description:'الوصف',assigned_to:'مُكلَّف إلى',assigned_by:'مُكلَّف من',due_date:'تاريخ الاستحقاق',priority:'الأولوية',pending:'معلق',in_progress:'جارٍ',completed:'مكتمل',open:'مفتوح',resolved:'محلول',closed:'مغلق',active:'نشط',inactive:'غير نشط',select_student:'ابحث عن طالب…',no_records:'لا توجد سجلات',acknowledge:'إقرار',export_excel:'تصدير Excel',export_pdf:'تصدير PDF',date_from:'من تاريخ',date_to:'إلى تاريخ',language:'اللغة',color_theme:'نظام الألوان',change_password:'تغيير كلمة المرور',current_password:'كلمة المرور الحالية',new_password:'كلمة المرور الجديدة',confirm_password:'تأكيد كلمة المرور',save_profile:'حفظ الملف الشخصي',remarks:'ملاحظات',action_taken:'الإجراء المتخذ',infraction_type:'نوع المخالفة',degree:'الدرجة',teacher:'المعلم',period:'الحصة',observations:'الملاحظات',strengths:'نقاط القوة',improvements:'مجالات التحسين',follow_up:'متابعة',rating:'التقييم',academic_ack:'إقرار المشرف الأكاديمي',principal_ack:'إقرار المدير',complaint_type:'نوع الشكوى',track_number:'رقم التتبع',parent_name:'اسم ولي الأمر',add_remark:'إضافة ملاحظة',remark_history:'سجل الملاحظات',reason:'السبب',note:'ملاحظة',live_feed:'سجل الأنشطة الحي',total_students:'إجمالي الطلاب',open_complaints:'الشكاوى المفتوحة',active_tasks:'المهام النشطة',overview:'نظرة عامة',management:'الإدارة',system:'النظام',academic:'الأكاديمي',my_work:'عملي',discipline:'الانضباط',monitoring:'المراقبة',exam_subject:'مادة الاختبار',absent_date:'تاريخ الغياب',school_name:'اسم المدرسة',academic_year:'العام الدراسي',upload_logo:'رفع الشعار',logo_emoji:'شعار رمزي',live_mode:'وضع البث المباشر',event_name:'اسم الحدث',event_date:'تاريخ الحدث',days_left:'يوم متبقي',upcoming_events:'الأحداث القادمة',add_event:'إضافة حدث',guardian:'ولي الأمر'}};
 let _lang='en';
 function T(k){return TR[_lang]?.[k]||TR.en[k]||k;}
 function setLang(l){_lang=l;document.getElementById('root').lang=l;document.getElementById('root').dir=l==='ar'?'rtl':'ltr';}
@@ -1489,6 +1489,17 @@ Object.keys(NAV).forEach(function(role){
   if(pi>=0)arr.splice(pi+1,0,item);else{pi=arr.findIndex(function(i){return i.id==='my_profile';});if(pi>=0)arr.splice(pi,0,item);else arr.push(item);}
 });
 
+// Excused students: their own tab, beside Daily Attendance
+Object.keys(NAV).forEach(function(role){
+  if(!['superadmin','principal','vice_principal','admin_assistant','student_advisor','academic_supervisor'].includes(role))return;
+  var arr=NAV[role];
+  if(arr.some(function(i){return i.id==='excused_students';}))return;
+  var item={id:'excused_students',i:'\u{1f4dd}',k:'excused_students'};
+  var pi=arr.findIndex(function(i){return i.id==='daily_attendance';});
+  if(pi>=0)arr.splice(pi+1,0,item);
+  else{pi=arr.findIndex(function(i){return i.id==='my_profile';});if(pi>=0)arr.splice(pi,0,item);else arr.push(item);}
+});
+
 // A teacher can address a discipline report to any staff member, so every
 // non-teaching role needs somewhere to read the ones sent to them.
 Object.keys(NAV).forEach(function(role){
@@ -1584,7 +1595,7 @@ function navigate(page){
   if(perm==='disabled'&&page!=='dashboard'&&page!=='my_profile'){toast('Access to this feature is disabled','danger');page='dashboard';}
   _page=page;markSeen(page);document.querySelectorAll('.ni').forEach(el=>el.classList.remove('act'));const el=document.getElementById('nav-'+page);if(el)el.classList.add('act');
   document.getElementById('tbt').textContent=T(page)||page.replace(/_/g,' ');document.getElementById('tbs').textContent='';
-  const map={dashboard:(CU&&CU.role==='teacher'&&typeof rTeacherDashboard==='function'?rTeacherDashboard:rDash),activity_log:rActLog,students:rStudents,accounts:rAccounts,complaints:rComplaints,tasks:rTasks,infractions:rInfractions,referrals:rReferrals,class_visits:rClassVisits,notebook_checks:rNbChecks,activities:rActivities,early_pickup:rPickup,exam_absent:rExamAbsent,announcements:rAnnouncements,settings:rSettings,infraction_forms:rInfForms,visit_forms:rVisitForms,behaviour:rBehaviour,discipline_reports:rDiscipline,task_requests:rTaskReqs,my_profile:rProfile,export_data:rExport,academic_calendar:rCalendar,parent_qr:rQRCode,activity_reports:rActivityReports,teachers:rTeachers,teacher_reports:rTeacherReports,daily_attendance:rAttendance,monthly_attendance:rMonthlyAttendance,student_followup:rStudentFollowup,marks_list:rMarksList,late_comers:rLateComers,student_health:rStudentHealth,remedial_plans:rRemedial,vp_reports:rVPReports,warning_letters:rWarnings,teacher_achievements:rTeacherAchievements,reexam_schedule:rReexam,reexam_received:rReexamReceived,pickup_qr:rPickupQR,sessions:rSessions,my_class_visits:rMyClassVisits,my_warnings:rMyWarnings,my_remedials:rMyRemedials,my_achievements:rMyAchievements,duty_roster:rDutyRoster,substitutions:rSubstitutions,my_duties:rMyDuties,my_todos:rMyTodos,classroom_discipline:rClassroomDiscipline,period_discipline:rPeriodDiscipline,break_discipline:rBreakDiscipline,my_discipline_reports:rMyDisciplineReports,permissions:rPermissions};
+  const map={dashboard:(CU&&CU.role==='teacher'&&typeof rTeacherDashboard==='function'?rTeacherDashboard:rDash),activity_log:rActLog,students:rStudents,accounts:rAccounts,complaints:rComplaints,tasks:rTasks,infractions:rInfractions,referrals:rReferrals,class_visits:rClassVisits,notebook_checks:rNbChecks,activities:rActivities,early_pickup:rPickup,exam_absent:rExamAbsent,announcements:rAnnouncements,settings:rSettings,infraction_forms:rInfForms,visit_forms:rVisitForms,behaviour:rBehaviour,discipline_reports:rDiscipline,task_requests:rTaskReqs,my_profile:rProfile,export_data:rExport,academic_calendar:rCalendar,parent_qr:rQRCode,activity_reports:rActivityReports,teachers:rTeachers,teacher_reports:rTeacherReports,daily_attendance:rAttendance,excused_students:rExcused,monthly_attendance:rMonthlyAttendance,student_followup:rStudentFollowup,marks_list:rMarksList,late_comers:rLateComers,student_health:rStudentHealth,remedial_plans:rRemedial,vp_reports:rVPReports,warning_letters:rWarnings,teacher_achievements:rTeacherAchievements,reexam_schedule:rReexam,reexam_received:rReexamReceived,pickup_qr:rPickupQR,sessions:rSessions,my_class_visits:rMyClassVisits,my_warnings:rMyWarnings,my_remedials:rMyRemedials,my_achievements:rMyAchievements,duty_roster:rDutyRoster,substitutions:rSubstitutions,my_duties:rMyDuties,my_todos:rMyTodos,classroom_discipline:rClassroomDiscipline,period_discipline:rPeriodDiscipline,break_discipline:rBreakDiscipline,my_discipline_reports:rMyDisciplineReports,permissions:rPermissions};
   if(map[page])map[page]();
   // Apply view-only overlay if needed
   if(canDo(page)==='view')setTimeout(applyViewOnly,50);
@@ -1657,7 +1668,7 @@ const APP_FEATURES=[
   {g:'Discipline',items:[{id:'infractions',l:'Infractions'},{id:'referrals',l:'Referrals'},{id:'classroom_discipline',l:'Classroom Discipline'},{id:'period_discipline',l:'Class Period Discipline'},{id:'break_discipline',l:'Break Class Leaving Discipline'},{id:'my_discipline_reports',l:'My Discipline Reports'}]},
   {g:'Evaluation',items:[{id:'class_visits',l:'Class Visits'},{id:'my_class_visits',l:'My Class Visits'},{id:'teacher_reports',l:'Teacher Reports'},{id:'teacher_achievements',l:'Teacher Achievements'},{id:'notebook_checks',l:'Notebook Checks'}]},
   {g:'Academic',items:[{id:'remedial_plans',l:'Remedial Plans'},{id:'my_remedials',l:'My Remedials'},{id:'exam_absent',l:'Exam Absent'},{id:'reexam_schedule',l:'Re-Exam Schedule'}]},
-  {g:'Attendance & Pickup',items:[{id:'daily_attendance',l:'Daily Attendance'},{id:'monthly_attendance',l:'Monthly Attendance List'},{id:'student_followup',l:'Student Follow Up Record'},{id:'marks_list',l:'Marks List'},{id:'late_comers',l:'Late Comers'},{id:'early_pickup',l:'Early Pickup'},{id:'pickup_qr',l:'Pickup QR'}]},
+  {g:'Attendance & Pickup',items:[{id:'daily_attendance',l:'Daily Attendance'},{id:'excused_students',l:'Excused Students'},{id:'monthly_attendance',l:'Monthly Attendance List'},{id:'student_followup',l:'Student Follow Up Record'},{id:'marks_list',l:'Marks List'},{id:'late_comers',l:'Late Comers'},{id:'early_pickup',l:'Early Pickup'},{id:'pickup_qr',l:'Pickup QR'}]},
   {g:'Reporting',items:[{id:'vp_reports',l:'VP Reports'},{id:'warning_letters',l:'Explanation Letters (Issue)'},{id:'my_warnings',l:'My Explanation Letters'},{id:'complaints',l:'Complaints'}]},
   {g:'Tasks & Activities',items:[{id:'tasks',l:'Tasks'},{id:'task_requests',l:'Task Requests'},{id:'activities',l:'Activities'},{id:'activity_reports',l:'Activity Reports'}]},
   {g:'Operations',items:[{id:'duty_roster',l:'Duty Roster'},{id:'substitutions',l:'Substitutions'},{id:'my_duties',l:'My Duties'},{id:'my_todos',l:'To Do List'},{id:'announcements',l:'Announcements'},{id:'my_achievements',l:'My Achievements'}]},
@@ -4393,8 +4404,10 @@ async function saveExcused(){
   await appendExcused({id:nid('exc'),studentId:sid,studentName:s?fN(s):'',from:from,to:to,
     reason:document.getElementById('exc-reason').value.trim(),
     addedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),created:new Date().toISOString()});
-  logA('Excused '+(s?fN(s):'student')+' from '+from+' to '+to);
-  closeM();toast('Student excused','success');rAttendance();
+  const marked=excusedMarkAbsent({studentId:sid,from:from,to:to});
+  logA('Excused '+(s?fN(s):'student')+' from '+from+' to '+to+(marked?' (added to the absent list on '+marked+' day(s))':''));
+  closeM();toast('Student excused'+(marked?' and marked absent on '+marked+' day(s)':''),'success');
+  if(_page==='excused_students')rExcused();else rAttendance();
 }
 
 function delExcused(id){
@@ -4403,7 +4416,9 @@ function delExcused(id){
   if(!confirm('Remove the excused period for '+(e.studentName||'this student')+' ('+e.from+' → '+e.to+')?'))return;
   DB.set('excused',getExcused().filter(x=>x.id!==id));clearExcusedCache();
   logA('Removed excused period for '+(e.studentName||'student'));
-  toast('Excused period removed','danger');rAttendance();
+  // The register is left as it is — an absence already recorded stays
+  toast('Excused period removed — the absences already recorded stay','danger');
+  if(_page==='excused_students')rExcused();else rAttendance();
 }
 
 // Generic link (no student pre-filled) for sharing outside the absence message
@@ -4604,8 +4619,10 @@ function approveExcused(id){
   list[i].approvedAt=new Date().toISOString();
   DB.set('excused',list);
   clearExcusedCache();
-  logA('Approved parent excuse for '+(list[i].studentName||'student'));
-  toast('Excuse approved','success');rAttendance();
+  const marked=excusedMarkAbsent(list[i]);
+  logA('Approved parent excuse for '+(list[i].studentName||'student')+(marked?' (added to the absent list on '+marked+' day(s))':''));
+  toast('Excuse approved'+(marked?' · marked absent on '+marked+' day(s)':''),'success');
+  if(_page==='excused_students')rExcused();else rAttendance();
   // Offer to tell the parent while it is still in hand
   if(excuseReplyPhones(list[i]).length)setTimeout(function(){excuseReplyM(id,'accepted');},60);
 }
@@ -4874,8 +4891,10 @@ function excuseLink(id,sid){
   list[i].verifiedBy=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
   list[i].verifiedAt=new Date().toISOString();
   DB.set('excused',list);clearExcusedCache();
-  logA('Matched excuse request "'+(list[i].submittedName||'')+'" to '+fN(s));
-  closeM();toast('Linked to '+fN(s),'success');rAttendance();
+  const marked=excusedMarkAbsent(list[i]);
+  logA('Matched excuse request "'+(list[i].submittedName||'')+'" to '+fN(s)+(marked?' (added to the absent list on '+marked+' day(s))':''));
+  closeM();toast('Linked to '+fN(s)+(marked?' · marked absent on '+marked+' day(s)':''),'success');
+  if(_page==='excused_students')rExcused();else rAttendance();
 }
 
 function excuseUnlink(id){
@@ -4886,7 +4905,7 @@ function excuseUnlink(id){
   list[i].studentId='';
   list[i].nameVerified=false;
   DB.set('excused',list);
-  closeM();toast('Unlinked — the parent\'s spelling restored','info');rAttendance();
+  closeM();toast('Unlinked — the parent\'s spelling restored','info');if(_page==='excused_students')rExcused();else rAttendance();
 }
 
 function buildExcusedCard(sel,canM){
@@ -4926,6 +4945,108 @@ function buildExcusedCard(sel,canM){
   +'</div>';
 }
 
+// ═══════════════════════════════════════════════════════════
+// EXCUSED STUDENTS — its own tab
+// Excusing a student now also puts them on the absent list for those days,
+// so the register, the counts and the class summary all agree. Only ever
+// adds: an absence already recorded is left alone, and removing an excuse
+// never takes anybody off the register.
+// ═══════════════════════════════════════════════════════════
+function excCanManage(){return ['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role)||permSet('excused_students')==='full';}
+function excCanView(){return excCanManage()||mayView('excused_students',['academic_supervisor','student_advisor','quality_incharge']);}
+
+// Every school day an excuse covers (Fridays and Saturdays are not school days)
+function excusedDays(e){
+  const out=[];
+  if(!e||!e.from||!e.to||e.to<e.from)return out;
+  const d=new Date(e.from+'T00:00:00'),end=new Date(e.to+'T00:00:00');
+  let guard=200;
+  while(d<=end&&guard-->0){
+    const ds=ymd(d),dn=getDayOfWeek(ds);
+    if(dn!=='Friday'&&dn!=='Saturday')out.push(ds);
+    d.setDate(d.getDate()+1);
+  }
+  return out;
+}
+// Put an excused student on the absent list for the days they are excused.
+// Nothing is ever removed — a day already marked stays exactly as it is.
+function excusedMarkAbsent(e){
+  const sid=excusedStudentId(e);
+  if(!sid)return 0;
+  const days=excusedDays(e);
+  if(!days.length)return 0;
+  const all=DB.get('attendance')||[];
+  const by=((CU&&((CU.firstName||'')+' '+(CU.lastName||'')).trim())||'system');
+  let added=0;
+  days.forEach(function(date){
+    let rec=all.find(function(a){return a&&a.date===date;});
+    if(!rec){
+      rec={date:date,absentIds:[],lateIds:[],lateTimes:{},marked:false,markedBy:'',markedAt:''};
+      all.push(rec);
+    }
+    if(!Array.isArray(rec.absentIds))rec.absentIds=[];
+    if(rec.absentIds.indexOf(sid)<0){
+      rec.absentIds.push(sid);
+      rec.excusedAutoAt=new Date().toISOString();
+      rec.excusedAutoBy=by;
+      added++;
+    }
+  });
+  if(added)DB.set('attendance',all);
+  return added;
+}
+// Used when several excuses are applied at once
+function excusedMarkAbsentAll(list){
+  let n=0,students=0;
+  (list||[]).forEach(function(e){const a=excusedMarkAbsent(e);if(a){n+=a;students++;}});
+  return {days:n,students:students};
+}
+
+function rExcused(){
+  clearExcusedCache();
+  if(!excCanView()){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">\u{1f512}</div><p>Access restricted</p></div>';return;}
+  const canM=excCanManage()&&canDo('excused_students')!=='view';
+  const today=ymd(new Date());
+  const sel=window._excDate||window._attDate||today;
+  window._excDate=sel;
+  const list=getExcused();
+  const onDay=list.filter(function(e){return e.from<=sel&&sel<=e.to;});
+  const pending=list.filter(function(e){return e.source==='parent'&&e.status==='pending';}).length;
+  const notAbsent=onDay.filter(function(e){
+    const sid=excusedStudentId(e);
+    if(!sid)return false;
+    const rec=(DB.get('attendance')||[]).find(function(a){return a&&a.date===sel;});
+    return !(rec&&(rec.absentIds||[]).indexOf(sid)>=0);
+  });
+  document.getElementById('pc').innerHTML=
+   '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>\u{1f4dd} '+T('excused_students')+'</h3>'
+   +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+   +'<label style="font-size:11px;color:var(--tx3)">Date:</label>'
+   +'<input type="date" id="exc-date" value="'+esc(sel)+'" onchange="window._excDate=this.value;rExcused()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'
+   +'</div></div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">A student who is excused is put on the absent list for those days automatically, so the register and the class summary agree. Their parents are skipped when absence messages are sent.</div></div>'
+   +'<div class="cg g4" style="margin-bottom:13px">'
+   +'<div class="stat bl"><div class="sl2">Excused on '+esc(sel)+'</div><div class="sv">'+onDay.length+'</div><div class="sb3">'+esc(getDayOfWeek(sel)||'')+'</div><div class="sic">\u{1f4dd}</div></div>'
+   +'<div class="stat go"><div class="sl2">Awaiting review</div><div class="sv">'+pending+'</div><div class="sb3">parent requests</div><div class="sic">⏳</div></div>'
+   +'<div class="stat gn"><div class="sl2">Recorded in total</div><div class="sv">'+list.length+'</div><div class="sb3">excused periods</div><div class="sic">\u{1f5c2}️</div></div>'
+   +'<div class="stat '+(notAbsent.length?'rd':'gn')+'"><div class="sl2">Not yet on the absent list</div><div class="sv">'+notAbsent.length+'</div><div class="sb3">for '+esc(sel)+'</div><div class="sic">✅</div></div>'
+   +'</div>'
+   +(canM&&notAbsent.length?'<div class="al aw" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+     +'<div><strong>'+notAbsent.length+'</strong> student(s) excused on '+esc(sel)+' are not on the absent list — excused before this was automatic.</div>'
+     +'<button class="btn bp bsm" onclick="excApplyAbsent()">Put them on the absent list</button></div>':'')
+   +buildExcusedCard(sel,canM);
+}
+// Adds the older excuses to the register, on the days they cover
+function excApplyAbsent(){
+  if(!excCanManage()){toast('You cannot change the register','danger');return;}
+  const list=getExcused();
+  if(!confirm('Put every excused student on the absent list for the days they are excused?\n\nOnly missing entries are added — nothing already recorded is changed or removed.'))return;
+  const r=excusedMarkAbsentAll(list);
+  if(r.days)logA('Added '+r.students+' excused student(s) to the absent list ('+r.days+' day(s))');
+  toast(r.days?('Added '+r.students+' student(s) across '+r.days+' day(s)'):'Everyone excused is already on the absent list','success');
+  rExcused();
+}
+
 function rAttendance(){
   clearExcusedCache();
   const canM=['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role);
@@ -4954,7 +5075,16 @@ function rAttendance(){
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Students</div><div class="sv">'+students.length+'</div><div class="sic">👨‍🎓</div></div><div class="stat gn"><div class="sl2">Present</div><div class="sv">'+presentCount+'</div><div class="sb3">'+(students.length?Math.round(presentCount/students.length*100):0)+'%</div><div class="sic">✅</div></div><div class="stat rd"><div class="sl2">Absent</div><div class="sv">'+absentCount+'</div><div class="sb3">'+(excusedCount?excusedCount+' excused · '+toNotify+' to notify':(students.length?Math.round(absentCount/students.length*100):0)+'%')+'</div><div class="sic">❌</div></div><div class="stat go"><div class="sl2">Late</div><div class="sv">'+lateCount+'</div><div class="sb3">'+(lateToNotify!==lateCount?(lateCount-lateToNotify)+' excused':'arrived late')+'</div><div class="sic">⏰</div></div><div class="stat go"><div class="sl2">Status</div><div style="font-size:14px;font-weight:700;margin-top:8px">'+(dayRec.marked?'<span style="color:var(--su)">✓ Submitted</span>':'<span style="color:var(--gd)">⏳ Draft</span>')+'</div>'+(dayRec.markedAt?'<div class="sb3">'+new Date(dayRec.markedAt).toLocaleString()+'</div>':'')+'<div class="sic">📋</div></div></div>'
   +(canM&&absentCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--ac2),var(--pubg));border-color:var(--ac3)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--ac);margin-bottom:3px">📱 Notify Parents via WhatsApp</div><div style="font-size:11px;color:var(--tx2)">Click below to open WhatsApp chats for each absent student\'s father and mother. You can review the message before sending.'+(excusedCount?'<br><strong style="color:var(--su)">'+excusedCount+' excused student(s) will be skipped.</strong>':'')+(alreadyNotified?'<br><strong style="color:var(--su)">'+alreadyNotified+' already notified — they are not in the list.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendWaAll(\'both\')">📱 Both Parents ('+(toNotify*2)+')</button></div></div></div>':'')
   +buildNotifiedCard('absent',sel,canM)
-  +buildExcusedCard(sel,canM)
+  +(function(){
+    // The list itself lives in its own tab now; here is just where it stands
+    const onDay=getExcused().filter(function(e){return e.from<=sel&&sel<=e.to;});
+    const pend=getExcused().filter(function(e){return e.source==='parent'&&e.status==='pending';}).length;
+    return '<div class="card" style="margin-bottom:13px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+     +'<div style="font-size:12px">\u{1f4dd} <strong>'+onDay.length+'</strong> student(s) excused on '+esc(sel)
+     +(pend?' · <span style="color:var(--dg)"><strong>'+pend+'</strong> parent request(s) awaiting review</span>':'')
+     +'<div style="font-size:11px;color:var(--tx3)">They are on the absent list, and their parents are skipped when messages are sent.</div></div>'
+     +'<button class="btn bs bsm" onclick="navigate(\'excused_students\')">Open Excused Students →</button></div>';
+  })()
   +'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🔍 Mark Absent Students</h3><div style="display:flex;gap:6px">'+(canM?'<button class="btn bs bsm" onclick="bulkMarkM(\'absent\')">➕ Mark Several Absent</button><button class="btn bg2 bsm" onclick="markAllPresent()">↺ Reset All Present</button><button class="btn bp bsm" onclick="submitAtt()">'+(dayRec.marked?'Update':'Submit')+' Attendance →</button>':'')+'</div></div>'
   +'<div style="display:flex;gap:8px;margin-bottom:12px"><input id="attq" placeholder="🔍 Search by name or grade…" oninput="fltAtt()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="attgf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+g+'">Gr '+g+'</option>').join('')+'</select><select id="attsf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Status</option><option value="absent">Absent only</option><option value="present">Present only</option><option value="late">Late only</option><option value="excused">Excused only</option><option value="tonotify">Absent — to notify</option></select></div>'
   +'<div id="attlist">'+buildAttList(students,absentSet,canM,sel,lateSet,lateTimes)+'</div></div>'
@@ -5110,10 +5240,10 @@ function attGradeRollup(rows){
   const by={},order=[];
   (rows||[]).forEach(function(r){
     const g=String(r.grade==null?'':r.grade);
-    if(!by[g]){by[g]={grade:g,sections:0,total:0,absent:0,late:0,names:[]};order.push(g);}
+    if(!by[g]){by[g]={grade:g,sections:0,total:0,absent:0,late:0,excused:0,names:[]};order.push(g);}
     const b=by[g];
     b.sections++;b.total+=r.total;
-    b.absent+=r.absent.length;b.late+=r.late.length;
+    b.absent+=r.absent.length;b.late+=r.late.length;b.excused+=(r.excused||[]).length;
     b.names.push(r.cls);
   });
   return order.map(function(g){return by[g];});
@@ -5127,8 +5257,9 @@ function attClassBreakdown(date){
   const groups={};
   students.forEach(function(s){
     const k=grSec(s.grade,s.section)||'—';
-    if(!groups[k])groups[k]={cls:k,grade:s.grade,total:0,absent:[],late:[]};
+    if(!groups[k])groups[k]={cls:k,grade:s.grade,total:0,absent:[],late:[],excused:[]};
     groups[k].total++;
+    if(isExcusedOn(s.id,date))groups[k].excused.push(s);
     if(absent.has(s.id))groups[k].absent.push(s);
     else if(late.has(s.id))groups[k].late.push(s);
   });
@@ -5146,8 +5277,8 @@ function expAttClassSummaryPDF(){
   if(!rows.length){toast('No students to summarise','danger');return;}
   const s=DB.get('settings')||{};
   const day=getDayOfWeek(date)||'';
-  const tot={students:0,absent:0,late:0};
-  rows.forEach(function(r){tot.students+=r.total;tot.absent+=r.absent.length;tot.late+=r.late.length;});
+  const tot={students:0,absent:0,late:0,excused:0};
+  rows.forEach(function(r){tot.students+=r.total;tot.absent+=r.absent.length;tot.late+=r.late.length;tot.excused+=r.excused.length;});
   const clean=rows.filter(function(r){return r.absent.length===0;}).length;
   const pct=function(n,d){return d?Math.round(n/d*1000)/10:0;};
   const w=window.open('','_blank');
@@ -5186,8 +5317,8 @@ function expAttClassSummaryPDF(){
   +'</div>'
   +'<div class="cap">All '+rows.length+' class(es) in '+attGradeRollup(rows).length+' grade(s)'
   +(clean?' — '+clean+' with full attendance, shaded green':'')+'. Only absent students are named.</div>'
-  +'<table><thead><tr><th style="width:14%">Class</th><th style="width:8%">Total</th><th style="width:9%">Present</th>'
-  +'<th style="width:8%">Absent</th><th style="width:7%">Late</th><th style="width:9%">Absent %</th><th>Absent Students</th></tr></thead><tbody>'
+  +'<table><thead><tr><th style="width:13%">Class</th><th style="width:7%">Total</th><th style="width:8%">Present</th>'
+  +'<th style="width:7%">Absent</th><th style="width:8%">Excused</th><th style="width:6%">Late</th><th style="width:8%">Absent %</th><th>Absent Students</th></tr></thead><tbody>'
   +(function(){
     const secRow=function(r){
       // The sheet is meant to stay on one page, so a class with a great many
@@ -5203,6 +5334,7 @@ function expAttClassSummaryPDF(){
        +'<td class="c">'+r.total+'</td>'
        +'<td class="c">'+(r.total-r.absent.length)+'</td>'
        +'<td class="c">'+(none?'0':'<strong>'+r.absent.length+'</strong>')+'</td>'
+       +'<td class="c">'+(r.excused.length||'0')+'</td>'
        +'<td class="c">'+r.late.length+'</td>'
        +'<td class="c">'+pct(r.absent.length,r.total)+'%</td>'
        +'<td class="names">'+(none?'<em>Full attendance</em>':names)+'</td></tr>';
@@ -5210,7 +5342,7 @@ function expAttClassSummaryPDF(){
     const gradeRow=function(g){
       return '<tr class="gtot"><td>Grade '+esc(g.grade)+' — all sections</td>'
        +'<td class="c">'+g.total+'</td><td class="c">'+(g.total-g.absent)+'</td>'
-       +'<td class="c">'+g.absent+'</td><td class="c">'+g.late+'</td>'
+       +'<td class="c">'+g.absent+'</td><td class="c">'+g.excused+'</td><td class="c">'+g.late+'</td>'
        +'<td class="c">'+pct(g.absent,g.total)+'%</td>'
        +'<td class="names">'+g.sections+' section(s): '+esc(g.names.join(', '))+'</td></tr>';
     };
@@ -5227,7 +5359,7 @@ function expAttClassSummaryPDF(){
     return out;
   })()
   +'<tr class="tot"><td>TOTAL</td><td class="c">'+tot.students+'</td><td class="c">'+(tot.students-tot.absent)+'</td>'
-  +'<td class="c">'+tot.absent+'</td><td class="c">'+tot.late+'</td><td class="c">'+pct(tot.absent,tot.students)+'%</td><td></td></tr>'
+  +'<td class="c">'+tot.absent+'</td><td class="c">'+tot.excused+'</td><td class="c">'+tot.late+'</td><td class="c">'+pct(tot.absent,tot.students)+'%</td><td></td></tr>'
   +'</tbody></table>'
 
   +'<div class="foot">Prepared by: '+esc(CU?((CU.firstName||'')+' '+(CU.lastName||'')).trim():'')
@@ -5251,17 +5383,18 @@ function expAttClassSummaryCSV(){
   rows.forEach(function(r,i){
     const g=String(r.grade==null?'':r.grade);
     const gRow=function(x){return ['Grade '+x.grade+' — all sections',x.total,x.total-x.absent,
-      x.absent,x.late,pc(x.absent,x.total),x.sections+' section(s): '+x.names.join(', ')];};
+      x.absent,x.excused,x.late,pc(x.absent,x.total),x.sections+' section(s): '+x.names.join(', '),''];};
     if(prev!==null&&g!==prev&&multi[prev])out.push(gRow(multi[prev]));
-    out.push([r.cls,r.total,r.total-r.absent.length,r.absent.length,r.late.length,
+    out.push([r.cls,r.total,r.total-r.absent.length,r.absent.length,r.excused.length,r.late.length,
       pc(r.absent.length,r.total),
-      r.absent.length?r.absent.map(function(st){return fN(st);}).join('; '):'Full attendance']);
+      r.absent.length?r.absent.map(function(st){return fN(st)+(isExcusedOn(st.id,date)?' (excused)':'');}).join('; '):'Full attendance',
+      r.excused.length?r.excused.map(function(st){return fN(st);}).join('; '):'']);
     if(i===rows.length-1&&multi[g])out.push(gRow(multi[g]));
     prev=g;
   });
-  const tot=rows.reduce(function(a,r){a.s+=r.total;a.a+=r.absent.length;a.l+=r.late.length;return a;},{s:0,a:0,l:0});
-  out.push(['TOTAL',tot.s,tot.s-tot.a,tot.a,tot.l,(tot.s?Math.round(tot.a/tot.s*1000)/10:0)+'%','']);
-  expCSV(['Class','Total Students','Present','Absent','Late','Absent %','Absent Students'],out,'absence_summary_'+date);
+  const tot=rows.reduce(function(a,r){a.s+=r.total;a.a+=r.absent.length;a.l+=r.late.length;a.e+=r.excused.length;return a;},{s:0,a:0,l:0,e:0});
+  out.push(['TOTAL',tot.s,tot.s-tot.a,tot.a,tot.e,tot.l,(tot.s?Math.round(tot.a/tot.s*1000)/10:0)+'%','','']);
+  expCSV(['Class','Total Students','Present','Absent','Excused','Late','Absent %','Absent Students','Excused Students'],out,'absence_summary_'+date);
 }
 
 // ── Mark several students at once ───────────────────────────
