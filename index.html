@@ -1663,6 +1663,30 @@ const APP_FEATURES=[
   {g:'Operations',items:[{id:'duty_roster',l:'Duty Roster'},{id:'substitutions',l:'Substitutions'},{id:'my_duties',l:'My Duties'},{id:'my_todos',l:'To Do List'},{id:'announcements',l:'Announcements'},{id:'my_achievements',l:'My Achievements'}]},
   {g:'System',items:[{id:'sessions',l:'Sessions'},{id:'parent_qr',l:'Parent QR'},{id:'academic_calendar',l:'Academic Calendar'},{id:'settings',l:'Settings'},{id:'infraction_forms',l:'Infraction Forms'},{id:'visit_forms',l:'Visit Forms'},{id:'export_data',l:'Export Data'},{id:'my_profile',l:'My Profile'}]}
 ];
+// ── What a permission actually allows on the page ─────────
+// A page used to decide what somebody may do from their role alone, so a
+// feature granted on the Permissions screen appeared in the menu but every
+// button on it stayed hidden. These two read the permission the superadmin
+// set, and fall back to the roles the feature normally belongs to. An
+// explicit permission wins both ways: granted 'full' opens the buttons,
+// granted 'view' closes them even for a role that normally has them.
+function permSet(feature){
+  if(!CU)return null;
+  if(CU.role==='superadmin')return 'full';
+  const p=(DB.get('user_permissions')||{})[CU.id];
+  return (p&&feature!=='__at'&&p[feature]!==undefined)?p[feature]:null;
+}
+function mayEdit(feature,roles){
+  const ex=permSet(feature);
+  if(ex)return ex==='full';
+  return !!(CU&&roles&&roles.indexOf(CU.role)>=0);
+}
+function mayView(feature,roles){
+  const ex=permSet(feature);
+  if(ex)return ex!=='disabled';
+  return !!(CU&&roles&&roles.indexOf(CU.role)>=0);
+}
+
 function canDo(tabId){
   if(!CU)return 'full';
   if(CU.role==='superadmin')return 'full';
@@ -2205,7 +2229,7 @@ function expAllAccountCards(){
   toast('All '+acc.length+' account cards generated','success');
 }
 function rStudents(){
-  const students=vpFilter(DB.get('students')||[]);const canEdit=['superadmin','principal'].includes(CU.role);
+  const students=vpFilter(DB.get('students')||[]);const canEdit=mayEdit('students',['superadmin','principal']);
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;gap:8px;flex:1"><input id="stq" placeholder="🔍 '+T('search')+'…" oninput="fltStu()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="stgf" onchange="fltStuGrade()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>String(s.grade)))].sort(function(a,b){return (parseInt(a)||0)-(parseInt(b)||0)||a.localeCompare(b);}).map(g=>'<option value="'+esc(g)+'">Gr '+esc(g)+'</option>').join('')+'</select>'
   +'<select id="stsf" onchange="fltStu()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)">'+stuSectionOpts(students,'','')+'</select></div>'
   +'<div style="display:flex;gap:6px;margin-left:8px"><button class="btn bs bsm" onclick="clListM()" title="Print the students of each class, one page per class">\u{1f4c4} Class Lists (PDF)</button></div>'
@@ -2275,7 +2299,7 @@ function stuMatches(s,q){
 }
 function buildStuTbl(students){
   if(!students.length)return'<div class="emp"><div class="ei">👨‍🎓</div><p>'+T('no_records')+'</p></div>';
-  const cE=['superadmin','principal'].includes(CU.role),cV=['superadmin','principal','vice_principal','student_advisor','academic_supervisor','quality_supervisor'].includes(CU.role),cR=['superadmin','principal','vice_principal','student_advisor'].includes(CU.role);
+  const cE=mayEdit('students',['superadmin','principal']),cV=mayView('students',['superadmin','principal','vice_principal','student_advisor','academic_supervisor','quality_supervisor']),cR=mayView('referrals',['superadmin','principal','vice_principal','student_advisor']);
   return'<div class="tw"><table><thead><tr><th>SN</th><th>CS</th><th>'+T('first_name')+'</th><th>'+T('last_name')+'</th><th>'+T('grade')+'</th><th>'+T('nationality')+'</th><th>'+T('father_phone')+'</th><th>'+T('mother_phone')+'</th><th>Advisor</th><th>Actions</th></tr></thead><tbody>'+students.map(s=>{const adv=gA(s.advisorId);return'<tr><td class="mono" style="color:var(--tx3)">'+(s.sn||'—')+'</td><td class="mono" style="color:var(--tx3)">'+(s.csn||'—')+'</td><td><strong>'+s.firstName+'</strong></td><td>'+s.lastName+'</td><td><span class="badge bbl">Gr '+grSec(s.grade,s.section)+'</span></td><td style="font-size:11px">'+(s.nationality||'—')+'</td><td class="mono" style="font-size:11px">'+(s.fatherPhone||'—')+'</td><td class="mono" style="font-size:11px">'+(s.motherPhone||'—')+'</td><td style="font-size:11px;color:var(--tx3)">'+(adv?adv.firstName+' '+adv.lastName:'—')+'</td><td style="display:flex;gap:4px">'+(cV?'<button class="btn bg2 bxs" onclick="vStuRec(\''+s.id+'\')">📋</button>'
       +'<button class="btn bg2 bxs" title="Message the parents on WhatsApp" style="color:#25D366" onclick="stuMsgM(\''+s.id+'\')">📲</button>':'')+(cE?'<button class="btn bg2 bxs" onclick="editStuM(\''+s.id+'\')">'+T('edit')+'</button>':'')+(cR?'<button class="btn bg2 bxs" onclick="qRef(\''+s.id+'\')">Refer</button>':'')+'</td></tr>';}).join('')+'</tbody></table></div>';
 }
@@ -2819,7 +2843,7 @@ function saveTR(){const t=document.getElementById('trt').value.trim(),d=document
 function handleTR(id){const reqs=DB.get('task_requests')||[];const r=reqs.find(x=>x.id===id);if(!r)return;openM('<div class="mh"><h3>Respond to Request</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div style="background:var(--sf2);border-radius:var(--rs);padding:11px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:4px">'+r.title+'</div><div style="font-size:12px;color:var(--tx2)">'+r.description+'</div><div style="font-size:11px;color:var(--tx3);margin-top:5px">From: '+r.requestedByName+' · Needed: '+r.neededBy+'</div></div><div class="fg"><label>Response</label><select id="trrs"><option value="Accepted">Accept & Assign</option><option value="Rejected">Reject</option></select></div><div class="fg"><label>Assign To (if accepting)</label><select id="tras"><option value="">— Select —</option>'+sOpts()+'</select></div><div class="fg"><label>'+T('note')+'</label><textarea id="trnt" placeholder="Note to requester…"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveTRResp(\''+id+'\')">Submit →</button></div>');}
 function saveTRResp(id){const reqs=DB.get('task_requests')||[];const i=reqs.findIndex(r=>r.id===id);if(i<0)return;const resp=document.getElementById('trrs').value,aId=document.getElementById('tras').value;reqs[i].status=resp;reqs[i].responseNote=document.getElementById('trnt').value;if(resp==='Accepted'&&aId){const u=gA(aId);reqs[i].assignedToId=aId;reqs[i].assignedToName=u.firstName+' '+u.lastName;reqs[i].status='Assigned';const tasks=DB.get('tasks')||[];tasks.push({id:nid('t'),title:reqs[i].title,desc:reqs[i].description+' [Request from '+reqs[i].requestedByName+']',assignedTo:aId,assignedName:u.firstName+' '+u.lastName,assignedBy:CU.id,assignedByName:CU.firstName+' '+CU.lastName,status:'Pending',priority:reqs[i].priority,progress:0,dueDate:reqs[i].neededBy,taskType:'request',remarks:[],created:new Date().toISOString().split('T')[0],updated:new Date().toISOString().split('T')[0]});DB.set('tasks',tasks);}DB.set('task_requests',reqs);closeM();toast('Response sent','success');rTaskReqs();}
 function rInfractions(){
-  const inf=vpFilter(DB.get('infractions')||[]);const canC=['superadmin','principal','vice_principal'].includes(CU.role);const canViewAll=canC||CU.role==='quality_incharge';const myInf=canViewAll?inf:inf.filter(i=>i.createdBy===CU.id);
+  const inf=vpFilter(DB.get('infractions')||[]);const canC=mayEdit('infractions',['superadmin','principal','vice_principal']);const canViewAll=canC||CU.role==='quality_incharge';const myInf=canViewAll?inf:inf.filter(i=>i.createdBy===CU.id);
   // Stats by degree
   const byDeg={};INF_DEGREES.forEach(d=>{byDeg[d]=myInf.filter(i=>i.degree===d).length;});
   const totalPts=myInf.reduce((s,i)=>s+(parseInt(i.pointsDeducted)||0),0);
@@ -3246,7 +3270,7 @@ function rReferrals(){
   // whatever class it is about.
   const mine=function(r){return r&&(r.referredTo===CU.id||r.referredBy===CU.id);};
   const refs=vpFilter(allRefs).concat(allRefs.filter(function(r){return mine(r)&&!vpFilter(allRefs).includes(r);}));
-  const myR=isP?refs:refs.filter(mine);const canC=['superadmin','principal','vice_principal','academic_supervisor'].includes(CU.role);
+  const myR=isP?refs:refs.filter(mine);const canC=mayEdit('referrals',['superadmin','principal','vice_principal','academic_supervisor']);
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="flex:1">'+sw('pickRefSV','refsvi','refsvd')+'</div>'+(canC?'<button class="btn bp bsm" onclick="addRefM()" style="margin-left:8px">+ Refer</button>':'')+'</div></div><div class="card"><div class="tw"><table><thead><tr><th>Student</th><th>'+T('grade')+'</th><th>'+T('reason')+'</th><th>From</th><th>To</th><th>'+T('status')+'</th><th>'+T('date')+'</th><th>Actions</th></tr></thead><tbody>'+myR.map(r=>'<tr><td><strong>'+r.studentName+'</strong></td><td>Gr '+grSec(r.grade,r.section)+'</td><td><span class="badge bpu">'+r.reason+'</span></td><td style="font-size:11px">'+r.referredByName+'</td><td style="font-size:11px">'+r.referredToName+'</td><td><span class="badge '+(r.status==='Active'?'bbl':r.status==='Resolved'?'bgn':'bgr')+'">'+r.status+'</span></td><td style="font-size:10px;color:var(--tx3)">'+r.created+'</td><td><button class="btn bg2 bxs" onclick="vRef(\''+r.id+'\')">Manage</button></td></tr>').join('')+'</tbody></table></div>'+(myR.length===0?'<div class="emp"><div class="ei">🔀</div><p>'+T('no_records')+'</p></div>':'')+'</div>';
   window.pickRefSV=function(sid){const s=gS(sid);document.getElementById('refsvi').value=fN(s);document.getElementById('refsvd').style.display='none';vStuRec(sid);};
 }
@@ -3266,7 +3290,7 @@ function rBehaviour(){const students=DB.get('students')||[];const mine=CU.role==
 // ═══════════════════════════════════════════════════════════
 
 function rTeachers(){
-  const isSA=CU.role==='superadmin';
+  const isSA=mayEdit('teachers',['superadmin']);
   const teachers=DB.get('teachers')||[];
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>👨‍🏫 '+T('teachers')+' ('+teachers.length+')</h3>'+(isSA?'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="bulkTchM()" title="Super Admin: bulk delete or replace all teachers">⚙️ Bulk</button><button class="btn bg2 bsm" onclick="impTchM()">📥 Import CSV</button><button class="btn bp bsm" onclick="addTchM()">+ Add Teacher</button></div>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Master list of teachers. Used for autocomplete when adding class visits and activity reports.</div></div><div class="card"><div style="display:flex;gap:8px;margin-bottom:12px"><input id="tchq" placeholder="🔍 Search by name, subject, or department…" oninput="fltTch()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"></div><div id="tchw">'+buildTchTbl(teachers,isSA)+'</div></div>';
   window.fltTch=function(){const q=document.getElementById('tchq').value.toLowerCase();const list=q?(DB.get('teachers')||[]).filter(t=>(t.name+' '+(t.subject||'')+' '+(t.department||'')+' '+(t.employeeId||'')).toLowerCase().includes(q)):DB.get('teachers')||[];document.getElementById('tchw').innerHTML=buildTchTbl(list,isSA);};
@@ -5820,8 +5844,8 @@ function expAttHist(){
 // ═══════════════════════════════════════════════════════════
 
 function rStudentHealth(){
-  const canEdit=['student_advisor','superadmin'].includes(CU.role);
-  const canView=canEdit||['principal','vice_principal','academic_supervisor','admin_assistant','activity_incharge','quality_supervisor'].includes(CU.role);
+  const canEdit=mayEdit('student_health',['student_advisor','superadmin']);
+  const canView=canEdit||mayView('student_health',['principal','vice_principal','academic_supervisor','admin_assistant','activity_incharge','quality_supervisor']);
   if(!canView){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
   const students=vpFilter(DB.get('students')||[]);
   const health=DB.get('student_health')||[];
@@ -6129,8 +6153,8 @@ function remedialTypeOptions(){
 const WEEK_DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
 function rRemedial(){
-  const canEdit=['student_advisor','superadmin'].includes(CU.role);
-  const canView=canEdit||['principal','vice_principal','academic_supervisor','activity_incharge'].includes(CU.role);
+  const canEdit=mayEdit('remedial_plans',['student_advisor','superadmin']);
+  const canView=canEdit||mayView('remedial_plans',['principal','vice_principal','academic_supervisor','activity_incharge']);
   if(!canView){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
   const plans=DB.get('remedial_plans')||[];
   const totalStudents=plans.reduce((s,p)=>s+(p.studentIds?p.studentIds.length:0),0);
