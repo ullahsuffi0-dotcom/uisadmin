@@ -5453,6 +5453,144 @@ function lateScanCard(date,canM){
    +'<div style="font-size:11px;color:var(--tx3);margin-top:8px">These are on the late list below with their times. Changing a name here is done on the list — the gate never alters what the office has marked.</div></div>';
 }
 
+// ── Late comers over a stretch of days ────────────────────
+// The register is what counts: every student on a day's late list is in the
+// report, whether an office marked them or the gate scanned them. The scan
+// adds the time and the reason where there is one.
+function lateRangeRows(from,to,grade){
+  const students=vpFilter(DB.get('students')||[]);
+  const byId={};students.forEach(function(s){byId[s.id]=s;});
+  const scans={};
+  getLateArrivals().forEach(function(r){scans[r.date+'|'+r.studentId]=r;});
+  const rows=[];
+  (DB.get('attendance')||[]).forEach(function(a){
+    if(!a||!a.date||a.date<from||a.date>to)return;
+    (a.lateIds||[]).forEach(function(sid){
+      const s=byId[sid];
+      if(!s)return;
+      if(grade&&String(s.grade)!==String(grade))return;
+      const sc=scans[a.date+'|'+sid];
+      rows.push({date:a.date,day:getDayOfWeek(a.date)||'',
+        time:((a.lateTimes||{})[sid])||(sc?sc.time:'')||'',
+        name:fN(s),cls:grSec(s.grade,s.section),grade:s.grade,
+        reason:sc?(sc.reason||''):'',
+        source:sc?'Gate scan':'Office'});
+    });
+  });
+  return rows.sort(function(x,y){
+    return x.date.localeCompare(y.date)||String(x.time).localeCompare(String(y.time))||x.name.localeCompare(y.name);
+  });
+}
+function lateRangeM(){
+  const today=ymd(new Date());
+  const d=new Date();d.setDate(d.getDate()-29);
+  const from=window._lateFrom||ymd(d),to=window._lateTo||today;
+  const grades=[...new Set((vpFilter(DB.get('students')||[])).map(function(s){return String(s.grade);}))]
+    .sort(function(a,b){return (parseInt(a,10)||99)-(parseInt(b,10)||99);});
+  openM('<div class="mh"><h3>\u{1f4c4} Late Comers Record</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Every late arrival between the two dates, day by day, with a summary of who was late most often.</div>'
+  +'<div class="cg g2">'
+  +'<div class="fg"><label>From</label><input type="date" id="lr-from" value="'+esc(from)+'" max="'+esc(today)+'"></div>'
+  +'<div class="fg"><label>To</label><input type="date" id="lr-to" value="'+esc(to)+'" max="'+esc(today)+'"></div>'
+  +'</div>'
+  +'<div class="fg"><label>Grade</label><select id="lr-grade"><option value="">All grades</option>'
+  +grades.map(function(g){return '<option value="'+esc(g)+'">Grade '+esc(g)+'</option>';}).join('')+'</select></div>'
+  +'<div id="lr-count" style="font-size:11px;color:var(--tx3)"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bs" onclick="lateRangeCSV()">\u{1f4ca} Excel</button>'
+  +'<button class="btn bp" onclick="lateRangePDF()">\u{1f4c4} Create PDF</button></div>',true);
+}
+function lateRangeArgs(){
+  const from=(document.getElementById('lr-from')||{}).value||'';
+  const to=(document.getElementById('lr-to')||{}).value||'';
+  const grade=(document.getElementById('lr-grade')||{}).value||'';
+  if(!from||!to){toast('Choose both dates','danger');return null;}
+  if(from>to){toast('The first date must come before the second','danger');return null;}
+  window._lateFrom=from;window._lateTo=to;
+  const rows=lateRangeRows(from,to,grade);
+  if(!rows.length){toast('No late arrivals between those dates','danger');return null;}
+  return {from:from,to:to,grade:grade,rows:rows};
+}
+function lateRangeCSV(){
+  const a=lateRangeArgs();
+  if(!a)return;
+  expCSV(['Date','Day','Time','Student','Class','Reason','Recorded'],
+    a.rows.map(function(r){return [r.date,r.day,r.time,r.name,r.cls,r.reason,r.source];}),
+    'late_comers_'+a.from+'_to_'+a.to);
+  logA('Exported the late comers record '+a.from+' → '+a.to);
+}
+function lateRangePDF(){
+  const a=lateRangeArgs();
+  if(!a)return;
+  const s=DB.get('settings')||{};
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to open the PDF','danger');return;}
+  // who was late most often, and how many were late each day
+  const byStu={},byDay={};
+  a.rows.forEach(function(r){
+    const k=r.name+'|'+r.cls;
+    byStu[k]=(byStu[k]||0)+1;
+    byDay[r.date]=(byDay[r.date]||0)+1;
+  });
+  const repeat=Object.keys(byStu).map(function(k){return {name:k.split('|')[0],cls:k.split('|')[1],n:byStu[k]};})
+    .sort(function(x,y){return y.n-x.n||x.name.localeCompare(y.name);}).filter(function(x){return x.n>1;});
+  const days=Object.keys(byDay).sort();
+  const logo=(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:'))
+    ?'<img class="lg" src="'+s.logo+'">':'<div class="lg em">'+esc(s.logo||'\u{1f3eb}')+'</div>';
+  const head='<div class="hd">'+logo+'<div><div class="sn">'+esc(s.schoolName||'School')+'</div>'
+    +(s.schoolNameAr?'<div class="ar">'+esc(s.schoolNameAr)+'</div>':'')+'</div></div>'
+    +'<div class="ttl">Late Comers Record</div>'
+    +'<div class="sub">'+esc(a.from)+' to '+esc(a.to)+(a.grade?' · Grade '+esc(a.grade):' · All grades')
+    +' · '+a.rows.length+' late arrival(s) over '+days.length+' day(s)</div>';
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Late Comers '+esc(a.from)+' to '+esc(a.to)+'</title><style>'
+   +'@page{size:A4 portrait;margin:10mm}'
+   +'*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#1a2b3c;font-size:9.5pt}'
+   +'.hd{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:2mm}'
+   +'.lg{width:13mm;height:13mm;object-fit:contain}.lg.em{font-size:10mm;line-height:13mm;text-align:center}'
+   +'.sn{font-size:14pt;font-weight:bold;color:#1a5f7a;text-align:center}.ar{font-size:9.5pt;color:#555;text-align:center;direction:rtl}'
+   +'.ttl{background:#1a5f7a;color:#fff;text-align:center;font-weight:bold;font-size:11pt;padding:1.8mm;border-radius:1mm}'
+   +'.sub{font-size:9pt;color:#444;text-align:center;margin:1.5mm 0 3mm}'
+   +'h2{font-size:10.5pt;color:#1a5f7a;margin:6mm 0 2mm;page-break-after:avoid}'
+   +'table{width:100%;border-collapse:collapse;table-layout:fixed}'
+   +'th,td{border:.25mm solid #7f8c99;padding:1mm 1.5mm;overflow:hidden;text-overflow:ellipsis}'
+   +'th{background:#d9eaf7;font-size:.92em;text-align:center}'
+   +'td.c{text-align:center}td.dt{white-space:nowrap}'
+   +'tbody tr:nth-child(even) td{background:#f5f8fb}'
+   +'thead{display:table-header-group}tr{page-break-inside:avoid}'
+   +'.ft{font-size:8pt;color:#444;margin-top:4mm;display:flex;justify-content:space-between}'
+   +'.bar{padding:8px;background:#eef4f8;text-align:center}.bar button{padding:7px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px}'
+   +'@media print{.bar{display:none}}'
+   +'@media screen{body{background:#888}.sheet{background:#fff;width:190mm;margin:8px auto;padding:6mm;box-shadow:0 1px 6px rgba(0,0,0,.3)}}'
+   +'@media print{.sheet{padding:0}}'
+   +'</style></head><body>'
+   +'<div class="bar"><button onclick="window.print()">\u{1f5a8}️ Print / Save as PDF</button>'
+   +' <span style="font-size:12px;color:#333;margin-left:8px">'+a.rows.length+' arrival(s) · A4 portrait</span></div>'
+   +'<div class="sheet">'+head
+   +'<table><colgroup><col style="width:23mm"><col style="width:23mm"><col style="width:14mm"><col><col style="width:16mm"><col style="width:34mm"><col style="width:20mm"></colgroup>'
+   +'<thead><tr><th>Date</th><th>Day</th><th>Time</th><th>Student</th><th>Class</th><th>Reason</th><th>Recorded</th></tr></thead><tbody>'
+   +a.rows.map(function(r){
+     return '<tr><td class="c dt">'+esc(r.date)+'</td><td class="c">'+esc(r.day)+'</td><td class="c">'+esc(r.time||'—')+'</td>'
+      +'<td>'+esc(r.name)+'</td><td class="c">'+esc(r.cls)+'</td><td>'+esc(r.reason||'')+'</td><td class="c">'+esc(r.source)+'</td></tr>';
+   }).join('')
+   +'</tbody></table>'
+   +(repeat.length?'<h2>Late more than once</h2>'
+     +'<table><colgroup><col><col style="width:24mm"><col style="width:28mm"></colgroup>'
+     +'<thead><tr><th>Student</th><th>Class</th><th>Times late</th></tr></thead><tbody>'
+     +repeat.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="c">'+esc(x.cls)+'</td><td class="c">'+x.n+'</td></tr>';}).join('')
+     +'</tbody></table>':'')
+   +'<h2>Day by day</h2>'
+   +'<table><colgroup><col style="width:28mm"><col><col style="width:28mm"></colgroup>'
+   +'<thead><tr><th>Date</th><th>Day</th><th>Late</th></tr></thead><tbody>'
+   +days.map(function(d){return '<tr><td class="c dt">'+esc(d)+'</td><td class="c">'+esc(getDayOfWeek(d)||'')+'</td><td class="c">'+byDay[d]+'</td></tr>';}).join('')
+   +'</tbody></table>'
+   +'<div class="ft"><div>Printed '+esc(ymd(new Date()))+'</div><div>'+esc(s.schoolName||'')+'</div></div>'
+   +'</div></body></html>');
+  w.document.close();
+  logA('Printed the late comers record '+a.from+' → '+a.to+' ('+a.rows.length+' arrival(s))');
+}
+
 function rLateComers(){
   clearExcusedCache();
   const canM=['admin_assistant','superadmin','principal','vice_principal'].includes(CU.role);
@@ -5483,6 +5621,7 @@ function rLateComers(){
    '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>⏰ '+T('late_comers')+'</h3>'
    +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label style="font-size:11px;color:var(--tx3)">Date:</label>'
    +'<input type="date" id="late-date" value="'+sel+'" max="'+today+'" onchange="window._lateDate=this.value;rLateComers()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'
+   +'<button class="btn bs bsm" onclick="lateRangeM()">📄 PDF Record</button>'
    +'<button class="btn bg2 bsm" onclick="lateQrM()">📱 Late Comers QR</button>'
    +(canM?'<button class="btn bg2 bsm" onclick="lateTplM()">⚙️ Message Template</button>':'')+'</div></div>'
    +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canM?'Mark students who arrived late, then notify their parents by WhatsApp.':'View late arrivals.')+'</div></div>'
