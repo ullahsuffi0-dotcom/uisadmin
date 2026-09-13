@@ -5253,9 +5253,8 @@ function renderLatePortal(){
   const ap=document.getElementById('app');if(ap)ap.classList.add('hidden');
   const old=document.getElementById('ltp');if(old)old.remove();
   const grades=lateGrades();
-  const staff=(typeof bdPortalStaff==='function')?bdPortalStaff():[];
   window.__portalClassSig=portalClasses().join(',');
-  const st=window._ltp||(window._ltp={grade:'',section:'',sid:'',by:'',note:''});
+  const st=window._ltp||(window._ltp={grade:'',section:'',sid:'',note:''});
   if(!st.date)st.date=ymd(new Date());
   if(!st.time)st.time=lateNowTime();
   const wrap=document.createElement('div');
@@ -5291,13 +5290,7 @@ function renderLatePortal(){
     '<div id="ltp-stu"></div>',true)
   +pdpQ('5. Time of arrival','The time now is filled in — change it if the student arrived earlier.',
     '<input type="time" id="ltp-t" value="'+esc(st.time)+'" onchange="window._ltp.time=this.value">',true)
-  +pdpQ('6. Your name','So the arrival is recorded in your name.',
-    (staff.length
-      ?'<select id="ltp-by" onchange="ltpTouch()"><option value="">— Choose your name —</option>'
-        +staff.map(function(x){return '<option value="'+esc(x.name)+'"'+(x.name===st.by?' selected':'')+'>'+esc(x.name)+(x.detail?' — '+esc(x.detail):'')+'</option>';}).join('')
-        +'</select>'
-      :'<input id="ltp-by" placeholder="Type your name" value="'+esc(st.by||'')+'" oninput="ltpTouch()">'),true)
-  +pdpQ('7. Reason given','',
+  +pdpQ('6. Reason given','',
     '<textarea id="ltp-n" placeholder="Optional — traffic, transport, medical…" style="min-height:60px">'+esc(st.note||'')+'</textarea>',false)
   +'</div>'
   +'<button class="btn bp" id="ltp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:4px" onclick="ltpSubmit()">Record arrival →</button>'
@@ -5357,30 +5350,24 @@ function ltpStudents(){
    +'</select>'
    +'<div style="font-size:11px;color:var(--tx3);margin-top:6px">'+list.length+' student(s) in '+esc(st.grade)+'-'+esc(st.section)+'</div>';
 }
-function ltpTouch(){
-  const el=document.getElementById('ltp-by');
-  if(el)window._ltp.by=el.value||'';
-}
 function ltpSubmit(){
   const st=window._ltp;
   const date=((document.getElementById('ltp-d')||{}).value||'')||ymd(new Date());
   const sid=((document.getElementById('ltp-s')||{}).value||'').trim();
   const time=((document.getElementById('ltp-t')||{}).value||'').trim()||lateNowTime();
-  const by=((document.getElementById('ltp-by')||{}).value||'').trim();
   const note=((document.getElementById('ltp-n')||{}).value||'').trim();
   if(!date||date>ymd(new Date())){toast('Choose a valid date','danger');return;}
   if(!st.grade){toast('Choose the grade','danger');return;}
   if(!st.section){toast('Choose the section','danger');return;}
   if(!sid){toast('Choose the student','danger');return;}
-  if(!by){toast('Choose your name','danger');return;}
-  st.date=date;st.sid=sid;st.time=time;st.by=by;st.note=note;
+  st.date=date;st.sid=sid;st.time=time;st.note=note;
   const stu=(DB.get('students')||[]).find(function(x){return x&&x.id===sid;});
   const btn=document.getElementById('ltp-go');
   if(btn){btn.disabled=true;btn.textContent='Sending…';}
   const rec={id:lateArrivalId(date,sid),date:date,studentId:sid,
     studentName:stu?fN(stu):'',className:grSec(st.grade,st.section),
     grade:st.grade,section:st.section,time:time,reason:note,
-    recordedBy:by,source:'qr',applied:false,created:new Date().toISOString()};
+    recordedBy:'',source:'qr',applied:false,created:new Date().toISOString()};
   appendLateArrival(rec).catch(function(){return null;}).then(function(replaced){ltpDone(rec,replaced);});
 }
 function ltpDone(rec,replaced){
@@ -5401,7 +5388,7 @@ function ltpDone(rec,replaced){
 }
 function ltpAgain(){
   const p=window._ltp||{};
-  window._ltp={grade:p.grade||'',section:p.section||'',sid:'',by:p.by||'',note:'',date:p.date||ymd(new Date()),time:lateNowTime()};
+  window._ltp={grade:p.grade||'',section:p.section||'',sid:'',note:'',date:p.date||ymd(new Date()),time:lateNowTime()};
   renderLatePortal();
 }
 
@@ -5455,12 +5442,12 @@ function lateScanCard(date,canM){
   if(!scans.length)return '';
   return '<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>\u{1f4f1} Scanned at the gate</h3>'
    +'<span style="font-size:11px;color:var(--tx3)">'+scans.length+' arrival(s) on '+esc(date)+'</span></div>'
-   +'<div class="tw"><table style="font-size:11px"><thead><tr><th>Time</th><th>Student</th><th>Class</th><th>Reason</th><th>Recorded by</th></tr></thead><tbody>'
+   +'<div class="tw"><table style="font-size:11px"><thead><tr><th>Time</th><th>Student</th><th>Class</th><th>Reason</th><th>Source</th></tr></thead><tbody>'
    +scans.map(function(r){
      const stu=(DB.get('students')||[]).find(function(x){return x&&x.id===r.studentId;});
      return '<tr><td class="mono">'+esc(r.time||'')+'</td><td><strong>'+esc(stu?fN(stu):(r.studentName||'—'))+'</strong></td>'
       +'<td>'+esc(r.className||'')+'</td><td style="color:var(--tx2)">'+esc(r.reason||'')+'</td>'
-      +'<td style="color:var(--tx2)">'+esc(r.recordedBy||'')+'</td></tr>';
+      +'<td style="color:var(--tx2)">'+esc(r.recordedBy||'Gate scan')+'</td></tr>';
    }).join('')
    +'</tbody></table></div>'
    +'<div style="font-size:11px;color:var(--tx3);margin-top:8px">These are on the late list below with their times. Changing a name here is done on the list — the gate never alters what the office has marked.</div></div>';
