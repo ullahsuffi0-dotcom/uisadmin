@@ -9455,6 +9455,7 @@ function qExp(type,fmt){document.getElementById('exptype').value=type;doExp(fmt)
     else if(p.get('pickup')==='1'){window.__earlyPortal='pickup';}
     else if(p.get('excuse')==='1'){window.__earlyPortal='excuse';}
     else if(p.get('pd')==='1'){window.__earlyPortal='pd';}
+    else if(p.get('bd')==='1'){window.__earlyPortal='bd';}
     // Portal links carry the school so they work on a device that has never
     // signed in — otherwise there is no school context and no data.
     const sch=p.get('sch');
@@ -9483,6 +9484,8 @@ window.__doSeedAndStart=async function(){
     checkPickupMode();
   }else if(window.__earlyPortal==='pd'&&typeof checkPdMode==='function'){
     checkPdMode();
+  }else if(window.__earlyPortal==='bd'&&typeof checkBdMode==='function'){
+    checkBdMode();
   }else if(window.__earlyPortal==='excuse'&&typeof checkExcuseMode==='function'){
     checkExcuseMode();
   }else if(typeof checkExcuseMode==='function'&&checkExcuseMode()){
@@ -9518,6 +9521,12 @@ window.__doSeedAndStart=async function(){
         }
       }
     }catch(e){console.warn('[Session] Restore failed:',e);}
+    // Scanned the break QR on a phone that is not signed in: open the rating
+    // form rather than the login screen (the first posters linked to the tab)
+    if(!CU&&window.__goTab==='break_discipline'&&typeof checkBdMode==='function'){
+      window.__goTab=null;window.__goClass=null;
+      checkBdMode();
+    }
   }
   // After login screen renders, refresh session indicator
   if(typeof renderSessionIndicator==='function')setTimeout(renderSessionIndicator,500);
@@ -15836,7 +15845,8 @@ function bdViewM(id){
 // One code for the whole school. Staff scan it at any classroom door and
 // pick the class; a link that names a class still opens with it chosen.
 function bdClassUrl(cls){
-  let u=window.location.origin+window.location.pathname+'?go=break_discipline';
+  // ?bd=1 opens the rating form straight away, signed in or not
+  let u=window.location.origin+window.location.pathname+'?bd=1';
   if(CURRENT_SCHOOL_ID)u+='&sch='+encodeURIComponent(CURRENT_SCHOOL_ID);
   if(cls)u+='&cls='+encodeURIComponent(cls);
   return u;
@@ -15848,7 +15858,7 @@ function bdQrM(){
   window._bdQrUrl=url;
   openM('<div class="mh"><h3>\u{1f4f1} Break Leaving QR Code</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">One code for every class. As a class leaves for break, an admin assistant or vice principal scans it, taps the class, and the break and teacher fill in by themselves — then one tap to rate. Staff sign in as usual; nobody else can rate.</div>'
+  +'<div class="al ai">One code for every class. As a class leaves for break, an admin assistant or vice principal scans it and the rating form opens straight away — no signing in — with the break and the teacher filled in from the timetable. Posters printed earlier still work.</div>'
   +'<div style="text-align:center;padding:8px"><img src="'+qr+'" alt="" style="width:220px;height:220px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
   +'<div style="background:var(--sf2);padding:8px;border-radius:var(--rs);font-size:10px;color:var(--ac);word-break:break-all;border:1px solid var(--bd)">'+esc(url)+'</div>'
   +'</div>'
@@ -15881,9 +15891,9 @@ function bdPrintPoster(){
    +'</style></head><body><div class="poster">'
    +'<div class="school">'+esc(s.schoolName||'School')+'</div>'
    +'<div class="title">Break Class Leaving Discipline</div>'
-   +'<div class="sub">Staff: scan as a class leaves for break</div>'
+   +'<div class="sub">Staff: scan as a class leaves for break — no sign-in needed</div>'
    +'<div class="qr"><img src="'+qr+'" alt=""></div>'
-   +'<div><div class="steps">1. Scan and sign in<br>2. Tap the class<br>3. Rate how the class left</div></div>'
+   +'<div><div class="steps">1. Scan the code<br>2. Choose the class and the break<br>3. Give the marks out of 10</div></div>'
    +'<table><tr><th>Grades</th><th>Break</th><th>Salah Break</th></tr>'
    +'<tr><td>1 – 3</td><td>9:15 – 9:30</td><td>—</td></tr>'
    +'<tr><td>4 – 12</td><td>10:00 – 10:15</td><td>12:30 – 12:45</td></tr></table>'
@@ -17803,6 +17813,202 @@ function pdExport(){
 // app: who you are, which class, which period, how it went.
 // ═══════════════════════════════════════════════════════════
 function pdPortalUrl(){return portalUrl('pd');}
+
+// ═══════════════════════════════════════════════════════════
+// BREAK LEAVING PORTAL — the QR by the classroom door
+// Scanning opens this plain form, like the class discipline one, so an admin
+// assistant or vice principal can rate a class in seconds without signing in:
+// date, class, which break, who is rating, the marks and a note.
+// ═══════════════════════════════════════════════════════════
+function bdPortalUrl(){return portalUrl('bd');}
+function checkBdMode(){
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('bd')==='1'){renderBdPortal();return true;}
+  // The first posters linked straight to the tab; they still open the form
+  if(params.get('go')==='break_discipline'&&!CU){renderBdPortal();return true;}
+  return false;
+}
+// Staff who rate the breaks, the admin roles first
+function bdPortalStaff(){
+  const out=[],seen={};
+  const add=function(n,detail){
+    const k=normDutyName(n);
+    if(!n||!k||seen[k])return;
+    seen[k]=1;out.push({name:n,detail:detail||''});
+  };
+  (DB.get('accounts')||[]).forEach(function(a){
+    if(a.active===false)return;
+    if(['admin_assistant','vice_principal','principal','superadmin'].indexOf(a.role)<0)return;
+    add(((a.firstName||'')+' '+(a.lastName||'')).trim(),(typeof rL==='function'?rL(a.role):a.role)||'');
+  });
+  getAssignableStaff().forEach(function(s){add(s.name,s.detail);});
+  return out;
+}
+function renderBdPortal(){
+  const s=DB.get('settings')||{};
+  const lp=document.getElementById('lp');if(lp)lp.classList.add('hidden');
+  const ap=document.getElementById('app');if(ap)ap.classList.add('hidden');
+  const old=document.getElementById('bdp');if(old)old.remove();
+  const params=new URLSearchParams(window.location.search);
+  const classes=getAllClasses();
+  const staff=bdPortalStaff();
+  const st=window._bdp||(window._bdp={cls:'',slot:'',marks:null,rater:'',note:''});
+  // A class named in the link is only used if it is on the roll
+  if(!st.cls){const pre=params.get('cls')||'';if(pre&&classes.indexOf(pre)>=0)st.cls=pre;}
+  if(!st.date)st.date=ymd(new Date());
+  if(st.cls&&!st.slot)st.slot=bdSlotNow(st.cls);
+  const q=String.fromCharCode(39);
+  const wrap=document.createElement('div');
+  wrap.id='bdp';
+  wrap.style.cssText='min-height:100vh;background:var(--bg);padding:18px 14px 40px';
+  wrap.innerHTML='<style>#bdp select,#bdp input,#bdp textarea{width:100%;box-sizing:border-box;padding:10px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:14px;font-family:inherit}#bdp .card{border-radius:10px}</style>'
+  +'<div style="max-width:620px;margin:0 auto">'
+  +'<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;border-top:9px solid var(--ac)">'
+  +'<div style="padding:20px">'
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
+  +'<div style="width:46px;height:46px;background:linear-gradient(135deg,var(--ac),var(--pu));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex-shrink:0">'
+  +(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'\u{1f3eb}'))+'</div>'
+  +'<div style="min-width:0"><div style="font-size:13px;color:var(--tx2)">'+esc(s.schoolName||'School')+'</div>'
+  +'<div style="font-size:11px;color:var(--tx3)">'+esc(s.schoolNameAr||'')+'</div></div></div>'
+  +'<h1 style="font-size:23px;font-weight:700;color:var(--tx);margin-bottom:6px">Break Class Leaving Discipline</h1>'
+  +'<p style="font-size:13px;color:var(--tx2);line-height:1.6">Rate how the class left the room for break. It takes a few seconds.</p>'
+  +'<div style="margin-top:10px;font-size:11px;color:var(--dn)">* Required</div>'
+  +'</div></div>'
+  +'<div id="bdp-body">'
+  +pdpQ('1. Date','Today is filled in. Change it only for an earlier day.',
+    '<input type="date" id="bdp-d" value="'+esc(st.date)+'" max="'+esc(ymd(new Date()))+'" onchange="bdpDate()">'
+    +'<div id="bdp-d-day" style="font-size:12px;color:var(--tx3);margin-top:6px">'+esc(pdpDateLabel(st.date))+'</div>',true)
+  +pdpQ('2. Class','',
+    (classes.length
+      ?'<select id="bdp-c" onchange="bdpClass()"><option value="">— Choose the class —</option>'
+        +classes.map(function(c){return '<option value="'+esc(c)+'"'+(c===st.cls?' selected':'')+'>'+esc(c)+'</option>';}).join('')
+        +'</select>'
+      :'<div style="font-size:12px;color:var(--tx3)">Loading the class list…</div>'),true)
+  +pdpQ('3. Which break','',
+    '<div id="bdp-slot" style="display:flex;gap:6px;flex-wrap:wrap"></div>',true)
+  +pdpQ('4. Teacher leading the class out','Filled in from the timetable once the class and break are chosen.',
+    '<input id="bdp-t" list="bdp-staff" autocomplete="off" placeholder="Teacher name" value="">'
+    +'<datalist id="bdp-staff">'+getAssignableStaff().map(function(x){return '<option value="'+esc(x.name)+'">';}).join('')+'</datalist>'
+    +'<div id="bdp-t-hint" style="font-size:12px;color:var(--tx3);margin-top:6px"></div>',false)
+  +pdpQ('5. How did the class leave? Marks out of '+PD_MAX,BD_RATINGS.map(function(r){return r.band+' '+r.v;}).join(' · '),
+    pdMarksPicker('bdp-m',st.marks,'bdpMarks')
+    +'<div id="bdp-word" style="font-size:13px;margin-top:8px;min-height:18px"></div>',true)
+  +pdpQ('6. Your name','So the rating is recorded in your name.',
+    (staff.length
+      ?'<select id="bdp-r" onchange="bdpTouch()"><option value="">— Choose your name —</option>'
+        +staff.map(function(x){return '<option value="'+esc(x.name)+'"'+(x.name===st.rater?' selected':'')+'>'+esc(x.name)+(x.detail?' — '+esc(x.detail):'')+'</option>';}).join('')
+        +'</select>'
+      :'<input id="bdp-r" placeholder="Type your name" value="'+esc(st.rater)+'" oninput="bdpTouch()">'),true)
+  +pdpQ('7. Anything to add?','',
+    '<textarea id="bdp-n" placeholder="Optional note…" style="min-height:65px">'+esc(st.note||'')+'</textarea>',false)
+  +'</div>'
+  +'<button class="btn bp" id="bdp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:4px" onclick="bdpSubmit()">Submit →</button>'
+  +'<div style="text-align:center;margin-top:16px;font-size:11px;color:var(--tx3)"><a href="?" style="color:var(--ac);text-decoration:none">Staff sign in →</a></div>'
+  +'</div>';
+  document.body.appendChild(wrap);
+  bdpSlots();
+  if(st.marks!==null&&st.marks!==undefined)bdpMarks(st.marks);
+  bdpTeacher();
+}
+function bdpDate(){
+  const el=document.getElementById('bdp-d');
+  const today=ymd(new Date());
+  let v=el?el.value:'';
+  if(!v){v=today;if(el)el.value=v;}
+  if(v>today){toast('The date cannot be in the future','danger');v=today;if(el)el.value=v;}
+  window._bdp.date=v;
+  const lab=document.getElementById('bdp-d-day');
+  if(lab)lab.textContent=pdpDateLabel(v);
+  bdpTeacher();
+}
+function bdpClass(){
+  const el=document.getElementById('bdp-c');
+  window._bdp.cls=el?el.value:'';
+  window._bdp.slot='';
+  bdpSlots();
+  bdpTeacher();
+}
+// Grades 1-3 have one break; grades 4-12 also have the Salah break
+function bdpSlots(){
+  const st=window._bdp;
+  const box=document.getElementById('bdp-slot');
+  if(!box)return;
+  const slots=st.cls?bdSlotsFor(st.cls):[];
+  if(!slots.length){box.innerHTML='<div style="font-size:12px;color:var(--tx3)">Choose the class first.</div>';return;}
+  if(!st.slot||!slots.some(function(s){return s.id===st.slot;}))st.slot=bdSlotNow(st.cls);
+  const q=String.fromCharCode(39);
+  box.innerHTML=slots.map(function(s){
+    return '<button type="button" class="btn '+(st.slot===s.id?'bp':'bg2')+'" onclick="bdpSlot('+q+s.id+q+')" style="flex:1;min-width:150px;justify-content:center">'+esc(s.label)+' · '+esc(s.time)+'</button>';
+  }).join('');
+}
+function bdpSlot(id){window._bdp.slot=id;bdpSlots();bdpTeacher();}
+function bdpTeacher(){
+  const st=window._bdp;
+  const el=document.getElementById('bdp-t');
+  const hint=document.getElementById('bdp-t-hint');
+  if(!el)return;
+  if(!st.cls||!st.slot){if(hint)hint.textContent='Choose the class and the break first.';return;}
+  const t=bdTeacherFor(st.cls,st.date,st.slot);
+  if(!st.teacherDirty)el.value=t.name||'';
+  el.oninput=function(){st.teacherDirty=true;};
+  if(hint)hint.innerHTML=bdTeacherHint(t);
+}
+function bdpMarks(m){
+  window._bdp.marks=m;
+  pdMarksPickerSet('bdp-m',m);
+  const w=document.getElementById('bdp-word');
+  if(w){const r=bdRating(bdRatingForMarks(m));w.innerHTML=r.i+' <strong>'+esc(r.v)+'</strong> — '+esc(r.d);}
+}
+function bdpTouch(){
+  const el=document.getElementById('bdp-r');
+  if(el)window._bdp.rater=el.value||'';
+}
+function bdpSubmit(){
+  const st=window._bdp;
+  const cls=((document.getElementById('bdp-c')||{}).value||'').trim();
+  const rater=((document.getElementById('bdp-r')||{}).value||'').trim();
+  const teacher=((document.getElementById('bdp-t')||{}).value||'').trim();
+  const note=((document.getElementById('bdp-n')||{}).value||'').trim();
+  const date=((document.getElementById('bdp-d')||{}).value||'')||ymd(new Date());
+  st.rater=rater;
+  if(!date||date>ymd(new Date())){toast('Choose a valid date','danger');return;}
+  if(!cls){toast('Choose the class','danger');return;}
+  if(!st.slot){toast('Choose the break','danger');return;}
+  if(st.marks===null||st.marks===undefined){toast('Give the class a mark out of '+PD_MAX,'danger');return;}
+  if(!rater){toast('Choose your name','danger');return;}
+  const btn=document.getElementById('bdp-go');
+  if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  const t=bdTeacherFor(cls,date,st.slot);
+  const rec={id:nid('bdr'),date:date,className:cls,slot:st.slot,marks:st.marks,rating:bdRatingForMarks(st.marks),
+    teacherName:teacher,teacherSource:(teacher&&teacher===t.name)?t.source:(teacher?'entered':''),
+    subject:t.subject||'',period:t.period||0,note:note,
+    recordedBy:rater,recordedById:'',source:'qr',created:new Date().toISOString()};
+  appendBreakDiscipline(rec).catch(function(){return null;}).then(function(replaced){bdpDone(rec,replaced);});
+}
+function bdpDone(rec,replaced){
+  const body=document.getElementById('bdp-body');
+  const go=document.getElementById('bdp-go');
+  if(go)go.remove();
+  if(!body)return;
+  const m=bdMarksOf(rec);
+  const rt=bdRating(bdRatingForMarks(m));
+  body.innerHTML='<div class="card" style="padding:26px;text-align:center" id="bdp-done">'
+   +'<div style="font-size:46px;margin-bottom:10px">✅</div>'
+   +'<div style="font-size:18px;font-weight:700;color:var(--su);margin-bottom:8px">Recorded</div>'
+   +'<div style="font-size:13px;color:var(--tx2);line-height:1.7"><strong>'+esc(rec.className)+'</strong> · '+esc(bdSlotLabel(rec.slot))
+   +'<br>'+esc(rec.date)+' · '+esc(getDayOfWeek(rec.date)||'')
+   +'<br>Marks: <strong>'+pdFmt(m)+' / '+PD_MAX+'</strong> · '+rt.i+' '+esc(rt.v)
+   +(rec.teacherName?'<br>Teacher: '+esc(rec.teacherName):'')+'</div>'
+   +(replaced?'<div class="al aw" style="margin-top:12px;text-align:left">ℹ️ This break was already rated'+(replaced.recordedBy?' by '+esc(replaced.recordedBy):'')+'. Your rating has replaced it.</div>':'')
+   +'<div style="margin-top:16px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">'
+   +'<button class="btn bp" onclick="bdpAgain()">Rate another class</button></div></div>';
+}
+function bdpAgain(){
+  const r=window._bdp?window._bdp.rater:'';
+  const d=window._bdp?window._bdp.date:'';
+  window._bdp={cls:'',slot:'',marks:null,rater:r,note:'',date:d||ymd(new Date())};
+  renderBdPortal();
+}
 
 function checkPdMode(){
   const params=new URLSearchParams(window.location.search);
