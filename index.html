@@ -1668,7 +1668,7 @@ function canDo(tabId){
   if(CU.role==='superadmin')return 'full';
   const perms=(DB.get('user_permissions')||{})[CU.id];
   // If superadmin set an explicit permission, use it
-  if(perms&&perms[tabId]!==undefined)return perms[tabId];
+  if(perms&&tabId!=='__at'&&perms[tabId]!==undefined)return perms[tabId];
   // Default: features in user's role nav = full, others = disabled
   const roleNav=NAV[CU.role]||[];
   const inRole=roleNav.some(i=>i.id===tabId);
@@ -2790,18 +2790,20 @@ function savePerms(uid){
     // Only store entries that differ from role default
     if(sel&&sel.value!==def)up[fid]=sel.value;
   });
-  if(Object.keys(up).length)perms[uid]=up;
-  else delete perms[uid];
+  up.__at=new Date().toISOString();
+  perms[uid]=up;
   DB.set('user_permissions',perms);
   const a=gA(uid);
   logA('Updated permissions for '+(a?a.firstName+' '+a.lastName:'user'));
   closeM();toast('Permissions saved','success');
+  if(CU&&uid===CU.id&&typeof permsRefreshUI==='function')permsRefreshUI();
   if(typeof rPermissions==='function'&&_page==='permissions')rPermissions();
 }
 function resetPerms(uid){
   if(!confirm('Reset all custom permissions for this user back to full access?'))return;
   const perms=DB.get('user_permissions')||{};
-  delete perms[uid];
+  // An empty entry, not a missing one: it has to travel to the other devices
+  perms[uid]={__at:new Date().toISOString()};
   DB.set('user_permissions',perms);
   const a=gA(uid);
   logA('Reset permissions for '+(a?a.firstName+' '+a.lastName:'user'));
@@ -8304,7 +8306,7 @@ const SYNC_KEYS = [
   'early_pickups','announcements','discipline_reports','activity_log','infraction_forms',
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
-  'sessions','active_session_id','behaviour','duty_rosters','substitutions',
+  'sessions','active_session_id','behaviour','duty_rosters','substitutions','user_permissions',
   'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
@@ -8366,6 +8368,7 @@ async function flushPendingWrites(){
         // upsert its records instead, so nothing anyone else wrote is lost.
         if(isAppendOnlyKey(k))await pushAppendOnly(k,v);
         else if(isRosterKey(k))await rosterMergedWrite(k,v);
+        else if(isPermsKey(k))await permsMergedWrite(k,v);
         else await set(ref(db,fbPath+k),toFbValue(v));
         console.log('[Sync] Flushed pending write: '+k);
       }
@@ -8412,6 +8415,11 @@ async function syncDownAll(){
         if(shouldSyncKey(k)&&all[k]!==null&&all[k]!==undefined){
           if(stillPending.has(k)){console.warn('[Sync] Skipping pull for '+k+' — has unflushed local writes');return;}
           let v=all[k];
+          // Permissions: merged one member of staff at a time
+          if(isPermsKey(k)){
+            try{permsAcceptIncoming(k,v);permsRefreshUI();}catch(e){console.warn('[Sync] permissions merge failed',e);}
+            return;
+          }
           // Duty rosters: brought together with this device's copy day by day
           if(isRosterKey(k)){
             try{rosterAcceptIncoming(k,v);}catch(e){console.warn('[Sync] roster merge failed',e);}
@@ -8607,6 +8615,79 @@ function mergeById(a,b){
   return out;
 }
 
+// ── Permissions: shared, merged per member of staff ───────
+// Permissions were only ever saved on the device that set them, so a feature
+// granted to somebody never reached their phone. They now sync like any other
+// collection, merged one member of staff at a time (each entry carries when it
+// was set), so two people granting permissions at once cannot undo each other,
+// and the menu is rebuilt the moment a change arrives.
+function isPermsKey(k){return k==='user_permissions';}
+function permsAt(e){
+  const t=e&&e.__at?Date.parse(e.__at):0;
+  return isNaN(t)?0:t;
+}
+function permsObj(v){
+  const o=fromFbValue(v);
+  return (o&&typeof o==='object'&&!Array.isArray(o))?o:{};
+}
+// Union by member of staff; the entry set later wins, and on a tie the second
+function mergePerms(a,b){
+  const out={};
+  [a,b].forEach(function(src){
+    Object.keys(src||{}).forEach(function(uid){
+      const v=src[uid];
+      if(!v||typeof v!=='object')return;
+      if(!out[uid]||permsAt(v)>=permsAt(out[uid]))out[uid]=v;
+    });
+  });
+  return out;
+}
+function permsHasNewer(local,cloud){
+  return Object.keys(local||{}).some(function(uid){
+    return !cloud[uid]||permsAt(local[uid])>permsAt(cloud[uid]);
+  });
+}
+async function permsMergedWrite(k,local){
+  if(!fbReady()||!CURRENT_SCHOOL_ID)throw new Error('offline');
+  const F=window.__FB;
+  const path=getFirebaseSchoolPath()+k;
+  let merged=null;
+  try{
+    if(typeof F.runTransaction!=='function')throw new Error('no transactions');
+    await F.runTransaction(F.ref(F.db,path),function(cur){
+      merged=mergePerms(permsObj(cur),local||{});
+      return merged;
+    });
+  }catch(e){
+    if(String(e&&e.message)==='offline')throw e;
+    const snap=await F.get(F.ref(F.db,path));
+    merged=mergePerms(permsObj(snap.exists()?snap.val():null),local||{});
+    await F.set(F.ref(F.db,path),merged);
+  }
+  try{if(merged)localStorage.setItem(DB._pfx+k,JSON.stringify(merged));}catch(e){}
+  return merged;
+}
+function permsAcceptIncoming(k,incoming){
+  let local={};
+  try{const raw=localStorage.getItem(DB._pfx+k);local=permsObj(raw!==null?JSON.parse(raw):null);}catch(e){}
+  const cloud=permsObj(incoming);
+  const merged=mergePerms(local,cloud);            // the cloud wins a tie
+  localStorage.setItem(DB._pfx+k,JSON.stringify(merged));
+  if(permsHasNewer(local,cloud))permsMergedWrite(k,local).catch(function(){});
+  return merged;
+}
+// A change to what this user may see takes effect straight away
+function permsRefreshUI(){
+  if(!CU||typeof buildNav!=='function')return;
+  try{
+    buildNav();
+    if(_page&&typeof navigate==='function'){
+      if(canDo(_page)==='disabled')navigate('dashboard');
+      else navigate(_page);
+    }
+  }catch(e){console.warn('[Permissions] refresh failed',e);}
+}
+
 // ── Duty rosters: merged by date, never shrunk ─────────────
 // A roster is one record per date, kept in a single list. Writing that whole
 // list from one device used to replace the school's copy, so a device holding
@@ -8752,7 +8833,7 @@ if(!DB._raw_set){
       addPendingWrite(k);
       const path=getFirebaseSchoolPath()+k;
       // Never replace an append-only collection wholesale — see above.
-      const write=isAppendOnlyKey(k)?pushAppendOnly(k,v):(isRosterKey(k)?rosterMergedWrite(k,v):set(ref(db,path),toFbValue(v)));
+      const write=isAppendOnlyKey(k)?pushAppendOnly(k,v):(isRosterKey(k)?rosterMergedWrite(k,v):(isPermsKey(k)?permsMergedWrite(k,v):set(ref(db,path),toFbValue(v))));
       write.then(()=>{
         removePendingWrite(k);
         SYNC_ECHO[k]=Date.now();
@@ -8782,7 +8863,7 @@ if(!DB._raw_set){
       SYNC_ECHO[k]=Date.now();
       addPendingWrite(k);
       const path=getFirebaseSchoolPath()+k;
-      const write=isAppendOnlyKey(k)?pushAppendOnly(k,v):(isRosterKey(k)?rosterMergedWrite(k,v):set(ref(db,path),toFbValue(v)));
+      const write=isAppendOnlyKey(k)?pushAppendOnly(k,v):(isRosterKey(k)?rosterMergedWrite(k,v):(isPermsKey(k)?permsMergedWrite(k,v):set(ref(db,path),toFbValue(v))));
       write.then(()=>{
         removePendingWrite(k);
         SYNC_ECHO[k]=Date.now();
@@ -8821,6 +8902,7 @@ function subscribeToCollection(k){
           console.warn('[Sync] Firebase has no '+k+' — keeping local copy and re-pushing');
           if(isAppendOnlyKey(k)){pushAppendOnly(k,local);return;}
           if(isRosterKey(k)){rosterMergedWrite(k,local).catch(function(){});return;}
+          if(isPermsKey(k)){permsMergedWrite(k,local).catch(function(){});return;}
           const{db:dbH,ref:refH,set:setH}=window.__FB;
           setH(refH(dbH,getFirebaseSchoolPath()+k),local).catch(()=>{});
           return;
@@ -8850,10 +8932,13 @@ function subscribeToCollection(k){
     if(isRosterKey(k)){
       try{v=rosterAcceptIncoming(k,v);}catch(e){}
     }
+    if(isPermsKey(k)){
+      try{v=permsAcceptIncoming(k,v);setTimeout(permsRefreshUI,0);}catch(e){}
+    }
     // Reject stale incoming data: if local was written recently and incoming
     // has MORE items, it's likely a pre-delete echo from Firebase
     const localWriteTime=getLocalWriteTs(k);
-    if(!isAppendOnlyKey(k)&&!isRosterKey(k)&&localWriteTime&&Date.now()-localWriteTime<LWTS_WINDOW){
+    if(!isAppendOnlyKey(k)&&!isRosterKey(k)&&!isPermsKey(k)&&localWriteTime&&Date.now()-localWriteTime<LWTS_WINDOW){
       try{
         const local=JSON.parse(localStorage.getItem(_pfx+k)||'null');
         if(Array.isArray(local)&&Array.isArray(v)&&v.length>local.length){
