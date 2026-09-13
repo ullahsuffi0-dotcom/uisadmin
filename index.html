@@ -16933,14 +16933,9 @@ function pdCertSheet(win,runnerUp,w,group){
    +'<div class="week">'+esc(w.label)+' &nbsp;·&nbsp; '+esc(w.from)+' to '+esc(w.to)+'</div>'
    +'<div class="cite">For the finest conduct in '+esc(group.label.toLowerCase())+' this week, marked by their teachers at the end of every lesson and by the staff as they left for break'
    +(win.named?'':', with not one student reported for disturbing a lesson')+'.'
-   +(runnerUp?'<br>Runner-up: <strong>'+esc(runnerUp.className)+'</strong> ('+runnerUp.pct+'%).':'')+'</div>'
-   +'<div class="score">'
-   +'<div><div class="n">'+win.pct+'%</div><div class="l">Of the marks available</div></div>'
-   +'<div><div class="n">'+pdFmt(win.obtained)+'/'+win.possible+'</div><div class="l">Marks obtained</div></div>'
-   +'<div><div class="n">'+win.periods+'/'+win.expected+'</div><div class="l">Lessons marked</div></div>'
-   +(win.breaksRated?'<div><div class="n">'+pdFmt(win.breakMarks)+'/'+win.breakPossible+'</div><div class="l">Break marks</div></div>':'')
-   +'<div><div class="n">'+win.named+'</div><div class="l">Students reported</div></div>'
-   +'</div>'
+   +(runnerUp?'<br>Runner-up: <strong>'+esc(runnerUp.className)+'</strong>.':'')+'</div>'
+   // A certificate for the wall: no marks, no tally of lessons — the ranking
+   // and the summary carry those for whoever needs them.
    +'<div class="sigs"><div class="sig">Vice Principal</div><div class="sig">Principal</div></div>'
    +'<div class="foot">Issued '+new Date().toLocaleDateString()+'</div>'
    +'</div></div>';
