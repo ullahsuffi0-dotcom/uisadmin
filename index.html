@@ -2858,11 +2858,81 @@ function rInfractions(){
   +myInf.slice().reverse().map(i=>'<tr><td class="mono" style="font-size:11px">'+i.date+'</td><td><strong>'+i.studentName+'</strong><br><span style="font-size:10px;color:var(--tx3)">Gr '+grSec(i.grade,i.section)+(i.studentId?' · Total: '+studentInfPoints(i.studentId)+' pts':'')+'</span></td><td><span class="badge '+infBadge(i.degree)+'">'+i.degree.split(' — ')[0]+'</span></td><td style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(i.type||'')+'</td><td style="font-size:11px">'+(i.occurrence||'—')+'</td><td><strong style="color:var(--dn)">-'+(i.pointsDeducted||0)+'</strong></td><td style="font-size:10px"><span class="badge '+(i.guardianContact==='Contacted'?'bgn':i.guardianContact==='Pending'?'bgo':i.guardianContact==='No Response'?'brd':'bbl')+'">'+(i.guardianContact||'—')+'</span></td><td style="font-size:10px"><span class="badge '+(i.followUpStatus==='Resolved'?'bgn':i.followUpStatus==='Needs Additional Intervention'?'brd':'bgo')+'">'+(i.followUpStatus||'—').slice(0,18)+'</span></td><td><button class="btn bg2 bxs" onclick="vInf(\''+i.id+'\')">View</button></td></tr>').join('')
   +'</tbody></table></div>'+(myInf.length===0?'<div class="emp"><div class="ei">⚠️</div><p>'+T('no_records')+'</p></div>':'')+'</div>';
 }
-function addInfM(){openM('<div class="mh"><h3>⚠️ Add Infraction</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Student *</label>'+sw('pickInfStu','infssi','infsd')+'</div><div id="infss" style="display:none" class="al ai"></div><input type="hidden" id="infsid"><div class="fr f2"><div class="fg"><label>'+T('degree')+' *</label><select id="infde" onchange="ldInfT()"><option value="">— Select —</option>'+INF_DEGREES.map(d=>'<option>'+d+'</option>').join('')+'</select></div><div class="fg"><label>Occurrence *</label><select id="infoc" onchange="updInfProc()"><option value="">— Select —</option>'+INF_OCCURRENCE.map(o=>'<option>'+o+'</option>').join('')+'</select></div></div><div class="fg"><label>'+T('infraction_type')+' / Violation *</label><input list="infty-list" id="infty" placeholder="— Select or type custom —" autocomplete="off" style="width:100%;padding:9px 11px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><datalist id="infty-list"></datalist></div><div class="fg"><label>Procedure (auto-suggested by degree + occurrence)</label><div id="infprocd" style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;color:var(--tx2);min-height:38px;display:flex;align-items:center"><em style="color:var(--tx3)">Select degree and occurrence first…</em></div><input type="hidden" id="infproc"><input type="hidden" id="infpts" value="0"></div><div class="fg"><label>'+T('description')+' / Detail *</label><textarea id="infd" placeholder="Describe what happened in detail"></textarea></div><div class="fr f3"><div class="fg"><label>'+T('date')+'</label><input type="date" id="infdt" value="'+new Date().toISOString().split('T')[0]+'"></div><div class="fg"><label>Guardian Contact</label><select id="infgc"><option value="">— Select —</option>'+INF_GUARDIAN.map(g=>'<option>'+g+'</option>').join('')+'</select></div><div class="fg"><label>Follow-up Status</label><select id="inffu"><option value="">— Select —</option>'+INF_FOLLOWUP.map(f=>'<option>'+f+'</option>').join('')+'</select></div></div><div class="fg"><label>Notes (action taken, witnesses, etc.)</label><textarea id="infat" placeholder="Additional notes, action taken, who handled the case…"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveInf()">Save →</button></div>');
-  window.pickInfStu=function(sid){const s=gS(sid);document.getElementById('infsid').value=sid;document.getElementById('infssi').value=fN(s);document.getElementById('infsd').style.display='none';document.getElementById('infss').style.display='block';document.getElementById('infss').innerHTML='✓ '+fN(s)+' — Gr '+grSec(s.grade,s.section)+' · <span style="color:var(--dn)">Existing points deducted: '+studentInfPoints(sid)+'</span>';};
+function addInfM(){openM('<div class="mh"><h3>⚠️ Add Infraction</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fr f2"><div class="fg"><label>Class</label><select id="infgr" onchange="infClassPick()"><option value="">— All classes —</option>'+infGradeOpts()+'</select></div><div class="fg"><label>Section</label><select id="infsec" onchange="infClassPick()"><option value="">— Choose the class first —</option></select></div></div><div class="fg"><label>Student *</label><div style="position:relative"><input id="infssi" placeholder="'+T('select_student')+'" autocomplete="off" oninput="infStuType(this.value)" style="width:100%;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;font-family:inherit"><div id="infsd" class="sd"></div></div><div id="infstul" style="display:none;margin-top:6px;max-height:190px;overflow:auto;border:1px solid var(--bd);border-radius:var(--rs)"></div></div><div id="infss" style="display:none" class="al ai"></div><input type="hidden" id="infsid"><div class="fr f2"><div class="fg"><label>'+T('degree')+' *</label><select id="infde" onchange="ldInfT()"><option value="">— Select —</option>'+INF_DEGREES.map(d=>'<option>'+d+'</option>').join('')+'</select></div><div class="fg"><label>Occurrence *</label><select id="infoc" onchange="updInfProc()"><option value="">— Select —</option>'+INF_OCCURRENCE.map(o=>'<option>'+o+'</option>').join('')+'</select></div></div><div class="fg"><label>'+T('infraction_type')+' / Violation *</label><input list="infty-list" id="infty" placeholder="— Select or type custom —" autocomplete="off" style="width:100%;padding:9px 11px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><datalist id="infty-list"></datalist></div><div class="fg"><label>Procedure (auto-suggested by degree + occurrence)</label><div id="infprocd" style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;color:var(--tx2);min-height:38px;display:flex;align-items:center"><em style="color:var(--tx3)">Select degree and occurrence first…</em></div><input type="hidden" id="infproc"><input type="hidden" id="infpts" value="0"></div><div class="fg"><label>'+T('description')+' / Detail *</label><textarea id="infd" placeholder="Describe what happened in detail"></textarea></div><div class="fr f3"><div class="fg"><label>'+T('date')+'</label><input type="date" id="infdt" value="'+new Date().toISOString().split('T')[0]+'"></div><div class="fg"><label>Guardian Contact</label><select id="infgc"><option value="">— Select —</option>'+INF_GUARDIAN.map(g=>'<option>'+g+'</option>').join('')+'</select></div><div class="fg"><label>Follow-up Status</label><select id="inffu"><option value="">— Select —</option>'+INF_FOLLOWUP.map(f=>'<option>'+f+'</option>').join('')+'</select></div></div><div class="fg"><label>Notes (action taken, witnesses, etc.)</label><textarea id="infat" placeholder="Additional notes, action taken, who handled the case…"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveInf()">Save →</button></div>');
+  window.pickInfStu=function(sid){const s=gS(sid);if(!s)return;document.getElementById('infsid').value=sid;document.getElementById('infssi').value=fN(s);document.getElementById('infsd').style.display='none';
+    // show the class he is in, so the list he was picked from stays put
+    const gr=document.getElementById('infgr'),se=document.getElementById('infsec');
+    if(gr&&gr.value!==String(s.grade||'')){gr.value=String(s.grade||'');infClassPick();}
+    if(se&&String(s.section||'')&&se.value!==String(s.section||'')){
+      if([].slice.call(se.options).some(function(o){return o.value===String(s.section);})){se.value=String(s.section);}
+    }
+    infShowList();document.getElementById('infss').style.display='block';document.getElementById('infss').innerHTML='✓ '+fN(s)+' — Gr '+grSec(s.grade,s.section)+' · <span style="color:var(--dn)">Existing points deducted: '+studentInfPoints(sid)+'</span>';};
   window.ldInfT=function(){const deg=document.getElementById('infde').value;document.getElementById('infty').value='';document.getElementById('infty-list').innerHTML=(INF_VIOLATIONS[deg]||[]).map(t=>'<option value="'+esc(t)+'">').join('');updInfProc();};
   window.updInfProc=function(){const deg=document.getElementById('infde').value,occ=document.getElementById('infoc').value;if(deg&&occ&&INF_PROCEDURES[deg]&&INF_PROCEDURES[deg][occ]){const p=INF_PROCEDURES[deg][occ];document.getElementById('infprocd').innerHTML='<div><div style="font-weight:600;color:var(--tx);margin-bottom:3px">'+esc(p.label)+'</div><div style="font-size:11px"><span class="badge '+(p.points>=10?'brd':p.points>=3?'bgo':'bbl')+'">Deducts '+p.points+' point(s)</span></div></div>';document.getElementById('infproc').value=p.label;document.getElementById('infpts').value=p.points;}else{document.getElementById('infprocd').innerHTML='<em style="color:var(--tx3)">Select degree and occurrence first…</em>';document.getElementById('infproc').value='';document.getElementById('infpts').value=0;}};
 }
+// The grades and sections on the roll this member of staff may see
+function infRoll(){return vpFilter(DB.get('students')||[]);}
+function infGradeOpts(){
+  const seen={},out=[];
+  infRoll().forEach(function(s){const g=String(s.grade||'');if(g&&!seen[g]){seen[g]=1;out.push(g);}});
+  out.sort(function(a,b){return (parseInt(a,10)||99)-(parseInt(b,10)||99)||a.localeCompare(b);});
+  return out.map(function(g){return '<option value="'+esc(g)+'">Grade '+esc(g)+'</option>';}).join('');
+}
+function infClassPick(){
+  const g=((document.getElementById('infgr')||{}).value)||'';
+  const secEl=document.getElementById('infsec');
+  if(secEl){
+    const secs=[];const seen={};
+    infRoll().forEach(function(s){
+      if(String(s.grade||'')!==String(g))return;
+      const x=String(s.section||'');
+      if(x&&!seen[x]){seen[x]=1;secs.push(x);}
+    });
+    secs.sort();
+    const keep=secEl.value;
+    secEl.innerHTML=(g?'<option value="">— All sections of grade '+esc(g)+' —</option>':'<option value="">— Choose the class first —</option>')
+     +secs.map(function(x){return '<option value="'+esc(x)+'">'+esc(g)+'-'+esc(x)+'</option>';}).join('');
+    if(secs.indexOf(keep)>=0)secEl.value=keep;
+  }
+  infShowList();
+}
+// The boys of the chosen class, narrowed by whatever is typed in the box
+function infShowList(){
+  const box=document.getElementById('infstul');
+  if(!box)return;
+  const g=((document.getElementById('infgr')||{}).value)||'';
+  const sec=((document.getElementById('infsec')||{}).value)||'';
+  const q=(((document.getElementById('infssi')||{}).value)||'').toLowerCase().trim();
+  if(!g){box.style.display='none';box.innerHTML='';return;}
+  let list=infRoll().filter(function(s){
+    return String(s.grade||'')===String(g)&&(!sec||String(s.section||'')===String(sec));
+  });
+  if(q)list=list.filter(function(s){return fN(s).toLowerCase().indexOf(q)>=0||String(s.sn||'').indexOf(q)===0;});
+  list.sort(function(a,b){
+    return String(a.section||'').localeCompare(String(b.section||''))||fN(a).localeCompare(fN(b));
+  });
+  const sel=((document.getElementById('infsid')||{}).value)||'';
+  const q1=String.fromCharCode(39);
+  box.style.display='block';
+  box.innerHTML=list.length
+    ?list.map(function(s){
+       return '<div class="sdi" style="'+(s.id===sel?'background:var(--ac2)':'')+'" onclick="pickInfStu('+q1+s.id+q1+')">'
+        +'<strong>'+esc(fN(s))+'</strong> <span style="color:var(--tx3)">'+esc(grSec(s.grade,s.section))+' · SN:'+esc(String(s.sn||'—'))+'</span></div>';
+     }).join('')
+    :'<div style="padding:9px 11px;font-size:12px;color:var(--tx3)">No student of this class matches</div>';
+}
+// Typing searches the class list when a class is chosen, the whole roll if not
+function infStuType(v){
+  const g=((document.getElementById('infgr')||{}).value)||'';
+  if(g){
+    const d=document.getElementById('infsd');
+    if(d)d.style.display='none';
+    infShowList();
+    return;
+  }
+  ssearch(v,'infsd','pickInfStu');
+}
+
 function saveInf(){const sid=document.getElementById('infsid').value,deg=document.getElementById('infde').value,occ=document.getElementById('infoc').value,type=document.getElementById('infty').value,desc=document.getElementById('infd').value.trim();if(!sid||!deg||!occ||!type||!desc){toast('Fill required fields (student, degree, occurrence, violation, description)','danger');return;}const s=gS(sid),inf=DB.get('infractions')||[];const proc=document.getElementById('infproc').value,pts=parseInt(document.getElementById('infpts').value)||0;const newInf={id:nid('inf'),studentId:sid,studentName:fN(s),grade:s.grade,section:s.section,degree:deg,occurrence:occ,type,description:desc,procedure:proc,pointsDeducted:pts,guardianContact:document.getElementById('infgc').value,followUpStatus:document.getElementById('inffu').value,actionTaken:document.getElementById('infat').value,date:document.getElementById('infdt').value,createdBy:CU.id,createdByName:CU.firstName+' '+CU.lastName,principalAck:'',created:new Date().toISOString()};inf.push(newInf);DB.set('infractions',inf);logA(deg.split(' — ')[0]+' infraction for '+fN(s)+' ('+occ+', -'+pts+' pts): '+type);if(typeof pdLinkInfraction==='function')pdLinkInfraction(newInf);closeM();toast('Recorded ('+pts+' pts deducted)','success');if(window._page==='period_discipline'||_page==='period_discipline'){rPeriodDiscipline();}else{rInfractions();}promptInfReferral(newInf.studentId,newInf.studentName,newInf.grade,newInf.section,deg,type,newInf.id);}
 // ═══════════════════════════════════════════════════════════
 // RECORD PDF + WHATSAPP SHARE
