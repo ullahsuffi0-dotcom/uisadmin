@@ -5188,6 +5188,8 @@ function excusedMarkAbsent(e){
       all.push(rec);
     }
     if(!Array.isArray(rec.absentIds))rec.absentIds=[];
+    // He was seen at the gate that day, so the excuse does not make him absent
+    if((rec.lateIds||[]).indexOf(sid)>=0)return;
     if(rec.absentIds.indexOf(sid)<0){
       rec.absentIds.push(sid);
       rec.excusedAutoAt=new Date().toISOString();
@@ -6110,16 +6112,20 @@ function bulkRender(){
   if(q)list=list.filter(s=>fN(s).toLowerCase().includes(q)||String(s.grade).includes(q)||(s.section||'').toLowerCase().includes(q));
   list=list.slice(0,300);
   const picked=window._bulkPick||[];
+  // A boy marked late is in school, so he cannot be picked for the absent list
+  const lateSet=new Set(rec.lateIds||[]);
   document.getElementById('bk-list').innerHTML=list.length?list.map(function(s){
     const on=picked.indexOf(s.id)>=0;
-    const has=already.has(s.id);
+    const isLate=kind==='absent'&&lateSet.has(s.id);
+    const has=already.has(s.id)||isLate;
     const exc=excusedFor(s.id,sel);
     return '<label style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-bottom:1px solid var(--bd);cursor:'+(has?'default':'pointer')+';background:'+(on?'var(--ac2)':'transparent')+';opacity:'+(has?'.55':'1')+'">'
-    +'<input type="checkbox" '+(on?'checked':'')+' '+(has?'disabled':'')+' onchange="bulkToggle(\''+escJs(s.id)+'\')" style="width:16px;height:16px;cursor:pointer">'
+    +'<input type="checkbox" '+(on&&!isLate?'checked':'')+' '+(has?'disabled':'')+' onchange="bulkToggle(\''+escJs(s.id)+'\')" style="width:16px;height:16px;cursor:pointer">'
     +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+esc(fN(s))+'</div>'
     +'<div style="font-size:10px;color:var(--tx3)">Gr '+esc(grSec(s.grade,s.section))+' · SN '+esc(String(s.sn||''))+'</div></div>'
     +(exc?'<span class="badge bbl" style="font-size:10px" title="Excused '+esc(exc.from)+' → '+esc(exc.to)+(exc.reason?' · '+esc(exc.reason):'')+'">📝 excused</span>':'')
-    +(has?'<span class="badge bgr" style="font-size:10px">already marked</span>':'')
+    +(isLate?'<span class="badge bgo" style="font-size:10px" title="Marked late'+(lateTimeOn(s.id,sel)?' at '+esc(lateTimeOn(s.id,sel)):'')+' — he cannot be absent">⏰ marked late</span>'
+      :has?'<span class="badge bgr" style="font-size:10px">already marked</span>':'')
     +'</label>';
   }).join(''):'<div class="emp" style="padding:16px"><div class="ei">🔍</div><p style="font-size:11px">No students match</p></div>';
   const chips=document.getElementById('bk-chips');
@@ -6153,16 +6159,25 @@ function bulkApply(){
   const target=kind==='late'?'lateIds':'absentIds';
   const other=kind==='late'?'absentIds':'lateIds';
   const set=new Set(rec[target]);
+  // A boy already marked late is in school: he is left off the absent list
+  const refused=[];
   picked.forEach(function(sid){
+    if(kind==='absent'&&rec.lateIds.indexOf(sid)>=0){refused.push(sid);return;}
     set.add(sid);
     rec[other]=rec[other].filter(x=>x!==sid);   // the two are mutually exclusive
     if(kind==='absent')delete rec.lateTimes[sid];
   });
+  const done=picked.length-refused.length;
   rec[target]=[...set];
-  DB.set('attendance',all);
-  logA('Marked '+picked.length+' student(s) '+(kind==='late'?'late':'absent')+' on '+sel);
+  if(done)DB.set('attendance',all);
+  if(done)logA('Marked '+done+' student(s) '+(kind==='late'?'late':'absent')+' on '+sel);
   closeM();
-  toast(picked.length+' student(s) marked '+(kind==='late'?'late':'absent'),'success');
+  if(refused.length){
+    const names=refused.map(function(sid){const s=gS(sid);return s?fN(s):'a student';});
+    toast('Cannot mark absent — '+names.join(', ')+(refused.length>1?' are':' is')+' marked late. '
+      +(done?done+' other student(s) were marked absent.':'Nothing was changed.'),'danger');
+  }
+  else toast(done+' student(s) marked '+(kind==='late'?'late':'absent'),'success');
   if(kind==='late')rLateComers();else rAttendance();
 }
 
@@ -6236,12 +6251,31 @@ function _attDayRec(){
   return {all:allAtt,i:i};
 }
 
+// A boy who came in late is in school, so he cannot also be absent. The late
+// mark stands until somebody takes it off; marking him absent is refused
+// rather than quietly replacing it.
+function isLateOn(sid,date){
+  const rec=(DB.get('attendance')||[]).find(function(a){return a&&a.date===date;});
+  return !!(rec&&(rec.lateIds||[]).indexOf(sid)>=0);
+}
+function lateTimeOn(sid,date){
+  const rec=(DB.get('attendance')||[]).find(function(a){return a&&a.date===date;});
+  return (rec&&(rec.lateTimes||{})[sid])||'';
+}
+function cannotAbsentMsg(sid,date){
+  const st=gS(sid);
+  const t=lateTimeOn(sid,date);
+  return 'Cannot mark absent — '+(st?fN(st):'this student')+' is marked late'+(t?' at '+t:'')
+    +'. Take the late mark off first if he did not come.';
+}
+
 function togAbs(sid){
   const r=_attDayRec();
   const sel=r.all[r.i].date;
   const set=new Set(r.all[r.i].absentIds);
   if(set.has(sid))set.delete(sid);
   else{
+    if((r.all[r.i].lateIds||[]).indexOf(sid)>=0){toast(cannotAbsentMsg(sid,sel),'danger');return;}
     set.add(sid);
     // Say it at the moment of marking, not only when the message queue opens
     const exc=excusedFor(sid,sel);
