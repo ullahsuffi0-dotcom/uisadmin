@@ -18994,26 +18994,96 @@ function pdIndex(from,to){
 }
 
 // One class, one day: every period and break, and the day's total
+// ── Lessons taught by two or more teachers at once ────────
+// A split lesson (the class divided into language or Islamic groups) has a
+// teacher for each group, and each fills the lesson in. Their reports sit
+// side by side instead of one replacing the other; the class scores the
+// average of those who filled it in, and whoever has not is named.
+function pdSplitNames(cls,date,p){
+  try{
+    const t=bdTeacherAt(cls,date,Number(p));
+    const names=(t&&t.names||[]).map(function(n){return bdTeacherList(n)[0];}).filter(function(n){return n&&n!=='(not recorded)';});
+    return names.length>1?names:[];
+  }catch(e){return [];}
+}
+function pdSplitIndex(names,teacherName){
+  const tn=String(teacherName||'').trim();
+  if(!tn||!names.length)return -1;
+  for(let i=0;i<names.length;i++){
+    if(normDutyName(names[i])===normDutyName(tn)||bdSameName(names[i],tn))return i;
+  }
+  if(typeof pdMatchStaff==='function'){
+    for(let i=0;i<names.length;i++){
+      try{if(pdMatchStaff(names[i],[{name:tn}]))return i;}catch(e){}
+    }
+  }
+  return -1;
+}
+// Do two reports fill the same place? Always, for an ordinary lesson; for a
+// split lesson only when they are from the same group's teacher.
+function pdSameSlot(a,b){
+  if(!a||!b)return false;
+  if(a.date!==b.date||String(a.period)!==String(b.period)||a.className!==b.className)return false;
+  const na=normDutyName(a.teacherName||''),nb=normDutyName(b.teacherName||'');
+  if(!na||!nb||na===nb)return true;
+  const names=pdSplitNames(a.className,a.date,a.period);
+  if(names.length<2)return true;
+  const ia=pdSplitIndex(names,a.teacherName),ib=pdSplitIndex(names,b.teacherName);
+  if(ia>=0&&ia===ib)return true;
+  return false;
+}
+function pdLatestFirst(a,b){return String(b.updated||b.created||'').localeCompare(String(a.updated||a.created||''));}
+
 function pdDayResult(cls,date,recs,brs){
   const res={className:cls,date:date,off:false,periods:[],breaks:[],
     periodMarks:0,periodPossible:0,breakMarks:0,breakPossible:0,
-    filled:0,expected:0,missing:[],named:0,breaksRated:0,obtained:0,possible:0,ratio:0,pct:0};
+    filled:0,expected:0,missing:[],partial:[],named:0,breaksRated:0,obtained:0,possible:0,ratio:0,pct:0};
   res.off=getPdExclusions().some(function(x){return !x.period&&pdExclMatch(x,cls,date);});
   const byP={};
   (recs||[]).forEach(function(r){
     const p=Number(r.periodNumber||r.period);
-    const prev=byP[p];
-    if(!prev||String(r.updated||r.created||'')>String(prev.updated||prev.created||''))byP[p]=r;
+    (byP[p]=byP[p]||[]).push(r);
   });
   const lessons=res.off?[]:pdLessonPeriods(cls,date);
   PD_PERIODS.forEach(function(p){
-    const r=byP[p]||null;
-    const cell={p:p,rec:r,excluded:res.off||pdIsExcluded(cls,date,p),lesson:lessons.indexOf(p)>=0||!!r,marks:null,teacher:'',subject:''};
+    const list=(byP[p]||[]).slice().sort(pdLatestFirst);
+    let r=list[0]||null;
+    const cell={p:p,rec:r,recs:r?[r]:[],excluded:res.off||pdIsExcluded(cls,date,p),lesson:lessons.indexOf(p)>=0||!!r,marks:null,teacher:'',subject:'',
+      split:[],filledBy:[],missingTeachers:[]};
+    // Split lesson: one report per group's teacher
+    const names=list.length||lessons.indexOf(p)>=0?pdSplitNames(cls,date,p):[];
+    if(names.length>1){
+      cell.split=names;
+      const got=names.map(function(){return null;});
+      const spare=[];
+      list.forEach(function(x){
+        const i=pdSplitIndex(names,x.teacherName);
+        if(i>=0&&!got[i])got[i]=x;
+        else if(i<0)spare.push(x);
+      });
+      // a report whose name does not match either takes the first empty place
+      spare.forEach(function(x){const i=got.indexOf(null);if(i>=0)got[i]=x;});
+      cell.recs=got.filter(Boolean);
+      cell.rec=cell.recs.slice().sort(pdLatestFirst)[0]||null;
+      names.forEach(function(n,i){
+        if(got[i])cell.filledBy.push({teacher:n,rec:got[i],marks:pdMarksOf(got[i])});
+        else cell.missingTeachers.push(n);
+      });
+      r=cell.rec;
+      if(r)cell.lesson=true;
+    }
     if(cell.excluded||!cell.lesson){res.periods.push(cell);return;}
     res.expected++;res.periodPossible+=PD_MAX;
     if(r){
-      cell.marks=pdMarksOf(r);
-      res.periodMarks+=cell.marks;res.filled++;res.named+=(r.students||[]).length;
+      // the average of every teacher who filled it in
+      const marks=cell.recs.map(pdMarksOf);
+      cell.marks=Math.round(marks.reduce(function(a,b){return a+b;},0)/marks.length*10)/10;
+      res.periodMarks+=cell.marks;res.filled++;
+      cell.recs.forEach(function(x){res.named+=(x.students||[]).length;});
+      if(cell.missingTeachers.length){
+        const t=bdTeacherAt(cls,date,p);
+        res.partial.push({p:p,filledBy:cell.filledBy.map(function(f){return f.teacher;}),missing:cell.missingTeachers.slice(),subject:t.subject||''});
+      }
     }else{
       const t=bdTeacherAt(cls,date,p);
       cell.teacher=t.name||'';cell.subject=t.subject||'';
@@ -19065,7 +19135,7 @@ function pdRankClasses(from,to){
   return ix.classes.map(function(c){
     const k=normClass(c);
     const b={className:c,days:[],obtained:0,possible:0,periodMarks:0,periodPossible:0,
-      breakMarks:0,breakPossible:0,periods:0,expected:0,missing:0,missingList:[],
+      breakMarks:0,breakPossible:0,periods:0,expected:0,missing:0,missingList:[],partialList:[],
       named:0,breaksRated:0,counts:{},teachers:{}};
     ix.days.forEach(function(d){
       const res=pdDayResult(c,d,ix.pBy[k+'|'+d]||[],ix.bBy[k+'|'+d]||[]);
@@ -19074,10 +19144,11 @@ function pdRankClasses(from,to){
       b.breakMarks+=res.breakMarks;b.breakPossible+=res.breakPossible;
       b.periods+=res.filled;b.expected+=res.expected;b.named+=res.named;b.breaksRated+=res.breaksRated;
       res.missing.forEach(function(m){b.missingList.push({date:d,period:m.p,teacher:m.teacher,subject:m.subject});});
+      (res.partial||[]).forEach(function(m){b.partialList.push({date:d,period:m.p,teacher:m.missing.join(' / '),filledBy:m.filledBy.join(' / '),subject:m.subject});});
       res.periods.forEach(function(x){
         if(!x.rec)return;
         const w=pdRatingForMarks(x.marks);b.counts[w]=(b.counts[w]||0)+1;
-        if(x.rec.teacherName)b.teachers[x.rec.teacherName]=1;
+        (x.recs&&x.recs.length?x.recs:[x.rec]).forEach(function(y){if(y&&y.teacherName)b.teachers[y.teacherName]=1;});
       });
     });
     b.missing=b.missingList.length;
@@ -19247,6 +19318,11 @@ function pdBestPDF(){
   groups.forEach(function(g){g.rows.forEach(function(r){r.missingList.forEach(function(m){
     const t=m.teacher||'(no teacher on the timetable)';
     (byTeacher[t]=byTeacher[t]||[]).push(r.className+' '+(PD_DAY_SHORT[getDayOfWeek(m.date)]||m.date)+' P'+m.period);
+  });
+  (r.partialList||[]).forEach(function(m){
+    String(m.teacher||'').split(' / ').filter(Boolean).forEach(function(t){
+      (byTeacher[t]=byTeacher[t]||[]).push(r.className+' '+(PD_DAY_SHORT[getDayOfWeek(m.date)]||m.date)+' P'+m.period+' (filled by '+m.filledBy+')');
+    });
   });});});
   const tList=Object.keys(byTeacher).sort(function(a,b){return byTeacher[b].length-byTeacher[a].length||a.localeCompare(b);});
   const win2=window.open('','_blank');
@@ -19437,9 +19513,13 @@ function pdSummaryData(from,to){
         if(!x.lesson)return;
         cell.expected++;
         if(x.rec){
-          const nm=(x.rec.students||[]).length;
+          const nm=(x.recs&&x.recs.length?x.recs:[x.rec]).reduce(function(a,y){return a+(y.students||[]).length;},0);
           cell.sum+=x.marks;cell.n++;cell.named+=nm;
           periodTot[x.p].sum+=x.marks;periodTot[x.p].n++;periodTot[x.p].named+=nm;
+          if(x.missingTeachers&&x.missingTeachers.length){
+            missingAll.push({date:res.date,className:b.className,period:x.p,subject:x.subject||'',
+              teacher:x.missingTeachers.join(' / ')+' (filled by '+x.filledBy.map(function(f){return f.teacher;}).join(' / ')+')',partial:true});
+          }
         }else{
           cell.missing.push({date:res.date,teacher:x.teacher,subject:x.subject});
           periodTot[x.p].missing++;
@@ -19533,7 +19613,7 @@ function pdSummaryTableHTML(d,forPrint){
      +(t.n?pdFmt(t.sum/t.n):'·')
      +(t.missing?'<div style="font-size:8px;font-weight:400;color:#b42318">'+t.missing+' not filled</div>':'')+'</td>';
   });
-  h+='<td colspan="4" style="border:'+bd+';padding:4px 5px;font-size:9px;'+foot+'">'+d.totalPeriods+' lessons marked · '+d.missingAll.length+' not filled in · '+d.totalNamed+' student report(s)</td></tr>';
+  h+='<td colspan="4" style="border:'+bd+';padding:4px 5px;font-size:9px;'+foot+'">'+d.totalPeriods+' lessons marked · '+d.missingAll.filter(function(m){return !m.partial;}).length+' not filled in · '+d.totalNamed+' student report(s)</td></tr>';
   return h+'</tbody></table>';
 }
 
@@ -19584,11 +19664,11 @@ function pdSummaryRender(){
   const d=pdSummaryData(r.from,r.to);
   box.innerHTML='<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">'
    +'<strong>'+d.clsList.length+'</strong> class(es) · <strong>'+d.totalPeriods+'</strong> lesson(s) marked · '
-   +'<strong style="color:var(--dn)">'+d.missingAll.length+'</strong> not filled in · '+d.days.length+' day(s)'
+   +'<strong style="color:var(--dn)">'+d.missingAll.filter(function(m){return !m.partial;}).length+'</strong> not filled in · '+d.days.length+' day(s)'
    +(d.singleDay?' — each cell is the mark out of '+PD_MAX:' — each cell is the average mark out of '+PD_MAX)
    +'</div>'
    +'<div class="tw" style="max-height:330px;overflow:auto">'+pdSummaryTableHTML(d,false)+'</div>'
-   +(d.missingAll.length?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 4px">Lessons not filled in ('+d.missingAll.length+')</div>'
+   +(d.missingAll.length?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 4px">Lessons not filled in ('+d.missingAll.length+')'+(d.missingAll.some(function(m){return m.partial;})?' — including split lessons one teacher filled':'')+'</div>'
      +'<div class="tw" style="max-height:180px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Date</th><th>Class</th><th class="c">Period</th><th>Subject</th><th>Teacher on the timetable</th></tr></thead><tbody>'
      +d.missingAll.map(function(m){
        return '<tr><td class="mono">'+esc(m.date)+'</td><td><strong>'+esc(m.className)+'</strong></td><td class="c">P'+m.period+'</td>'
@@ -19622,7 +19702,7 @@ function pdSummaryPDF(){
    +'<button onclick="window.print()" style="margin-bottom:8px;padding:7px 15px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">\u{1f5a8}️ Print / Save as PDF</button>'
    +'<div style="font-size:12px;font-weight:bold">'+esc(r.from)+(r.from!==r.to?' to '+esc(r.to):' — '+esc(getDayOfWeek(r.from)||''))+'</div>'
    +'<div style="font-size:10px;color:#555;margin-bottom:6px">'+d.clsList.length+' class(es) · '+d.totalPeriods+' lesson(s) marked · '
-   +d.missingAll.length+' not filled in · '+d.totalNamed+' student report(s) · '+d.days.length+' day(s)</div>'
+   +d.missingAll.filter(function(m){return !m.partial;}).length+' not filled in · '+d.totalNamed+' student report(s) · '+d.days.length+' day(s)</div>'
    +pdSummaryTableHTML(d,true)
    +'<div class="legend">'
    +(d.singleDay?'<strong>Each cell</strong> is the mark out of '+PD_MAX+' the teacher gave that lesson, or the admin staff gave that break. A name in red is the teacher on the timetable who did not fill that lesson in; it scores 0.'
@@ -20111,6 +20191,17 @@ function pdGridCard(sel,todayRows,canAdd){
      return '<tr><td><strong>'+esc(c)+'</strong></td>'
       +res.periods.map(function(x){
         if(x.excluded)return '<td class="c" title="Excluded — not expected"><span style="color:var(--tx3);font-size:11px">\u{1f6ab}</span></td>';
+        if(x.rec&&x.split&&x.split.length>1){
+          const n=x.recs.reduce(function(a,y){return a+(y.students||[]).length;},0);
+          const title=x.filledBy.map(function(f){return f.teacher+': '+pdFmt(f.marks);}).join(' · ')
+            +(x.filledBy.length>1?' — average '+pdFmt(x.marks):'')+(x.missingTeachers.length?' · not filled: '+x.missingTeachers.join(', '):'');
+          return '<td class="c">'+pdMarkBadge(x.marks,' style="cursor:pointer" title="'+esc(title)+'" onclick="pdViewM('+q+escJs(x.rec.id)+q+')"')
+            +(x.filledBy.length>1?'<div style="font-size:9px;color:var(--tx3)">avg of '+x.filledBy.length+'</div>':'')
+            +x.filledBy.map(function(f){return '<div style="font-size:9px;color:var(--su);line-height:1.2;cursor:pointer" onclick="pdViewM('+q+escJs(f.rec.id)+q+')">✓ '+esc(f.teacher)+' '+pdFmt(f.marks)+'</div>';}).join('')
+            +x.missingTeachers.map(function(t){return '<div style="font-size:9px;color:var(--dn);font-weight:600;line-height:1.2">✗ '+esc(t)+'</div>';}).join('')
+            +(canAdd&&x.missingTeachers.length?'<button class="btn bg2 bxs" style="margin-top:2px" title="Record the other group" onclick="pdEntryM(null,'+q+escJs(c)+q+','+x.p+')">+</button>':'')
+            +(n?'<div style="font-size:9px;color:var(--dn)">⚠ '+n+'</div>':'')+'</td>';
+        }
         if(x.rec){
           const n=(x.rec.students||[]).length;
           return '<td class="c">'+pdMarkBadge(x.marks,' style="cursor:pointer" title="'+esc((x.rec.teacherName||'')+(n?' · '+n+' named':''))+'" onclick="pdViewM('+q+escJs(x.rec.id)+q+')"')
@@ -20132,6 +20223,7 @@ function pdGridCard(sel,todayRows,canAdd){
    +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:10px;color:var(--tx3)">'
    +'<span>Marks out of '+PD_MAX+' — '+esc(PD_MARK_GUIDE)+'</span>'
    +'<span><strong style="color:var(--dn)">Red name</strong> = teacher on the timetable who has not filled that lesson in (scores 0)</span>'
+   +'<span>Two teachers at once: <strong style="color:var(--su)">✓</strong> filled in, <strong style="color:var(--dn)">✗</strong> not yet — the class gets the average of those who filled it in</span>'
    +'<span>\u{1f6ab} excluded</span><span>Break marks come from Break Class Leaving Discipline; a break not rated is left out of the total.</span></div></div>';
 }
 
@@ -20294,7 +20386,7 @@ function pdSave(){
   const list=getPeriodDiscipline();
   // One record per class per period per day — editing replaces, not duplicates
   const clash=list.find(function(r){
-    return r.id!==f.id&&r.date===date&&r.period===period&&r.className===cls;
+    return r.id!==f.id&&pdSameSlot(r,{date:date,period:period,className:cls,teacherName:pdMyName()});
   });
   if(clash&&!f.id){
     if(!confirm(cls+' period '+period+' is already recorded on '+date+' by '+(clash.teacherName||'someone')+' with '+pdFmt(pdMarksOf(clash))+'/'+PD_MAX+'.\n\nReplace it with yours?'))return;
@@ -21016,9 +21108,9 @@ function pdMergeRecord(existing,local,rec){
   });
   let replaced=null;
   if(rec){
-    const i=merged.findIndex(function(r){
-      return r.date===rec.date&&String(r.period)===String(rec.period)&&r.className===rec.className;
-    });
+    // the same record being edited, else the report filling the same place
+    let i=merged.findIndex(function(r){return r.id&&r.id===rec.id;});
+    if(i<0)i=merged.findIndex(function(r){return pdSameSlot(r,rec);});
     const copy=Object.assign({},rec);
     if(i>=0){
       replaced=merged[i];
@@ -21058,9 +21150,8 @@ async function appendPeriodDiscipline(rec){
         existing=pdListFromFb(snap.exists()?snap.val():null);
       }catch(e){existing=null;}
       const m=pdMergeRecord(existing,local,rec);
-      const saved=m.list.find(function(r){
-        return r.date===rec.date&&String(r.period)===String(rec.period)&&r.className===rec.className;
-      })||rec;
+      const saved=m.list.find(function(r){return r.id===rec.id;})
+        ||m.list.find(function(r){return pdSameSlot(r,rec);})||rec;
       await set(ref(db,base+'/'+saved.id),saved);
       DB.set('period_discipline',m.list,{localOnly:true});
       if(typeof clearRepeatCache==='function')clearRepeatCache();
@@ -21093,7 +21184,7 @@ async function appendPeriodDiscipline(rec){
       const snap=await get(ref(db,getFirebaseSchoolPath()+'period_discipline'));
       const v=pdListFromFb(snap.exists()?snap.val():null);
       landed=v.some(function(r2){
-        return r2&&r2.date===rec.date&&String(r2.period)===String(rec.period)&&r2.className===rec.className;
+        return r2&&(r2.id===rec.id||pdSameSlot(r2,rec));
       });
     }catch(e){landed=true;}   // cannot check: do not spin
     if(landed)break;
