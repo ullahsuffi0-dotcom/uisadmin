@@ -152,7 +152,48 @@ const firebaseConfig = {
 
 const fbApp = initializeApp(firebaseConfig);
 const fbDB = getDatabase(fbApp);
-window.__FB = { app: fbApp, db: fbDB, ref, set, get, onValue, child, onDisconnect, serverTimestamp, runTransaction, ready: false };
+
+// Firebase refuses a key holding . # $ / [ or ] — and refuses the WHOLE write
+// because of it. The duty roster keeps duties under the place name, so a place
+// called "Blue / Green Area" made every roster save fail in the cloud while the
+// screen said it was saved. Such keys are escaped on the way up and restored
+// on the way down, so any name works. A key without those characters is sent
+// exactly as before, so everything already stored reads the same.
+const FB_ESC = { '.':'%2E', '#':'%23', '$':'%24', '/':'%2F', '[':'%5B', ']':'%5D', '%':'%25' };
+const FB_UNESC = { '%2E':'.', '%23':'#', '%24':'$', '%2F':'/', '%5B':'[', '%5D':']', '%25':'%' };
+function fbEncKey(k){ return /[.#$\/\[\]]/.test(k) ? k.replace(/[%.#$\/\[\]]/g, c => FB_ESC[c]) : k; }
+function fbDecKey(k){ return /%(2E|23|24|2F|5B|5D)/.test(k) ? k.replace(/%(2E|23|24|2F|5B|5D|25)/g, m => FB_UNESC[m]) : k; }
+function fbWalk(v, keyFn, isWrite){
+  if (Array.isArray(v)) return v.map(x => fbWalk(x, keyFn, isWrite));
+  if (v && typeof v === 'object') {
+    if (isWrite && Object.prototype.hasOwnProperty.call(v, '.sv')) return v;   // serverTimestamp()
+    const o = {};
+    for (const k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[keyFn(k)] = fbWalk(v[k], keyFn, isWrite);
+    return o;
+  }
+  return v;
+}
+const fbEnc = v => fbWalk(v, fbEncKey, true);
+const fbDec = v => fbWalk(v, fbDecKey, false);
+function fbSnap(s){
+  if (!s) return s;
+  let done = false, cache;
+  return { exists: () => s.exists(), val: () => { if (!done) { cache = fbDec(s.val()); done = true; } return cache; }, key: s.key, ref: s.ref };
+}
+function fbWrap(raw){
+  return {
+    set: (r, v) => raw.set(r, fbEnc(v)),
+    get: r => raw.get(r).then(fbSnap),
+    onValue: (r, cb, ...rest) => raw.onValue(r, s => cb(fbSnap(s)), ...rest),
+    runTransaction: (r, fn, opts) => raw.runTransaction(r, cur => {
+      const next = fn(fbDec(cur));
+      return next === undefined ? undefined : fbEnc(next);
+    }, opts).then(res => ({ committed: res.committed, snapshot: fbSnap(res.snapshot) }))
+  };
+}
+window.__fbKeys = { fbEncKey, fbDecKey, fbEnc, fbDec, fbWrap };
+const fbSafe = fbWrap({ set, get, onValue, runTransaction });
+window.__FB = { app: fbApp, db: fbDB, ref, set: fbSafe.set, get: fbSafe.get, onValue: fbSafe.onValue, child, onDisconnect, serverTimestamp, runTransaction: fbSafe.runTransaction, ready: false };
 
 const connRef = ref(fbDB, '.info/connected');
 onValue(connRef, (snap) => {
@@ -9950,9 +9991,20 @@ async function syncUpAll(){
 
 const FB_FAILED_KEYS=new Set();
 function logFBError(k,e){
+  // Say so on screen: a save the cloud refused used to look exactly like one it
+  // kept, and the work lived only on the device that made it. Once a minute a key.
+  try{
+    window.__fbWarnAt=window.__fbWarnAt||{};
+    if(Date.now()-(window.__fbWarnAt[k]||0)>60000){
+      window.__fbWarnAt[k]=Date.now();
+      const name=String(k||'').replace(/_(default|ses[a-z0-9_]*)$/i,'').replace(/_/g,' ');
+      if(typeof toast==='function')toast('⚠️ '+name+' was saved on this device but the cloud did not accept it'
+        +(e&&e.message?' ('+String(e.message).slice(0,80)+')':'')+'. It will be sent again automatically — keep this device until it is.','danger');
+    }
+  }catch(x){}
   if(FB_FAILED_KEYS.has(k))return;
   FB_FAILED_KEYS.add(k);
-  console.warn('[Sync] Write failed for '+k+':',e.message);
+  console.warn('[Sync] Write failed for '+k+':',e&&e.message);
 }
 
 // Local write timestamps, persisted so they survive a page refresh.
