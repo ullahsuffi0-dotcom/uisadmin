@@ -5293,6 +5293,66 @@ function excuseReplyLabel(e){
     +((e.replyDocs&&e.replyDocs.length)?': '+esc(e.replyDocs.join('; ')):'')+'</div>';
 }
 
+// When a parent sent the request, in the school's local time
+function excSentAt(iso){
+  try{
+    const d=new Date(iso);if(isNaN(d))return String(iso||'');
+    return d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+  }catch(e){return String(iso||'');}
+}
+// On Daily Attendance: who is excused on the day being marked, and whose
+// parents' requests still wait for approval — blinking until there is none,
+// so nobody is messaged or marked without it being seen.
+function excAttendanceNotice(sel,canM){
+  const all=getExcused();
+  const onDay=all.filter(function(e){return e&&e.from<=sel&&sel<=e.to;});
+  const pendingDay=onDay.filter(function(e){return e.source==='parent'&&e.status==='pending';});
+  const excusedDay=onDay.filter(function(e){return !(e.source==='parent'&&e.status==='pending');});
+  const pendingAll=all.filter(function(e){return e&&e.source==='parent'&&e.status==='pending';}).length;
+  const who=function(e){
+    const sid=excusedStudentId(e);const s=sid?gS(sid):null;
+    return {name:s?fN(s):(e.studentName||'(no name)'),cls:s?grSec(s.grade,s.section):(e.submittedClass||''),matched:!!s};
+  };
+  const q=String.fromCharCode(39);
+  const row=function(e,pending){
+    const w=who(e);
+    return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 0;border-top:1px dashed var(--bd)">'
+     +'<span class="badge '+(pending?'bgo':'bgn')+'" style="font-size:10px">'+(pending?'⏳ Needs approval':'✓ Excused')+'</span>'
+     +'<strong style="font-size:12px">'+esc(w.name)+'</strong>'
+     +(w.cls?'<span style="font-size:11px;color:var(--tx3)">'+esc(w.cls)+'</span>':'')
+     +(!w.matched?'<span class="badge brd" style="font-size:9px">not matched to the roll</span>':'')
+     +'<span style="font-size:10px;color:var(--tx3)">'+esc(e.reason||'')+(e.from!==e.to?' · '+esc(e.from)+' → '+esc(e.to):'')
+     +(e.created?' · 🕒 '+(e.source==='parent'?'sent ':'added ')+esc(excSentAt(e.created)):'')+'</span>'
+     +(pending&&canM?'<span style="margin-left:auto;display:flex;gap:4px"><button class="btn bs bxs" onclick="approveExcused('+q+escJs(e.id)+q+')">✓ Approve</button>'
+       +'<button class="btn bd3 bxs" onclick="delExcused('+q+escJs(e.id)+q+')">✕ Reject</button></span>':'')
+     +'</div>';
+  };
+  if(!onDay.length){
+    return '<div class="card" style="margin-bottom:13px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+     +'<div style="font-size:12px">\u{1f4dd} No student is excused on '+esc(sel)
+     +(pendingAll?' · <span style="color:var(--dg)"><strong>'+pendingAll+'</strong> parent request(s) for other days awaiting review</span>':'')+'</div>'
+     +'<button class="btn bs bsm" onclick="navigate(\'excused_students\')">Open Excused Students →</button></div>';
+  }
+  return '<style>@keyframes excBlink{0%,100%{box-shadow:0 0 0 0 rgba(230,126,34,0);border-color:var(--bd)}50%{box-shadow:0 0 0 4px rgba(230,126,34,.35);border-color:#e67e22}}'
+    +'@keyframes excDot{0%,100%{opacity:1}50%{opacity:.2}}'
+    +'.exc-note{animation:excBlink 1.4s ease-in-out infinite}.exc-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#e67e22;animation:excDot 1s ease-in-out infinite;margin-right:6px}'
+    +'.exc-note.calm{animation:none;border-color:var(--su)}.exc-note.calm .exc-dot{background:var(--su);animation:none}'
+    +'@media (prefers-reduced-motion:reduce){.exc-note,.exc-dot{animation:none}}</style>'
+   +'<div class="card exc-note'+(pendingDay.length?'':' calm')+'" id="exc-note" style="margin-bottom:13px;border-width:2px">'
+   +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+   +'<div style="font-size:13px;font-weight:700"><span class="exc-dot"></span>'
+   +(pendingDay.length?'<span style="color:#b85c00">'+pendingDay.length+' excuse request(s) for '+esc(sel)+' need approval</span>':'')
+   +(pendingDay.length&&excusedDay.length?' · ':'')
+   +(excusedDay.length?'<span style="color:var(--su)">'+excusedDay.length+' student(s) excused on '+esc(sel)+'</span>':'')+'</div>'
+   +'<button class="btn bs bsm" onclick="navigate(\'excused_students\')">Open Excused Students →</button></div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin:3px 0 4px">Before marking: these students are expected absent, and their parents are skipped when messages are sent.'
+   +(pendingDay.length?' A request waiting for approval already counts as excused — approve it to confirm, or reject it.':'')
+   +(pendingAll>pendingDay.length?' '+(pendingAll-pendingDay.length)+' more request(s) for other days are waiting in Excused Students.':'')+'</div>'
+   +pendingDay.map(function(e){return row(e,true);}).join('')
+   +excusedDay.map(function(e){return row(e,false);}).join('')
+   +'</div>';
+}
+
 function approveExcused(id){
   const list=getExcused();
   const i=list.findIndex(x=>x.id===id);
@@ -5607,7 +5667,8 @@ function buildExcusedCard(sel,canM){
       const pending=e.source==='parent'&&e.status==='pending';
       return '<tr'+(pending?' style="background:var(--gdbg,#fff8e1)"':active?' style="background:var(--ac2)"':'')+'><td><strong>'+esc(e.studentName||'—')+'</strong>'
       +(e.submittedClass?'<div style="font-size:9px;color:var(--tx3)">🏫 Class written by parent: <strong>'+esc(e.submittedClass)+'</strong></div>':'')
-      +(e.source==='parent'?'<div style="font-size:9px;color:var(--tx3)">📩 Parent request'+(e.parentName?' — '+esc(e.parentName):'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div>':'')+(e.source==='parent'?(e.nameVerified?'<div style="font-size:9px;color:var(--su)">✅ name checked'+(e.submittedName&&e.submittedName!==e.studentName?' · parent wrote "'+esc(e.submittedName)+'"':'')+'</div>'
+      +(e.source==='parent'?'<div style="font-size:9px;color:var(--tx3)">📩 Parent request'+(e.parentName?' — '+esc(e.parentName):'')+(e.parentPhone?' · '+esc(e.parentPhone):'')+'</div>':'')
+      +(e.created?'<div style="font-size:9px;color:var(--tx3)">🕒 '+(e.source==='parent'?'Sent':'Added')+' '+esc(excSentAt(e.created))+'</div>':'')+(e.source==='parent'?(e.nameVerified?'<div style="font-size:9px;color:var(--su)">✅ name checked'+(e.submittedName&&e.submittedName!==e.studentName?' · parent wrote "'+esc(e.submittedName)+'"':'')+'</div>'
         :(e.studentId?'<div style="font-size:9px;color:var(--dg)">⚠️ name not checked</div>'
           :(function(){const rid=excusedStudentId(e);const rs=rid?gS(rid):null;
             return rs?'<div style="font-size:9px;color:var(--gd)">🔗 matched by name to <strong>'+esc(fN(rs))+'</strong> (Gr '+esc(grSec(rs.grade,rs.section))+') — confirm with Check Name</div>'
@@ -5760,16 +5821,7 @@ function rAttendance(){
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Students</div><div class="sv">'+students.length+'</div><div class="sic">👨‍🎓</div></div><div class="stat gn"><div class="sl2">Present</div><div class="sv">'+presentCount+'</div><div class="sb3">'+(students.length?Math.round(presentCount/students.length*100):0)+'%</div><div class="sic">✅</div></div><div class="stat rd"><div class="sl2">Absent</div><div class="sv">'+absentCount+'</div><div class="sb3">'+(excusedCount?excusedCount+' excused · '+toNotify+' to notify':(students.length?Math.round(absentCount/students.length*100):0)+'%')+'</div><div class="sic">❌</div></div><div class="stat go"><div class="sl2">Late</div><div class="sv">'+lateCount+'</div><div class="sb3">'+(lateToNotify!==lateCount?(lateCount-lateToNotify)+' excused':'arrived late')+'</div><div class="sic">⏰</div></div><div class="stat go"><div class="sl2">Status</div><div style="font-size:14px;font-weight:700;margin-top:8px">'+(dayRec.marked?'<span style="color:var(--su)">✓ Submitted</span>':'<span style="color:var(--gd)">⏳ Draft</span>')+'</div>'+(dayRec.markedAt?'<div class="sb3">'+new Date(dayRec.markedAt).toLocaleString()+'</div>':'')+'<div class="sic">📋</div></div></div>'
   +(canM&&absentCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--ac2),var(--pubg));border-color:var(--ac3)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--ac);margin-bottom:3px">📱 Notify Parents via WhatsApp</div><div style="font-size:11px;color:var(--tx2)">Click below to open WhatsApp chats for each absent student\'s father and mother. You can review the message before sending.'+(excusedCount?'<br><strong style="color:var(--su)">'+excusedCount+' excused student(s) will be skipped.</strong>':'')+(alreadyNotified?'<br><strong style="color:var(--su)">'+alreadyNotified+' already notified — they are not in the list.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendWaAll(\'both\')">📱 Both Parents ('+(toNotify*2)+')</button></div></div></div>':'')
   +buildNotifiedCard('absent',sel,canM)
-  +(function(){
-    // The list itself lives in its own tab now; here is just where it stands
-    const onDay=getExcused().filter(function(e){return e.from<=sel&&sel<=e.to;});
-    const pend=getExcused().filter(function(e){return e.source==='parent'&&e.status==='pending';}).length;
-    return '<div class="card" style="margin-bottom:13px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
-     +'<div style="font-size:12px">\u{1f4dd} <strong>'+onDay.length+'</strong> student(s) excused on '+esc(sel)
-     +(pend?' · <span style="color:var(--dg)"><strong>'+pend+'</strong> parent request(s) awaiting review</span>':'')
-     +'<div style="font-size:11px;color:var(--tx3)">They are on the absent list, and their parents are skipped when messages are sent.</div></div>'
-     +'<button class="btn bs bsm" onclick="navigate(\'excused_students\')">Open Excused Students →</button></div>';
-  })()
+  +excAttendanceNotice(sel,canM)
   +'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🔍 Mark Absent Students</h3><div style="display:flex;gap:6px">'+(canM?'<button class="btn bs bsm" onclick="bulkMarkM(\'absent\')">➕ Mark Several Absent</button><button class="btn bg2 bsm" onclick="markAllPresent()">↺ Reset All Present</button><button class="btn bp bsm" onclick="submitAtt()">'+(dayRec.marked?'Update':'Submit')+' Attendance →</button>':'')+'</div></div>'
   +'<div style="display:flex;gap:8px;margin-bottom:12px"><input id="attq" placeholder="🔍 Search by name or grade…" oninput="fltAtt()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="attgf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+g+'">Gr '+g+'</option>').join('')+'</select><select id="attsf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Status</option><option value="absent">Absent only</option><option value="present">Present only</option><option value="late">Late only</option><option value="excused">Excused only</option><option value="tonotify">Absent — to notify</option></select></div>'
   +'<div id="attlist">'+buildAttList(students,absentSet,canM,sel,lateSet,lateTimes)+'</div></div>'
