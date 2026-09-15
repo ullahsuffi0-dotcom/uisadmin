@@ -9743,7 +9743,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions','user_permissions','late_arrivals','teacher_development',
-  'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
+  'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','bd_exclusions','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -9772,7 +9772,7 @@ const AUTO_REFRESH_MAP = {
   reexam_schedules:['rReexam'],
   duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
   duty_places:['rDutyRoster'],duty_blocks:['rDutyRoster'],tt_name_links:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
-  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],school_timetable:['rBreakDiscipline','rPeriodDiscipline'],sub_preferences:['rSubstitutions'],
+  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],bd_exclusions:['rBreakDiscipline','rPeriodDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],school_timetable:['rBreakDiscipline','rPeriodDiscipline'],sub_preferences:['rSubstitutions'],
   sessions:['rSessions'],active_session_id:['rSessions'],
   todos:['rMyTodos']
 };
@@ -10218,7 +10218,7 @@ async function rosterMergedWrite(k,local){
 // Collections written a record at a time by many people at once. A whole-array
 // push for one of these can only ever destroy what the writer had not seen, so
 // the sync layer upserts the records instead and never removes on a bulk write.
-const APPEND_ONLY_KEYS=['period_discipline','break_discipline','tt_name_links','late_arrivals','teacher_development'];
+const APPEND_ONLY_KEYS=['period_discipline','break_discipline','tt_name_links','late_arrivals','teacher_development','bd_exclusions'];
 function isAppendOnlyKey(k){return APPEND_ONLY_KEYS.indexOf(k)>=0;}
 
 // Upsert each record under its own key. Concurrent writers touch different
@@ -17115,6 +17115,103 @@ function bdSlotNow(cls){
 }
 
 // ── The page ──────────────────────────────────────────────
+// ── Classes excluded from break rating ────────────────────
+// A class out on a trip, sitting an exam or kept in for an event has no break
+// to be rated. Excluding it for a day means nobody is expected to rate it: it
+// does not count as still to rate, and a rating already saved for it is kept
+// but left out of the marks and the report. Nothing is ever removed — taking
+// an exclusion off marks it withdrawn, so it survives devices merging.
+// className '' is every class; slot '' is both breaks.
+function getBdExclusionsAll(){const a=DB.get('bd_exclusions');return Array.isArray(a)?a.filter(function(x){return x&&x.id;}):[];}
+function getBdExclusions(){return getBdExclusionsAll().filter(function(x){return !x.deleted;});}
+function bdExclFor(className,date,slot){
+  return getBdExclusions().find(function(x){
+    if(!x||x.date!==date)return false;
+    if(x.className&&normClass(x.className)!==normClass(className))return false;
+    return !x.slot||!slot||x.slot===slot;
+  })||null;
+}
+function bdIsExcluded(className,date,slot){return !!bdExclFor(className,date,slot);}
+function bdExclCanEdit(){return bdTtCanEdit()||(canDo('break_discipline')==='full'&&bdCanRate());}
+
+function bdExclusionsM(){
+  const canEdit=bdExclCanEdit();
+  const list=getBdExclusions().slice().sort(function(a,b){
+    return (b.date||'').localeCompare(a.date||'')||String(a.className).localeCompare(String(b.className));
+  });
+  const classes=getAllClasses();
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>\u{1f6ab} Classes Excluded from Break Rating</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">A class on a trip, sitting an exam or kept in for an event has no break to rate that day. '
+   +'An excluded class is not counted as still to rate, and any rating already saved for it is kept but left out of the marks and the report.</div>'
+  +(canEdit?'<div style="background:var(--sf2);border-radius:var(--rs);padding:11px;margin-bottom:12px">'
+    +'<div class="fr f2"><div class="fg"><label>Date *</label><input type="date" id="bx-date" value="'+esc(window._bdDate||ymd(new Date()))+'"></div>'
+    +'<div class="fg"><label>Class</label><select id="bx-cls"><option value="">— Every class —</option>'
+      +classes.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('')+'</select></div></div>'
+    +'<div class="fr f2"><div class="fg"><label>Break</label><select id="bx-slot"><option value="">— Both breaks —</option>'
+      +'<option value="break">Break</option><option value="salah">Salah Break</option></select></div>'
+    +'<div class="fg"><label>Reason</label><input id="bx-why" list="bx-why-list" placeholder="e.g. School trip">'
+      +'<datalist id="bx-why-list">'
+      +['School trip','Examination','Assembly','Sports day','Public holiday','Class kept in','Staff meeting']
+        .map(function(r){return '<option value="'+esc(r)+'">';}).join('')
+      +'</datalist></div></div>'
+    +'<button class="btn bp bsm" onclick="bdExclAdd()">+ Exclude</button></div>':'')
+  +(list.length?'<div class="tw" style="max-height:280px;overflow:auto"><table style="font-size:11px"><thead><tr>'
+     +'<th>Date</th><th>Class</th><th>Break</th><th>Reason</th><th>Added by</th>'+(canEdit?'<th></th>':'')+'</tr></thead><tbody>'
+     +list.map(function(x){
+       return '<tr><td class="mono">'+esc(x.date||'')+'<div style="font-size:9px;color:var(--tx3)">'+esc(getDayOfWeek(x.date)||'')+'</div></td>'
+        +'<td>'+(x.className?'<strong>'+esc(x.className)+'</strong>':'<em>Every class</em>')+'</td>'
+        +'<td>'+(x.slot?esc(bdSlotLabel(x.slot)):'<strong>Both breaks</strong>')+'</td>'
+        +'<td style="color:var(--tx2)">'+esc(x.reason||'—')+'</td>'
+        +'<td style="font-size:10px;color:var(--tx3)">'+esc(x.by||'—')+'</td>'
+        +(canEdit?'<td><button class="btn bd3 bxs" onclick="bdExclDel('+q+escJs(x.id)+q+')">Remove</button></td>':'')
+        +'</tr>';
+     }).join('')+'</tbody></table></div>'
+   :'<div class="emp" style="padding:16px"><div class="ei">\u{1f6ab}</div><p style="font-size:11px">No class is excluded.</p></div>')
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
+}
+function bdExclAdd(){
+  if(!bdExclCanEdit()){toast('You cannot change exclusions','danger');return;}
+  const date=(document.getElementById('bx-date')||{}).value||'';
+  const cls=(document.getElementById('bx-cls')||{}).value||'';
+  const slot=(document.getElementById('bx-slot')||{}).value||'';
+  const why=((document.getElementById('bx-why')||{}).value||'').trim();
+  if(!date){toast('Choose the date','danger');return;}
+  const d=getDayOfWeek(date);
+  if(d==='Friday'||d==='Saturday'){toast(d+' is not a school day','danger');return;}
+  const list=getBdExclusionsAll();
+  const dup=list.find(function(x){
+    return !x.deleted&&x.date===date&&normClass(x.className||'')===normClass(cls)&&(x.slot||'')===slot;
+  });
+  if(dup){toast('That is already excluded','info');return;}
+  const now=new Date().toISOString();
+  list.push({id:nid('bdx'),date:date,className:cls,slot:slot,reason:why,
+    by:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),created:now,updated:now});
+  DB.set('bd_exclusions',list);
+  logA('Excluded '+(cls||'every class')+' from break rating on '+date+(slot?' ('+bdSlotLabel(slot)+')':' (both breaks)')+(why?' — '+why:''));
+  toast('Excluded','success');
+  bdExclusionsM();
+  if(_page==='break_discipline')setTimeout(rBreakDiscipline,0);
+}
+function bdExclDel(id){
+  if(!bdExclCanEdit()){toast('You cannot change exclusions','danger');return;}
+  const x=getBdExclusions().find(function(y){return y.id===id;});
+  if(!x)return;
+  if(!confirm('Stop excluding '+(x.className||'every class')+' on '+x.date+(x.slot?' ('+bdSlotLabel(x.slot)+')':'')+'?'))return;
+  const now=new Date().toISOString();
+  const by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  // kept, marked withdrawn, so it cannot come back from another device's copy
+  DB.set('bd_exclusions',getBdExclusionsAll().map(function(y){
+    return y.id===id?Object.assign({},y,{deleted:true,deletedAt:now,deletedBy:by,updated:now}):y;
+  }));
+  logA('Removed the break exclusion for '+(x.className||'every class')+' on '+x.date);
+  toast('Removed','danger');
+  bdExclusionsM();
+  if(_page==='break_discipline')setTimeout(rBreakDiscipline,0);
+}
+
 function rBreakDiscipline(){
   const perm=canDo('break_discipline');
   if(perm==='disabled'){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">\u{1f512}</div><p>Access restricted</p></div>';return;}
@@ -17125,9 +17222,11 @@ function rBreakDiscipline(){
   const all=getBreakDiscipline();
   const todays=all.filter(function(r){return r.date===sel;});
   const classes=getAllClasses();
-  const due=classes.reduce(function(n,c){return n+bdSlotsFor(c).length;},0);
-  const good=todays.filter(function(r){return bdMarksOf(r)>=7;}).length;
-  const poor=todays.filter(function(r){return bdMarksOf(r)<5;}).length;
+  const due=classes.reduce(function(n,c){return n+bdSlotsFor(c).filter(function(s){return !bdIsExcluded(c,sel,s.id);}).length;},0);
+  const counted=todays.filter(function(r){return !bdIsExcluded(r.className,sel,r.slot);});
+  const exclToday=getBdExclusions().filter(function(x){return x.date===sel;}).length;
+  const good=counted.filter(function(r){return bdMarksOf(r)>=7;}).length;
+  const poor=counted.filter(function(r){return bdMarksOf(r)<5;}).length;
   const q=String.fromCharCode(39);
   document.getElementById('pc').innerHTML=
    '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>\u{1f6b6} Break Class Leaving Discipline</h3>'
@@ -17137,16 +17236,17 @@ function rBreakDiscipline(){
    +(canRate?'<button class="btn bp bsm" onclick="bdEntryM()">+ Rate a Class</button>':'')
    +'<button class="btn bs bsm" onclick="bdReportM()">\u{1f4c4} Report</button>'
    +'<button class="btn bg2 bsm" onclick="bdQrM()">\u{1f4f1} Break QR Code</button>'
+   +'<button class="btn bg2 bsm" onclick="bdExclusionsM()">\u{1f6ab} Exclude Classes</button>'
    +(bdTtCanEdit()?'<button class="btn bg2 bsm" onclick="bdTimetableM()">\u{1f4c5} Timetable</button>':'')
    +'</div></div>'
    +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Rate how each class leaves its room for break. Grades 1–3 break 9:15–9:30 after period 2; grades 4–12 break 10:00–10:15 after period 3, and Salah break 12:30–12:45 after period 6. The teacher of the lesson before the break is filled in from the timetable. Each break is marked out of 10, and the marks are added to the class’s total for the day in Class Period Discipline.'
    +'<div style="margin-top:4px">\u{1f4c5} '+bdTtSourceLine()+'</div></div></div>'
    +((day==='Friday'||day==='Saturday')?'<div class="al aw" style="margin-bottom:12px">'+esc(day)+' is not a school day.</div>':'')
    +'<div class="cg g4" style="margin-bottom:13px">'
-   +'<div class="stat bl"><div class="sl2">Rated</div><div class="sv">'+todays.length+'</div><div class="sb3">of '+due+' breaks on '+esc(sel)+'</div><div class="sic">\u{1f4dd}</div></div>'
+   +'<div class="stat bl"><div class="sl2">Rated</div><div class="sv">'+counted.length+'</div><div class="sb3">of '+due+' breaks on '+esc(sel)+(exclToday?' · '+exclToday+' exclusion(s)':'')+'</div><div class="sic">\u{1f4dd}</div></div>'
    +'<div class="stat gn"><div class="sl2">Orderly</div><div class="sv">'+good+'</div><div class="sb3">7 or more out of 10</div><div class="sic">\u{1f31f}</div></div>'
    +'<div class="stat rd"><div class="sl2">Poor</div><div class="sv">'+poor+'</div><div class="sb3">below 5 out of 10</div><div class="sic">\u{1f61f}</div></div>'
-   +'<div class="stat go"><div class="sl2">Still to rate</div><div class="sv">'+Math.max(0,due-todays.length)+'</div><div class="sb3">on '+esc(sel)+'</div><div class="sic">⏳</div></div>'
+   +'<div class="stat go"><div class="sl2">Still to rate</div><div class="sv">'+Math.max(0,due-counted.length)+'</div><div class="sb3">on '+esc(sel)+'</div><div class="sic">⏳</div></div>'
    +'</div>'
    +bdGridCard(sel,todays,canRate)
    +bdListCard(all,canRate);
@@ -17168,6 +17268,13 @@ function bdGridCard(sel,todays,canRate){
     if(!bdSlotsFor(c).some(function(s){return s.id===slotId;}))
       return '<td class="c" style="color:var(--tx3)">—</td>';
     const r=at[normClass(c)+'|'+slotId];
+    const xc=bdExclFor(c,sel,slotId);
+    if(xc){
+      return '<td class="c" title="'+esc('Excluded'+(xc.reason?': '+xc.reason:'')+(xc.by?' · '+xc.by:''))+'">'
+        +'<span class="badge bgr" style="font-size:10px">\u{1f6ab} excluded</span>'
+        +(xc.reason?'<div style="font-size:9px;color:var(--tx3)">'+esc(xc.reason)+'</div>':'')
+        +(r?'<div style="font-size:9px;color:var(--tx3)">rated '+pdFmt(bdMarksOf(r))+' — not counted</div>':'')+'</td>';
+    }
     if(!r){
       const t=bdTeacherFor(c,sel,slotId);
       return '<td class="c">'+(canRate?'<button class="btn bg2 bxs" onclick="bdEntryM(null,'+q+escJs(c)+q+','+q+slotId+q+')">+</button>':'<span style="color:var(--tx3)">·</span>')
@@ -17294,7 +17401,9 @@ function bdFormChanged(classChanged,first){
   if(tEl&&(!window._bdForm.teacherDirty||(!first&&!tEl.value))){tEl.value=t.name||'';window._bdForm.teacherDirty=false;}
   window._bdForm.teacherSource=t.source;window._bdForm.subject=t.subject;
   const h=document.getElementById('bd-f-hint');
-  if(h)h.innerHTML=cls?bdTeacherHint(t):'\u{1f446} Select the class first — the teacher then fills in from the timetable';
+  const bxc=(cls&&date)?bdExclFor(cls,date,slot):null;
+  if(h)h.innerHTML=(bxc?'<div class="al aw" style="margin:4px 0">\u{1f6ab} '+esc(cls)+' is excluded from break rating on '+esc(date)+(bxc.reason?' ('+esc(bxc.reason)+')':'')+'. A rating saved now is kept but not counted.</div>':'')
+    +(cls?bdTeacherHint(t):'\u{1f446} Select the class first — the teacher then fills in from the timetable');
   const chips=document.getElementById('bd-f-chips');
   if(chips)[].slice.call(chips.querySelectorAll('button')).forEach(function(b){
     b.className='btn '+(b.getAttribute('data-c')===cls?'bp':'bg2')+' bsm';
@@ -17454,7 +17563,7 @@ function bdTeacherList(txt){
 
 function bdReportData(from,to){
   const rows=getBreakDiscipline().filter(function(r){
-    return (!from||r.date>=from)&&(!to||r.date<=to);
+    return (!from||r.date>=from)&&(!to||r.date<=to)&&!bdIsExcluded(r.className,r.date,r.slot);
   }).sort(function(a,b){
     return (a.date||'').localeCompare(b.date||'')
       ||(pdGradeOf(a.className)||99)-(pdGradeOf(b.className)||99)
@@ -17916,8 +18025,9 @@ function pdDayResult(cls,date,recs,brs){
     res.periods.push(cell);
   });
   bdSlotsFor(cls).forEach(function(s){
-    const r=res.off?null:((brs||[]).find(function(b){return b.slot===s.id;})||null);
-    const cell={slot:s.id,label:s.label,rec:r,marks:null};
+    const bx=bdIsExcluded(cls,date,s.id);
+    const r=(res.off||bx)?null:((brs||[]).find(function(b){return b.slot===s.id;})||null);
+    const cell={slot:s.id,label:s.label,rec:r,marks:null,excluded:bx};
     if(r){cell.marks=bdMarksOf(r);res.breakMarks+=cell.marks;res.breakPossible+=PD_MAX;res.breaksRated++;}
     res.breaks.push(cell);
   });
@@ -19528,7 +19638,8 @@ function bdpTeacher(){
   const t=bdTeacherFor(st.cls,st.date,st.slot);
   if(!st.teacherDirty)el.value=t.name||'';
   el.oninput=function(){st.teacherDirty=true;};
-  if(hint)hint.innerHTML=bdTeacherHint(t);
+  const bxc=bdExclFor(st.cls,st.date,st.slot);
+  if(hint)hint.innerHTML=(bxc?'<div class="al aw" style="margin:4px 0">\u{1f6ab} '+esc(st.cls)+' is excluded from break rating today'+(bxc.reason?' ('+esc(bxc.reason)+')':'')+' — no rating is needed.</div>':'')+bdTeacherHint(t);
 }
 function bdpMarks(m){
   window._bdp.marks=m;
