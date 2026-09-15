@@ -3232,6 +3232,8 @@ function infStatusTone(st){
     :st==='Transferred to Another class'?'bbl'
     :st?'bgo':'bgr';
 }
+// The same colours the record and the list already use for guardian contact
+function infGuardianTone(g){return g==='Contacted'?'bgn':g==='Pending'?'bgo':g==='No Response'?'brd':g?'bbl':'bgr';}
 function infStatusLog(i){
   const out=[];
   // the record being written is the first thing that happened to it
@@ -3252,17 +3254,23 @@ function infStatusPanel(i){
   const log=infStatusLog(i);
   const can=infMayStatus(i);
   const q=String.fromCharCode(39);
+  const gc=i.guardianContact||'';
   return '<div class="fg"><label>Status</label>'
    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
    +'<span class="badge '+infStatusTone(st)+'" style="font-size:12px;padding:4px 11px">'+esc(st||'No status yet')+'</span>'
+   +'<span class="badge '+infGuardianTone(gc)+'" style="font-size:12px;padding:4px 11px">📞 '+esc(gc?'Guardian: '+gc:'Guardian not recorded')+'</span>'
    +'<span style="font-size:11px;color:var(--tx3)">'+(log.length-1)+' change(s) recorded</span></div>'
    +(can?'<div style="background:var(--sf2);padding:10px;border-radius:var(--rs);margin-bottom:10px">'
      +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">'
-     +'<div style="flex:1;min-width:180px"><label style="font-size:10px;color:var(--tx3);display:block;margin-bottom:3px">New status</label>'
+     +'<div style="flex:1;min-width:160px"><label style="font-size:10px;color:var(--tx3);display:block;margin-bottom:3px">Status</label>'
      +'<select id="infst-new" style="width:100%"><option value="">— Choose —</option>'
      +INF_FOLLOWUP.map(function(f){return '<option value="'+esc(f)+'"'+(f===st?' selected':'')+'>'+esc(f)+'</option>';}).join('')
      +'</select></div>'
-     +'<button class="btn bp bsm" onclick="infStatusSave('+q+esc(i.id)+q+')">Update status</button></div>'
+     +'<div style="flex:1;min-width:160px"><label style="font-size:10px;color:var(--tx3);display:block;margin-bottom:3px">Guardian contacted?</label>'
+     +'<select id="infst-gc" style="width:100%"><option value="">— Not recorded —</option>'
+     +INF_GUARDIAN.map(function(g){return '<option value="'+esc(g)+'"'+(g===gc?' selected':'')+'>'+esc(g)+'</option>';}).join('')
+     +'</select></div>'
+     +'<button class="btn bp bsm" onclick="infStatusSave('+q+esc(i.id)+q+')">Update</button></div>'
      +'<div style="margin-top:7px"><label style="font-size:10px;color:var(--tx3);display:block;margin-bottom:3px">What has been done (optional)</label>'
      +'<input id="infst-note" placeholder="e.g. Father came in, boy moved to 5-B"></div></div>':'')
    +'<div class="tl2">'
@@ -3270,6 +3278,7 @@ function infStatusPanel(i){
       return '<div class="tli"><div class="tld"></div>'
        +'<div class="tlm">'+esc(infStatusWhen(h.at))+(h.by?' · '+esc(h.by):'')+'</div>'
        +'<div class="tlc"><strong>'+esc(h.first?'Infraction recorded':h.status||'—')+'</strong>'
+       +(h.guardian!==undefined&&h.guardian!==h.guardianFrom?'<br>📞 Guardian: '+esc(h.guardian||'not recorded')+(h.guardianFrom?' <span style="color:var(--tx3)">(was '+esc(h.guardianFrom)+')</span>':''):'')
        +(h.note?'<br>'+esc(h.note):'')+'</div></div>';
     }).join('')
    +'</div></div>';
@@ -3280,20 +3289,30 @@ function infStatusSave(id){
   const idx=list.findIndex(function(x){return x&&x.id===id;});
   if(idx<0){toast('Infraction not found','danger');return;}
   if(!infMayStatus(list[idx])){toast('You cannot change this record','danger');return;}
-  const st=((document.getElementById('infst-new')||{}).value||'').trim();
-  const note=((document.getElementById('infst-note')||{}).value||'').trim();
-  if(!st){toast('Choose the new status','danger');return;}
   const was=infStatusOf(list[idx]);
-  if(st===was&&!note){toast('That is already the status — add a note to record a change','danger');return;}
+  const st=((document.getElementById('infst-new')||{}).value||'').trim()||was;
+  const note=((document.getElementById('infst-note')||{}).value||'').trim();
+  const gcEl=document.getElementById('infst-gc');
+  const gcWas=list[idx].guardianContact||'';
+  // leaving the guardian box on "not recorded" never wipes an answer already given
+  const gc=gcEl&&gcEl.value?gcEl.value:gcWas;
+  if(!st&&!gc&&!note){toast('Choose the status or whether the guardian was contacted','danger');return;}
+  if(st===was&&gc===gcWas&&!note){toast('Nothing has changed — change the status or the guardian contact, or add a note','danger');return;}
   const hist=Array.isArray(list[idx].statusHistory)?list[idx].statusHistory.slice():[];
-  hist.push({status:st,from:was,note:note,
+  const entry={status:st,from:was,note:note,
     by:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),
     byRole:(typeof rL==='function'?rL(CU.role):CU.role)||'',
-    at:new Date().toISOString()});
-  list[idx]=Object.assign({},list[idx],{followUpStatus:st,statusHistory:hist,updated:new Date().toISOString()});
+    at:new Date().toISOString()};
+  if(gc!==gcWas){entry.guardian=gc;entry.guardianFrom=gcWas;}
+  hist.push(entry);
+  const upd={statusHistory:hist,updated:new Date().toISOString()};
+  if(st)upd.followUpStatus=st;
+  if(gc!==gcWas)upd.guardianContact=gc;
+  list[idx]=Object.assign({},list[idx],upd);
   DB.set('infractions',list);
-  logA('Infraction status for '+(list[idx].studentName||'a student')+' set to '+st);
-  toast('Status updated','success');
+  logA('Infraction for '+(list[idx].studentName||'a student')+': '
+    +[st!==was?'status '+st:'',gc!==gcWas?'guardian '+gc:''].filter(Boolean).join(', ')+(note&&st===was&&gc===gcWas?'note added':''));
+  toast('Updated','success');
   closeM();vInf(id);
   if(_page==='infractions'&&typeof rInfractions==='function')setTimeout(rInfractions,0);
 }
