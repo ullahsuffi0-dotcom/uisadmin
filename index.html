@@ -7496,7 +7496,7 @@ function rbNorm(n){return String(n||'').toLowerCase().replace(/\s+/g,' ').trim()
 function rbMin(t){const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?Number(m[1])*60+Number(m[2]):null;}
 function rbOverlap(a1,a2,b1,b2){return a1<b2&&b1<a2;}
 function rbState(){
-  return window._rb||(window._rb={grade:'',classes:[],studentIds:[],subjects:[],need:{},teachers:{},
+  return window._rb||(window._rb={grade:'',classes:[],studentIds:[],subjects:[],need:{},teachers:{},teacherClasses:{},
     slots:[],perWeek:1,maxGroup:20,fromWeek:'',toWeek:'',fromDate:'',toDate:'',type:'',notes:'',q:'',result:null});
 }
 function rbRoll(){return vpFilter(DB.get('students')||[]);}
@@ -7606,12 +7606,12 @@ function rbToggleClass(c){
   if(i>=0){st.classes.splice(i,1);st.studentIds=st.studentIds.filter(function(id){const s=rbStudent(id);return s&&rbClassOf(s)!==c;});}
   else st.classes.push(c);
   st.classes.sort();
-  rbS1();rbS2();rbS3();rbDirty();
+  rbS1();rbS2();rbS3();rbS4();rbDirty();
 }
 function rbAllSections(){
   const st=rbState();
   rbRoll().filter(function(s){return String(s.grade)===st.grade;}).forEach(function(s){const c=rbClassOf(s);if(st.classes.indexOf(c)<0)st.classes.push(c);});
-  st.classes.sort();rbS1();rbS2();rbS3();rbDirty();
+  st.classes.sort();rbS1();rbS2();rbS3();rbS4();rbDirty();
 }
 
 // Step 2 — the students
@@ -7705,6 +7705,7 @@ function rbRemoveSubject(x){
   st.subjects=st.subjects.filter(function(y){return y!==x;});
   Object.keys(st.need).forEach(function(id){st.need[id]=(st.need[id]||[]).filter(function(y){return y!==x;});});
   delete st.teachers[x];
+  if(st.teacherClasses)delete st.teacherClasses[x];
   rbS3();rbS4();rbDirty();
 }
 function rbNeed(id,x,on){
@@ -7736,11 +7737,70 @@ function rbS4(){
        +'<input id="rb-t-'+i+'" list="rb-tch-list" placeholder="Teacher name" style="flex:1;min-width:160px">'
        +'<button class="btn bp bxs" onclick="rbAddTeacher('+i+')">+ Add</button></div>'
        +'<div style="margin-top:5px">'
-       +(chosen.length?chosen.map(function(n){return '<span class="badge bgn" style="margin:2px">'+esc(n)+' <a href="#" onclick="rbRemoveTeacher('+i+','+q+escJs(n)+q+');return false" style="color:inherit;text-decoration:none">×</a></span>';}).join(''):'<span style="font-size:10px;color:var(--dn)">No teacher yet</span>')
+       +(chosen.length?chosen.map(function(n){
+          const mine=rbTeacherClasses(x,n);
+          return '<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:4px 0;padding:5px 7px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs)">'
+           +'<span class="badge bgn">'+esc(n)+' <a href="#" onclick="rbRemoveTeacher('+i+','+q+escJs(n)+q+');return false" style="color:inherit;text-decoration:none">×</a></span>'
+           +'<span style="font-size:10px;color:var(--tx3)">takes:</span>'
+           +(st.classes.length?st.classes.map(function(c){
+              const on=mine.indexOf(c)>=0;
+              const other=chosen.filter(function(o){return o!==n&&rbTeacherClasses(x,o).indexOf(c)>=0;});
+              return '<button type="button" class="btn '+(on?'bp':'bg2')+' bxs" title="'+esc(other.length?'Also taken by '+other.join(', '):'')+'" onclick="rbTeacherClass('+i+','+q+escJs(n)+q+','+q+esc(c)+q+')">'+(on?'✓ ':'')+esc(c)+(other.length&&on?' ⚠':'')+'</button>';
+            }).join(''):'<span style="font-size:10px;color:var(--tx3)">choose classes in step 1</span>')
+           +'<span style="font-size:10px;color:var(--tx3)">'+(mine.length?'':'— any class nobody else takes')+'</span></div>';
+        }).join(''):'<span style="font-size:10px;color:var(--dn)">No teacher yet</span>')
        +(suggest.length?' <span style="font-size:10px;color:var(--tx3)">Suggested:</span> '+suggest.map(function(t){return '<a href="#" onclick="rbAddTeacherName('+i+','+q+escJs(t.name)+q+');return false" style="font-size:10px;color:var(--ac);margin-right:6px">'+esc(t.name)+'</a>';}).join(''):'')
        +'</div></div>';
     }).join('')
-   +'<div style="font-size:10px;color:var(--tx3);margin-top:6px">With more than one teacher for a subject, its students are shared between them, keeping each class together where possible.</div>';
+   +'<div style="font-size:10px;color:var(--tx3);margin-top:6px">Tap the classes and sections each teacher will take. A teacher with none ticked takes whatever classes nobody else has, shared out with any other such teacher. A class ticked for two teachers is split between them.</div>';
+}
+// Which classes a teacher takes for a subject (none means any class left over)
+function rbTeacherClasses(x,name){
+  const st=rbState();
+  const m=st.teacherClasses&&st.teacherClasses[x];
+  return ((m&&m[name])||[]).filter(function(c){return st.classes.indexOf(c)>=0;});
+}
+function rbTeacherClass(i,name,c){
+  const st=rbState();const x=st.subjects[i];if(!x)return;
+  st.teacherClasses=st.teacherClasses||{};
+  const m=st.teacherClasses[x]||(st.teacherClasses[x]={});
+  const list=m[name]||(m[name]=[]);
+  const k=list.indexOf(c);
+  if(k>=0)list.splice(k,1);else list.push(c);
+  list.sort();
+  rbS4();rbDirty();
+}
+// Who takes which students of a subject: each class goes to the teacher
+// chosen for it; a class chosen for two is split; a class nobody chose goes,
+// whole, to a teacher left free — or the plan says who is missing
+function rbShareOut(x,studs,st){
+  const tchs=st.teachers[x]||[];
+  const pools={};tchs.forEach(function(t){pools[t]=[];});
+  const byClass={};
+  studs.forEach(function(s){(byClass[rbClassOf(s)]=byClass[rbClassOf(s)]||[]).push(s);});
+  const free=tchs.filter(function(t){return !rbTeacherClasses(x,t).length;});
+  const unowned=[],missing=[];
+  Object.keys(byClass).sort().forEach(function(c){
+    const owners=tchs.filter(function(t){return rbTeacherClasses(x,t).indexOf(c)>=0;});
+    if(!owners.length){unowned.push(c);return;}
+    byClass[c].forEach(function(s,k){pools[owners[k%owners.length]].push(s);});
+  });
+  if(unowned.length){
+    if(!free.length)missing.push.apply(missing,unowned);
+    else if(unowned.length<free.length){
+      // fewer classes than free teachers: share the students themselves
+      const all=[];unowned.forEach(function(c){all.push.apply(all,byClass[c]);});
+      const size=Math.ceil(all.length/free.length);
+      free.forEach(function(t,k){pools[t].push.apply(pools[t],all.slice(k*size,(k+1)*size));});
+    }else{
+      // whole classes, each to the free teacher with the fewest so far
+      unowned.slice().sort(function(a,b){return byClass[b].length-byClass[a].length;}).forEach(function(c){
+        const t=free.slice().sort(function(a,b){return pools[a].length-pools[b].length;})[0];
+        pools[t].push.apply(pools[t],byClass[c]);
+      });
+    }
+  }
+  return {pools:pools,missing:missing};
 }
 function rbAddTeacher(i){const el=document.getElementById('rb-t-'+i);rbAddTeacherName(i,el?el.value:'');}
 function rbAddTeacherName(i,name){
@@ -7754,6 +7814,7 @@ function rbAddTeacherName(i,name){
 function rbRemoveTeacher(i,name){
   const st=rbState();const x=st.subjects[i];
   st.teachers[x]=(st.teachers[x]||[]).filter(function(y){return y!==name;});
+  if(st.teacherClasses&&st.teacherClasses[x])delete st.teacherClasses[x][name];
   rbS4();rbDirty();
 }
 
@@ -7841,22 +7902,29 @@ function rbGenerate(st){
   });
   if(out.problems.length)return out;
 
-  // 1. Groups: the students who need each subject, shared out between its teachers
+  // 1. Groups: the students who need each subject, each teacher taking the
+  //    classes chosen for him, then split to the largest group allowed
   const groups=[];
+  const byStudent=function(a,b){return rbClassOf(a).localeCompare(rbClassOf(b))||fN(a).localeCompare(fN(b));};
   st.subjects.forEach(function(x){
-    const studs=st.studentIds.map(rbStudent).filter(function(s){return s&&(st.need[s.id]||[]).indexOf(x)>=0;})
-      .sort(function(a,b){return rbClassOf(a).localeCompare(rbClassOf(b))||fN(a).localeCompare(fN(b));});
+    const studs=st.studentIds.map(rbStudent).filter(function(s){return s&&(st.need[s.id]||[]).indexOf(x)>=0;}).sort(byStudent);
     if(!studs.length)return;
-    const tchs=st.teachers[x];
-    const nGroups=Math.max(tchs.length,Math.ceil(studs.length/Math.max(1,st.maxGroup)));
-    const size=Math.ceil(studs.length/nGroups);
-    for(let g=0;g<nGroups;g++){
-      const part=studs.slice(g*size,(g+1)*size);
-      if(!part.length)continue;
-      groups.push({subject:x,teacherName:tchs[g%tchs.length],studentIds:part.map(function(s){return s.id;}),
-        classes:[...new Set(part.map(rbClassOf))].sort(),sessions:[],missing:0});
-    }
+    const share=rbShareOut(x,studs,st);
+    if(share.missing.length)out.problems.push('No teacher takes '+x+' for '+share.missing.join(', ')+' — tick the class for a teacher, or leave a teacher with no class ticked.');
+    (st.teachers[x]||[]).forEach(function(t){
+      const pool=share.pools[t].slice().sort(byStudent);
+      if(!pool.length)return;
+      const nGroups=Math.ceil(pool.length/Math.max(1,st.maxGroup));
+      const size=Math.ceil(pool.length/nGroups);
+      for(let g=0;g<nGroups;g++){
+        const part=pool.slice(g*size,(g+1)*size);
+        if(!part.length)continue;
+        groups.push({subject:x,teacherName:t,studentIds:part.map(function(s){return s.id;}),
+          classes:[...new Set(part.map(rbClassOf))].sort(),sessions:[],missing:0});
+      }
+    });
   });
+  if(out.problems.length)return out;
 
   // 2. Places: the booked time of every teacher and every student
   const book=rbBusyFromPlans(range);
