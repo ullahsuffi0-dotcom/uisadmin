@@ -7496,7 +7496,7 @@ function rbNorm(n){return String(n||'').toLowerCase().replace(/\s+/g,' ').trim()
 function rbMin(t){const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?Number(m[1])*60+Number(m[2]):null;}
 function rbOverlap(a1,a2,b1,b2){return a1<b2&&b1<a2;}
 function rbState(){
-  return window._rb||(window._rb={grade:'',classes:[],studentIds:[],subjects:[],need:{},teachers:{},teacherClasses:{},
+  return window._rb||(window._rb={grade:'',classes:[],studentIds:[],subjects:[],need:{},teachers:{},teacherClasses:{},teacherSessions:{},studentSessions:{},
     slots:[],perWeek:1,maxGroup:20,fromWeek:'',toWeek:'',fromDate:'',toDate:'',type:'',notes:'',q:'',result:null});
 }
 function rbRoll(){return vpFilter(DB.get('students')||[]);}
@@ -7919,7 +7919,11 @@ function rbGenerate(st){
       for(let g=0;g<nGroups;g++){
         const part=pool.slice(g*size,(g+1)*size);
         if(!part.length)continue;
-        groups.push({subject:x,teacherName:t,studentIds:part.map(function(s){return s.id;}),
+        const counts={};
+        part.forEach(function(s){counts[s.id]=rbSessionsFor(st,x,t,s.id);});
+        const need=Math.max.apply(null,part.map(function(s){return counts[s.id];}));
+        if(need<=0)continue;
+        groups.push({subject:x,teacherName:t,studentIds:part.map(function(s){return s.id;}),counts:counts,need:need,
           classes:[...new Set(part.map(rbClassOf))].sort(),sessions:[],missing:0});
       }
     });
@@ -7958,7 +7962,10 @@ function rbGenerate(st){
   groups.forEach(function(g){
     const tn=rbNorm(g.teacherName);
     const usedDays={};
-    for(let n=0;n<st.perWeek;n++){
+    g.unplaced={};
+    for(let n=0;n<g.need;n++){
+      // the students still due a session: each takes as many as set for him
+      const who=g.studentIds.filter(function(id){return g.counts[id]>n;});
       let pick=null;
       // first a day the group has not met yet, then any free slot
       [true,false].some(function(newDayOnly){
@@ -7966,19 +7973,37 @@ function rbGenerate(st){
           if(newDayOnly&&usedDays[s.day])return false;
           if(g.sessions.some(function(x){return x.id===s.id;}))return false;
           const a=rbMin(s.start),b=rbMin(s.end);
-          if(clash(s.day,a,b,tn,g.studentIds))return false;
+          if(clash(s.day,a,b,tn,who))return false;
           if(inLesson(g.teacherName,s))return false;
           pick=s;return true;
         });
       });
-      if(!pick){g.missing++;continue;}
-      g.sessions.push({id:pick.id,day:pick.day,start:pick.start,end:pick.end});
+      if(!pick){
+        g.missing++;
+        // who is holding it up: a student without whom some slot would do
+        const freeWithout=function(skip){
+          return st.slots.some(function(s){
+            if(g.sessions.some(function(x){return x.id===s.id;}))return false;
+            const rest=who.filter(function(id){return id!==skip;});
+            return !clash(s.day,rbMin(s.start),rbMin(s.end),tn,rest)&&!inLesson(g.teacherName,s);
+          });
+        };
+        const blockers=who.filter(function(id){return freeWithout(id);});
+        (blockers.length?blockers:who).forEach(function(id){g.unplaced[id]=(g.unplaced[id]||0)+1;});
+        continue;
+      }
+      g.sessions.push({id:pick.id,day:pick.day,start:pick.start,end:pick.end,students:who});
       usedDays[pick.day]=1;
-      book.push({day:pick.day,from:rbMin(pick.start),to:rbMin(pick.end),teacher:tn,students:g.studentIds,
+      book.push({day:pick.day,from:rbMin(pick.start),to:rbMin(pick.end),teacher:tn,students:who,
         label:g.subject+' · '+g.teacherName});
     }
-    if(g.missing)out.notes.push(g.subject+' with '+g.teacherName+' ('+g.classes.join(', ')+'): '+g.missing+' of '+st.perWeek
-      +' weekly session(s) could not be placed without a clash — add a time slot or another teacher.');
+    if(g.missing){
+      const short=Object.keys(g.unplaced).map(function(id){const x=rbStudent(id);return x?fN(x):id;});
+      out.notes.push(g.subject+' with '+g.teacherName+' ('+g.classes.join(', ')+'): '+g.missing+' of '+g.need
+        +' weekly session(s) could not be placed without a clash'+(short.length&&short.length<g.studentIds.length?' — short for '+short.join(', '):'')
+        +'. Add a time slot or a teacher, or lower the sessions below and generate again.');
+      out.adjust=true;
+    }
   });
   groups.sort(function(a,b){return a.subject.localeCompare(b.subject)||a.teacherName.localeCompare(b.teacherName);});
   out.groups=groups;out.range=range;
@@ -7993,9 +8018,9 @@ function rbVerify(groups){
       seen.forEach(function(o){
         if(o.day!==s.day||!rbOverlap(a,b,o.from,o.to))return;
         if(rbNorm(o.teacher)===rbNorm(g.teacherName))bad.push(g.teacherName+' twice on '+s.day+' '+s.start);
-        g.studentIds.forEach(function(id){if(o.students.indexOf(id)>=0){const st=rbStudent(id);bad.push((st?fN(st):id)+' twice on '+s.day+' '+s.start);}});
+        (s.students||g.studentIds).forEach(function(id){if(o.students.indexOf(id)>=0){const st=rbStudent(id);bad.push((st?fN(st):id)+' twice on '+s.day+' '+s.start);}});
       });
-      seen.push({day:s.day,from:a,to:b,teacher:g.teacherName,students:g.studentIds});
+      seen.push({day:s.day,from:a,to:b,teacher:g.teacherName,students:s.students||g.studentIds});
     });
   });
   return bad;
@@ -8012,8 +8037,9 @@ function rbGenerateNow(){
 function rbS7(){
   const st=rbState(),box=document.getElementById('rb-s7');if(!box)return;
   const r=st.result;
-  if(!r){box.innerHTML='<div style="font-size:11px;color:var(--tx3)">When the steps above are done, press <strong>⚙️ Generate</strong>. Nothing is saved until you press Save plans.</div>';return;}
-  if(r.problems.length){box.innerHTML='<div class="al ad">'+r.problems.map(esc).join('<br>')+'</div>';return;}
+  if(!r){box.innerHTML='<div style="font-size:11px;color:var(--tx3)">When the steps above are done, press <strong>⚙️ Generate</strong>. Nothing is saved until you press Save plans.</div>'
+    +((st.teacherSessions&&Object.keys(st.teacherSessions).length)||(st.studentSessions&&Object.keys(st.studentSessions).length)?rbAdjustPanel(true):'');return;}
+  if(r.problems.length){box.innerHTML='<div class="al ad">'+r.problems.map(esc).join('<br>')+'</div>'+rbAdjustPanel();return;}
   const clashes=rbVerify(r.groups);
   const sessions=r.groups.reduce(function(n,g){return n+g.sessions.length;},0);
   // the week at a glance, teacher by teacher
@@ -8026,7 +8052,11 @@ function rbS7(){
    +r.groups.map(function(g){
       return '<tr><td><strong>'+esc(g.subject)+'</strong></td><td>'+esc(g.teacherName)+'</td><td>'+esc(g.classes.join(', '))+'</td>'
        +'<td class="c">'+g.studentIds.length+'</td>'
-       +'<td>'+(g.sessions.length?g.sessions.map(function(s){return esc(s.day.slice(0,3)+' '+s.start+'–'+s.end);}).join('<br>'):'<span style="color:var(--dn)">not placed</span>')+'</td></tr>';
+       +'<td>'+(g.sessions.length?g.sessions.map(function(s){
+            const n=(s.students||g.studentIds).length;
+            return esc(s.day.slice(0,3)+' '+s.start+'–'+s.end)+(n<g.studentIds.length?' <span style="color:var(--tx3)">('+n+' of '+g.studentIds.length+')</span>':'');
+          }).join('<br>'):'<span style="color:var(--dn)">not placed</span>')
+       +(g.missing?'<div style="color:var(--dn);font-size:10px">'+g.missing+' session(s) not placed</div>':'')+'</td></tr>';
     }).join('')+'</tbody></table></div>'
    +(slotsUsed.length&&tnames.length?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 4px">Each teacher’s week</div>'
      +'<div class="tw"><table style="font-size:10px"><thead><tr><th>Teacher</th>'+slotsUsed.map(function(s){return '<th class="c">'+esc(s.day.slice(0,3))+'<br>'+esc(s.start)+'</th>';}).join('')+'</tr></thead><tbody>'
@@ -8035,8 +8065,67 @@ function rbS7(){
           const g=r.groups.filter(function(x){return x.teacherName===t&&x.sessions.some(function(y){return y.id===s.id;});});
           return '<td class="c">'+(g.length?g.map(function(x){return esc(x.subject)+'<div style="color:var(--tx3)">'+esc(x.classes.join(', '))+'</div>';}).join(''):'')+'</td>';
         }).join('')+'</tr>';
-      }).join('')+'</tbody></table></div>':'');
+      }).join('')+'</tbody></table></div>':'')
+   +rbAdjustPanel(r.adjust);
 }
+// How many sessions a week: the teacher's number for the subject if set,
+// otherwise the plan's, and a student's own number over both
+function rbSessionsFor(st,x,t,sid){
+  const ov=st.studentSessions&&st.studentSessions[sid]&&st.studentSessions[sid][x];
+  if(ov!==undefined&&ov!==null&&ov!=='')return Math.max(0,Math.min(7,Number(ov)||0));
+  const tv=st.teacherSessions&&st.teacherSessions[x]&&st.teacherSessions[x][t];
+  if(tv!==undefined&&tv!==null&&tv!=='')return Math.max(0,Math.min(7,Number(tv)||0));
+  return st.perWeek;
+}
+function rbAdjustPanel(open){
+  const st=rbState();
+  const q=rbQ();
+  const pairs=[];
+  st.subjects.forEach(function(x){(st.teachers[x]||[]).forEach(function(t){pairs.push({x:x,t:t});});});
+  const studs=st.studentIds.map(rbStudent).filter(Boolean)
+    .sort(function(a,b){return rbClassOf(a).localeCompare(rbClassOf(b))||fN(a).localeCompare(fN(b));});
+  if(!pairs.length&&!studs.length)return '';
+  const tv=function(x,t){const m=st.teacherSessions&&st.teacherSessions[x];return m&&m[t]!==undefined?m[t]:'';};
+  const sv=function(id,x){const m=st.studentSessions&&st.studentSessions[id];return m&&m[x]!==undefined?m[x]:'';};
+  const changed=pairs.some(function(p){return tv(p.x,p.t)!=='';})||studs.some(function(s){return st.subjects.some(function(x){return sv(s.id,x)!=='';});});
+  return '<details style="margin-top:10px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);padding:8px 10px"'+((open||changed)?' open':'')+'>'
+   +'<summary style="cursor:pointer;font-size:12px;font-weight:700">🎛️ Adjust sessions a week'+(changed?' <span class="badge bgo" style="font-size:10px">adjusted</span>':'')+'</summary>'
+   +'<div style="font-size:11px;color:var(--tx3);margin:6px 0">When a clash cannot be avoided or there are not enough slots, lower (or raise) the sessions for a teacher or for a single student, then press Generate again. Leave a box empty to use the plan’s '+st.perWeek+' a week. 0 takes a student out of that subject.</div>'
+   +(pairs.length?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:6px 0 3px">Teacher, by subject</div>'
+     +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
+     +pairs.map(function(p){
+        return '<label style="display:flex;align-items:center;gap:5px;font-size:11px;background:var(--sf2);padding:4px 7px;border-radius:var(--rs)">'
+         +esc(p.t)+' · '+esc(p.x)
+         +'<input type="number" min="0" max="7" value="'+esc(String(tv(p.x,p.t)))+'" placeholder="'+st.perWeek+'" style="width:52px;padding:3px 5px" onchange="rbSetTeacherSessions('+q+escJs(p.x)+q+','+q+escJs(p.t)+q+',this.value)"></label>';
+      }).join('')+'</div>':'')
+   +((studs.length&&st.subjects.length)?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 3px">Student, by subject</div>'
+     +'<div class="tw" style="max-height:220px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Student</th><th>Class</th>'
+     +st.subjects.map(function(x){return '<th class="c">'+esc(x)+'</th>';}).join('')+'</tr></thead><tbody>'
+     +studs.map(function(s){
+        const unplaced=(st.result&&st.result.groups||[]).some(function(g){return g.unplaced&&g.unplaced[s.id];});
+        return '<tr'+(unplaced?' style="background:var(--wnbg)"':'')+'><td>'+esc(fN(s))+(unplaced?' <span style="color:var(--dn);font-size:10px">short</span>':'')+'</td><td>'+esc(rbClassOf(s))+'</td>'
+         +st.subjects.map(function(x){
+            if((st.need[s.id]||[]).indexOf(x)<0)return '<td class="c" style="color:var(--tx3)">—</td>';
+            return '<td class="c"><input type="number" min="0" max="7" value="'+esc(String(sv(s.id,x)))+'" placeholder="·" style="width:48px;padding:3px 5px" onchange="rbSetStudentSessions('+q+escJs(s.id)+q+','+q+escJs(x)+q+',this.value)"></td>';
+          }).join('')+'</tr>';
+      }).join('')+'</tbody></table></div>':'')
+   +'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="rbGenerateNow()">⚙️ Generate again</button>'
+   +(changed?'<button class="btn bg2 bsm" onclick="rbClearAdjust()">↺ Clear adjustments</button>':'')+'</div>'
+   +'</details>';
+}
+function rbSetTeacherSessions(x,t,v){
+  const st=rbState();st.teacherSessions=st.teacherSessions||{};
+  const m=st.teacherSessions[x]||(st.teacherSessions[x]={});
+  if(v===''||v===null)delete m[t];else m[t]=Math.max(0,Math.min(7,parseInt(v,10)||0));
+  rbDirty();
+}
+function rbSetStudentSessions(id,x,v){
+  const st=rbState();st.studentSessions=st.studentSessions||{};
+  const m=st.studentSessions[id]||(st.studentSessions[id]={});
+  if(v===''||v===null)delete m[x];else m[x]=Math.max(0,Math.min(7,parseInt(v,10)||0));
+  rbDirty();
+}
+function rbClearAdjust(){const st=rbState();st.teacherSessions={};st.studentSessions={};rbDirty();}
 
 // ── Saving: each group becomes an ordinary remedial plan ──
 function rbSave(){
@@ -8056,14 +8145,20 @@ function rbSave(){
   placed.forEach(function(g){
     const t=teachers.find(function(x){return rbNorm(x.name)===rbNorm(g.teacherName);});
     // one plan per time of day, holding the days it meets at that time
+    // a student who takes fewer sessions is only on the plans for the ones he attends
     const byTime={};
-    g.sessions.forEach(function(s){const k=s.start+'-'+s.end;(byTime[k]=byTime[k]||{start:s.start,end:s.end,days:[]}).days.push(s.day);});
+    g.sessions.forEach(function(s){
+      const who=(s.students||g.studentIds).slice().sort();
+      const k=s.start+'-'+s.end+'|'+who.join(',');
+      (byTime[k]=byTime[k]||{start:s.start,end:s.end,days:[],who:who}).days.push(s.day);
+    });
     Object.keys(byTime).forEach(function(k){
       const tm=byTime[k];
-      const first=String(g.classes[0]||'').split('-');
-      plans.push({id:nid('rm'),type:st.type||'Remedial',grade:first[0]||'',section:first[1]||'',classes:g.classes.slice(),
+      const cls=[...new Set(tm.who.map(function(id){const x=rbStudent(id);return x?rbClassOf(x):'';}).filter(Boolean))].sort();
+      const first=String(cls[0]||g.classes[0]||'').split('-');
+      plans.push({id:nid('rm'),type:st.type||'Remedial',grade:first[0]||'',section:first[1]||'',classes:cls.length?cls:g.classes.slice(),
         subject:g.subject,teacherName:t?t.name:g.teacherName,teacherId:t?t.id:null,teacherFromList:!!t,
-        studentIds:g.studentIds.slice(),days:tm.days.sort(function(a,b){return RB_DAYS.indexOf(a)-RB_DAYS.indexOf(b);}),
+        studentIds:g.studentIds.filter(function(id){return tm.who.indexOf(id)>=0;}),days:tm.days.sort(function(a,b){return RB_DAYS.indexOf(a)-RB_DAYS.indexOf(b);}),
         startTime:tm.start,endTime:tm.end,
         duration:r.range.label+' ('+r.range.weeks+' week'+(r.range.weeks>1?'s':'')+')',fromDate:r.range.from,toDate:r.range.to,
         status:'Active',notes:st.notes||'',batchId:batch,generated:true,
