@@ -6768,8 +6768,16 @@ function buildNotifiedCard(kind,date,canM){
    +'<div style="display:flex;flex-wrap:wrap;gap:5px">'
    +list.map(function(x){
      const t=(x.at||'').split('T')[1]||'';
-     return '<span class="badge bgn" style="font-size:11px" title="Notified '+esc((x.at||'').replace('T',' ').slice(0,16))+'">✓ '+esc(x.name)+(x.cls?' · '+esc(x.cls):'')+(t?' <span style="opacity:.7">'+esc(t.slice(0,5))+'</span>':'')+'</span>';
+     // excused after the message went: say so, so it is not read as a mistake
+     const exc=(kind==='absent'&&typeof excusedFor==='function')?excusedFor(x.id,date):null;
+     const late=exc&&exc.created&&x.at&&String(exc.created)>String(x.at);
+     return '<span class="badge '+(exc?'bbl':'bgn')+'" style="font-size:11px" title="Notified '+esc((x.at||'').replace('T',' ').slice(0,16))
+       +(exc?' · excuse '+(exc.source==='parent'?'sent by the parent ':'added ')+esc((exc.created||'').replace('T',' ').slice(0,16))+(late?' — after the message':''):'')+'">'
+       +'✓ '+esc(x.name)+(x.cls?' · '+esc(x.cls):'')+(t?' <span style="opacity:.7">'+esc(t.slice(0,5))+'</span>':'')
+       +(exc?' <span style="opacity:.85">📝 '+(late?'excused after the message':'excused')+'</span>':'')+'</span>';
    }).join('')
+   +(kind==='absent'&&list.some(function(x){return typeof excusedFor==='function'&&excusedFor(x.id,date);})
+     ?'<div style="font-size:10px;color:var(--tx3);margin-top:6px">📝 These parents sent their excuse after the absence message had gone — usually through the link inside it. No message is sent to a student once he is excused.</div>':'')
    +'</div></div>';
 }
 
@@ -6950,6 +6958,7 @@ function resetLateTpl(){
 
 // WhatsApp to the parents of everyone marked late
 function sendLateWaAll(target){
+  if(typeof clearExcusedCache==='function')clearExcusedCache();
   const sel=window._attDate||new Date().toISOString().split('T')[0];
   const dayRec=(DB.get('attendance')||[]).find(a=>a.date===sel);
   if(!dayRec||!(dayRec.lateIds||[]).length){toast('No late students for this date','danger');return;}
@@ -7011,6 +7020,7 @@ function buildWaUrl(phone,msg){
 }
 
 function sendWaAll(target){
+  if(typeof clearExcusedCache==='function')clearExcusedCache();
   const sel=window._attDate||new Date().toISOString().split('T')[0];
   const allAtt=DB.get('attendance')||[];
   const dayRec=allAtt.find(a=>a.date===sel);
@@ -7063,7 +7073,32 @@ function showWaQueue(queue,absentCount,date,target,skipped){
 
 // Opening one chat records the notification and marks that row straight away,
 // so the queue shows what has been sent without closing and reopening it.
+// The queue is built once, but a parent may send an excuse while it is open —
+// often in reply to a message just sent to someone else. So every chat is
+// checked again at the moment it is opened: an excused student is never sent.
+function waExcusedNow(sid){
+  if(!sid||!window._waMeta)return null;
+  if(typeof clearExcusedCache==='function')clearExcusedCache();
+  return (typeof excusedFor==='function')?excusedFor(sid,window._waMeta.date):null;
+}
+function waMarkRowExcused(idx,exc){
+  const btn=document.getElementById('waq-btn-'+idx);
+  if(btn){
+    const span=document.createElement('span');
+    span.className='badge bbl';
+    span.style.cssText='font-size:11px';
+    span.textContent='📝 Excused — not sent';
+    span.title='Excused '+(exc.from||'')+' → '+(exc.to||'')+(exc.reason?' ('+exc.reason+')':'');
+    btn.parentNode.replaceChild(span,btn);
+  }
+}
 function waOpenOne(url,sid,idx){
+  const exc=waExcusedNow(sid);
+  if(exc){
+    waMarkRowExcused(idx,exc);
+    toast('📝 Not sent — this student is excused'+(exc.reason?' ('+exc.reason+')':'')+'. The parent is not messaged.','info');
+    return;
+  }
   window.open(url,'_blank');
   if(sid&&window._waMeta)markNotified(window._waKind||'absent',[sid],window._waMeta.date);
   waMarkRowNotified(idx);
@@ -7135,6 +7170,13 @@ function openAllWa(){
     if(stEl)stEl.innerHTML='Opening: <strong>'+esc(q.student)+'</strong> — '+q.parent;
     if(barEl)barEl.style.width=Math.round((idx+1)/total*100)+'%';
     
+    // excused since the queue was made: skip without opening
+    const excNow=waExcusedNow(q.sid);
+    if(excNow){
+      if(logEl)logEl.innerHTML='<div><span style="color:var(--ac)">📝 excused — not sent</span> '+esc(q.student)+' ('+q.parent+')</div>'+logEl.innerHTML;
+      setTimeout(function(){processOne(idx+1);},50);
+      return;
+    }
     const w=window.open(q.url,'_blank');
     let mark='';
     if(w){opened++;mark='<span style="color:var(--su)">✓</span>';
