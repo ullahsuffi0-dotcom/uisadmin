@@ -17748,7 +17748,16 @@ function getPeriodDiscipline(){
   // deleted still travel between devices so the deletion sticks; they are
   // filtered out here so nothing else in the app has to know.
   const a=fbToArrayShape(DB.get('period_discipline'));
-  return Array.isArray(a)?a.filter(function(r){return r&&!r.deleted;}):[];
+  return Array.isArray(a)?a.filter(function(r){return r&&!pdIsGone(r);}):[];
+}
+// Deleted — unless it was filled in again afterwards. Before this was fixed, a
+// lesson re-entered after its record was deleted was saved into the deleted
+// record, marks and all, and stayed hidden; its later save time shows it.
+function pdIsGone(r){
+  if(!r||!r.deleted)return false;
+  const del=Date.parse(r.deletedAt||''),upd=Date.parse(r.updated||'');
+  if(!isNaN(del)&&!isNaN(upd)&&upd-del>5000)return false;
+  return true;
 }
 function pdMyName(){return ((CU.firstName||'')+' '+(CU.lastName||'')).trim();}
 function pdIsMine(r){
@@ -21151,8 +21160,9 @@ function pdMergeRecord(existing,local,rec){
   let replaced=null;
   if(rec){
     // the same record being edited, else the report filling the same place
-    let i=merged.findIndex(function(r){return r.id&&r.id===rec.id;});
-    if(i<0)i=merged.findIndex(function(r){return pdSameSlot(r,rec);});
+    let i=merged.findIndex(function(r){return r.id&&r.id===rec.id&&!pdIsGone(r);});
+    // a deleted record is never filled again: the new entry is its own record
+    if(i<0)i=merged.findIndex(function(r){return !pdIsGone(r)&&pdSameSlot(r,rec);});
     const copy=Object.assign({},rec);
     if(i>=0){
       replaced=merged[i];
@@ -21164,6 +21174,7 @@ function pdMergeRecord(existing,local,rec){
         return prev&&prev.infractionId?Object.assign({},st,{infractionId:prev.infractionId}):st;
       });
       merged[i]=Object.assign({},replaced,copy,{updated:new Date().toISOString()});
+      delete merged[i].deleted;delete merged[i].deletedAt;delete merged[i].deletedBy;
     }else merged.push(copy);
   }
   return {list:merged,replaced:replaced};
@@ -21193,7 +21204,7 @@ async function appendPeriodDiscipline(rec){
       }catch(e){existing=null;}
       const m=pdMergeRecord(existing,local,rec);
       const saved=m.list.find(function(r){return r.id===rec.id;})
-        ||m.list.find(function(r){return pdSameSlot(r,rec);})||rec;
+        ||m.list.find(function(r){return !pdIsGone(r)&&pdSameSlot(r,rec);})||rec;
       await set(ref(db,base+'/'+saved.id),saved);
       DB.set('period_discipline',m.list,{localOnly:true});
       if(typeof clearRepeatCache==='function')clearRepeatCache();
@@ -21226,7 +21237,7 @@ async function appendPeriodDiscipline(rec){
       const snap=await get(ref(db,getFirebaseSchoolPath()+'period_discipline'));
       const v=pdListFromFb(snap.exists()?snap.val():null);
       landed=v.some(function(r2){
-        return r2&&(r2.id===rec.id||pdSameSlot(r2,rec));
+        return r2&&(r2.id===rec.id||(!pdIsGone(r2)&&pdSameSlot(r2,rec)));
       });
     }catch(e){landed=true;}   // cannot check: do not spin
     if(landed)break;
