@@ -5472,15 +5472,23 @@ function evPinsM(){
   +'<div class="mb2">'
   +'<div class="al ai">A supervisor with a PIN can scan the evaluation code and fill a class visit without signing in. Give each one his own four digits. Only the PIN’s fingerprint is stored — the digits themselves are never kept, so a forgotten PIN is replaced rather than looked up.</div>'
   +(list.length?'<div class="tw" style="max-height:340px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Name</th><th>Role</th><th>PIN</th><th></th></tr></thead><tbody>'
-    +list.map(function(a){
+    +list.slice().sort(function(a,b){
+      const order=['academic_supervisor','quality_supervisor','quality_incharge','vice_principal','principal'];
+      const ia=order.indexOf(a.role),ib=order.indexOf(b.role);
+      return (ia<0?99:ia)-(ib<0?99:ib)||evName(a).localeCompare(evName(b));
+    }).map(function(a){
       return '<tr><td><strong>'+esc(evName(a))+'</strong><div style="font-size:9px;color:var(--tx3)">'+esc(a.username||'')+'</div></td>'
        +'<td><span class="badge bbl">'+esc(rL(a.role))+'</span></td>'
-       +'<td>'+(a.evalPinHash?'<span class="badge bgn">✓ set</span>'+(a.evalPinAt?'<div style="font-size:9px;color:var(--tx3)">'+esc(String(a.evalPinAt).slice(0,10))+'</div>':''):'<span class="badge bgr">not set</span>')+'</td>'
+       +'<td>'+(a.evalPinHash?'<span class="badge bgn">✓ set</span>'+(a.evalPinAt?'<div style="font-size:9px;color:var(--tx3)">'+esc(String(a.evalPinAt).slice(0,10))+'</div>':'')
+         +(a._evPinCard?'':'<div style="font-size:9px;color:var(--dg)">no card — set it again to print one</div>'):'<span class="badge bgr">not set</span>')+'</td>'
        +'<td style="white-space:nowrap"><button class="btn bs bxs" onclick="evSetPinM('+q+escJs(a.id)+q+')">'+(a.evalPinHash?'Change':'Set PIN')+'</button>'
        +(a.evalPinHash?' <button class="btn bd3 bxs" onclick="evClearPin('+q+escJs(a.id)+q+')">Remove</button>':'')+'</td></tr>';
     }).join('')+'</tbody></table></div>'
    :'<div class="emp" style="padding:16px"><div class="ei">\u{1f511}</div><p style="font-size:11px">No supervisor accounts yet.</p></div>')
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:8px">Subject supervisors, quality supervisors, the quality in-charge, vice principals and the principal can all be given a PIN.</div>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bg2" onclick="evGiveAllM()">\u{1f3b2} Give PINs to those without one</button>'
+  +'<button class="btn bs" onclick="evCardsM()">\u{1f4c4} PIN cards</button>'
   +'<button class="btn bp" onclick="evQrM()">\u{1f4f1} Evaluation QR</button></div>',true);
 }
 function evSetPinM(id){
@@ -5502,11 +5510,12 @@ async function evSavePin(id){
   const i=acc.findIndex(function(a){return a.id===id;});
   if(i<0){toast('Account not found','danger');return;}
   acc[i]=Object.assign({},acc[i],{evalPinHash:await hashPassword(p1),evalPinAt:new Date().toISOString(),
-    evalPinBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim()});
+    evalPinBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),
+    _evPinCard:p1});   // kept so his card can be printed again, as the account cards do
   DB.set('accounts',acc);
   logA('Set the evaluation PIN for '+evName(acc[i]));
-  toast('PIN saved for '+evName(acc[i]),'success');
-  evPinsM();
+  toast('PIN saved for '+evName(acc[i])+' — print his card to hand it over','success');
+  evCardsM();
 }
 function evClearPin(id){
   const a=gA(id);if(!a)return;
@@ -5515,12 +5524,127 @@ function evClearPin(id){
   const i=acc.findIndex(function(x){return x.id===id;});
   if(i<0)return;
   const copy=Object.assign({},acc[i]);
-  delete copy.evalPinHash;delete copy.evalPinAt;delete copy.evalPinBy;
+  delete copy.evalPinHash;delete copy.evalPinAt;delete copy.evalPinBy;delete copy._evPinCard;
   acc[i]=copy;
   DB.set('accounts',acc);
   logA('Removed the evaluation PIN for '+evName(a));
   toast('PIN removed','danger');
   evPinsM();
+}
+
+// ── PINs given out at once, and the cards to hand over ────
+function evRandomPin(taken){
+  let p='';let guard=200;
+  do{p=String(Math.floor(Math.random()*10000)).padStart(4,'0');}while(taken.indexOf(p)>=0&&guard-->0);
+  return p;
+}
+function evGiveAllM(){
+  if(!evCanManagePins()){toast('Only the principal and the superadmin can set the PINs','danger');return;}
+  const without=evPinStaff().filter(function(a){return !a.evalPinHash;});
+  if(!without.length){toast('Everyone on the list already has a PIN','info');return;}
+  openM('<div class="mh"><h3>\u{1f3b2} Give PINs</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2"><div class="al ai">A different four digits is drawn for each of these '+without.length+' people. Nobody who already has a PIN is touched. The cards can be printed straight afterwards.</div>'
+  +'<div class="tw" style="max-height:240px;overflow:auto"><table style="font-size:11px"><thead><tr><th></th><th>Name</th><th>Role</th></tr></thead><tbody>'
+  +without.map(function(a){
+    return '<tr><td><input type="checkbox" class="ev-give" value="'+esc(a.id)+'" checked style="width:auto;margin:0"></td>'
+     +'<td><strong>'+esc(evName(a))+'</strong></td><td>'+esc(rL(a.role))+'</td></tr>';
+  }).join('')+'</tbody></table></div></div>'
+  +'<div class="mf"><button class="btn bg2" onclick="evPinsM()">← Back</button>'
+  +'<button class="btn bp" onclick="evGiveAll()">\u{1f3b2} Give the PINs</button></div>',true);
+}
+async function evGiveAll(){
+  const ids=[].filter.call(document.querySelectorAll('.ev-give'),function(c){return c.checked;}).map(function(c){return c.value;});
+  if(!ids.length){toast('Tick at least one person','danger');return;}
+  const acc=DB.get('accounts')||[];
+  const taken=acc.map(function(a){return a._evPinCard||'';}).filter(Boolean);
+  const now=new Date().toISOString();
+  const by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  let made=0;
+  for(const id of ids){
+    const i=acc.findIndex(function(a){return a.id===id;});
+    if(i<0||acc[i].evalPinHash)continue;          // never touch one already set
+    const pin=evRandomPin(taken);taken.push(pin);
+    acc[i]=Object.assign({},acc[i],{evalPinHash:await hashPassword(pin),evalPinAt:now,evalPinBy:by,_evPinCard:pin});
+    made++;
+  }
+  DB.set('accounts',acc);
+  logA('Gave an evaluation PIN to '+made+' member(s) of staff');
+  toast(made+' PIN(s) given — print the cards to hand them over','success');
+  evCardsM();
+}
+// The card each supervisor is handed: his PIN and the code to scan
+function evCardStaff(){
+  return evPinStaff().filter(function(a){return a.evalPinHash&&a._evPinCard;});
+}
+function evCardsM(){
+  if(!evCanManagePins()){toast('Only the principal and the superadmin can print the PIN cards','danger');return;}
+  const list=evCardStaff();
+  const noCard=evPinStaff().filter(function(a){return a.evalPinHash&&!a._evPinCard;});
+  openM('<div class="mh"><h3>\u{1f4c4} PIN cards</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">A card for each supervisor with his PIN and the code to scan. Print it, cut it out and hand it over — or save it as a PDF and send it to him.</div>'
+  +(list.length?'<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="evCardTick(true)">Tick all</button><button class="btn bg2 bsm" onclick="evCardTick(false)">Clear</button></div>'
+    +'<div style="max-height:300px;overflow:auto;border:1px solid var(--bd);border-radius:var(--rs)">'
+    +list.map(function(a){
+      return '<label style="display:flex;gap:8px;align-items:center;padding:6px 9px;border-bottom:1px solid var(--bd);cursor:pointer;font-size:12px">'
+       +'<input type="checkbox" class="ev-card" value="'+esc(a.id)+'" checked style="width:auto;margin:0">'
+       +'<span style="flex:1"><strong>'+esc(evName(a))+'</strong> <span style="color:var(--tx3);font-size:10px">'+esc(rL(a.role))+'</span></span></label>';
+    }).join('')+'</div>'
+   :'<div class="al aw">No card can be printed yet. Set a PIN for someone, or use “Give PINs to those without one”.</div>')
+  +(noCard.length?'<div style="font-size:10px;color:var(--tx3);margin-top:8px">'+noCard.length+' PIN(s) were set before cards were kept — set those again to print a card.</div>':'')
+  +'</div><div class="mf"><button class="btn bg2" onclick="evPinsM()">← Back</button>'
+  +(list.length?'<button class="btn bp" onclick="evPrintCards()">\u{1f5a8}️ Print the cards</button>':'')+'</div>',true);
+}
+function evCardTick(on){[].forEach.call(document.querySelectorAll('.ev-card'),function(c){c.checked=!!on;});}
+function evPrintCards(){
+  const ids=[].filter.call(document.querySelectorAll('.ev-card'),function(c){return c.checked;}).map(function(c){return c.value;});
+  const list=evCardStaff().filter(function(a){return ids.indexOf(a.id)>=0;});
+  if(!list.length){toast('Tick at least one person','danger');return;}
+  const s=DB.get('settings')||{};
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to print the cards','danger');return;}
+  const url=evUrl();
+  const qr='https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=0&data='+encodeURIComponent(url);
+  const logo=(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:'))?'<img src="'+s.logo+'" alt="">':'<span>'+esc(s.logo||'\u{1f393}')+'</span>';
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Evaluation PIN cards — '+list.length+'</title><style>'
+   +'@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box}body{margin:0;background:#8a96a0;font-family:Arial,Helvetica,sans-serif}'
+   +'.bar{padding:8px;background:#eef4f8;text-align:center}.bar button{padding:7px 16px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px}'
+   +'.sheet{width:190mm;margin:8px auto;background:#fff;padding:0;page-break-after:always}.sheet:last-of-type{page-break-after:auto}'
+   +'.grid{display:grid;grid-template-columns:92mm 92mm;gap:5mm;justify-content:center}'
+   +'.c{height:64mm;overflow:hidden;border:.4mm dashed #9bb0c0;border-radius:3mm;padding:3.5mm 5mm;position:relative;color:#16263a;-webkit-print-color-adjust:exact;print-color-adjust:exact;'
+     +'background:linear-gradient(135deg,#ffffff 0%,#f3f9fc 100%)}'
+   +'.hd{display:flex;align-items:center;gap:3mm}'
+   +'.lg{width:11mm;height:11mm;border-radius:50%;background:#fff;border:.4mm solid #1a5f7a;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}'
+   +'.lg img{width:100%;height:100%;object-fit:contain}.lg span{font-size:6mm;line-height:1}'
+   +'.sn{font-size:3.4mm;font-weight:bold;color:#0b3d55;line-height:1.2}'
+   +'.ttl{font-size:2.6mm;letter-spacing:.5mm;color:#6b7d8c;text-transform:uppercase}'
+   +'.nm{margin-top:2.6mm;font-size:4.8mm;font-weight:bold;color:#0b3d55}'
+   +'.rl{font-size:3mm;color:#6b7d8c;margin-top:.6mm}'
+   +'.pin{margin-top:2.4mm;display:inline-block;background:#0b3d55;color:#fff;border-radius:2mm;padding:2mm 4.5mm;font-size:7.6mm;letter-spacing:2.6mm;font-weight:bold;font-family:"Courier New",monospace}'
+   +'.pl{font-size:2.5mm;color:#6b7d8c;letter-spacing:.4mm;text-transform:uppercase;margin-top:1mm}'
+   +'.qr{position:absolute;right:5mm;top:16mm;width:26mm;height:26mm;border:.3mm solid #cfd8e0;border-radius:1.5mm;padding:1mm;background:#fff}'
+   +'.qr img{width:100%;height:100%;display:block}'
+   +'.st{position:absolute;left:5mm;right:34mm;bottom:3.4mm;font-size:2.5mm;line-height:1.4;color:#44586a}'
+   +'.wn{position:absolute;right:5mm;bottom:4mm;width:26mm;font-size:2.3mm;color:#8a9aa8;text-align:center}'
+   +'@media print{body{background:#fff}.bar{display:none}.sheet{margin:0;width:auto}}'
+   +'</style></head><body><div class="bar"><button onclick="window.print()">\u{1f5a8}️ Print / Save as PDF</button> '
+   +'<span style="font-size:12px;color:#333;margin-left:8px">'+list.length+' card(s) · cut along the dashes · keep each PIN private</span></div>');
+  const cards=list.map(function(a){
+    return '<div class="c">'
+     +'<div class="hd"><div class="lg">'+logo+'</div><div><div class="sn">'+esc(s.schoolName||'School')+'</div>'
+     +'<div class="ttl">Class Visit Evaluation · PIN card</div></div></div>'
+     +'<div class="nm">'+esc(evName(a))+'</div><div class="rl">'+esc(rL(a.role))+'</div>'
+     +'<div class="pin">'+esc(a._evPinCard)+'</div><div class="pl">Your 4-digit PIN</div>'
+     +'<div class="qr"><img src="'+qr+'" alt=""></div>'
+     +'<div class="st">Scan the code, choose your name, type this PIN, then fill the evaluation. Keep it to yourself — evaluations are filed in your name.</div>'
+     +'<div class="wn">Scan to evaluate</div>'
+     +'</div>';
+  });
+  let html='';
+  for(let i=0;i<cards.length;i+=8)html+='<section class="sheet"><div class="grid">'+cards.slice(i,i+8).join('')+'</div></section>';
+  w.document.write(html+'</body></html>');
+  w.document.close();
+  logA('Printed '+list.length+' evaluation PIN card(s)');
 }
 
 // ── The code by the classroom door ────────────────────────
