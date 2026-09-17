@@ -5451,11 +5451,23 @@ function expTevalPDF(id){
 // ═══════════════════════════════════════════════════════════
 function evPinRoles(){return ['academic_supervisor','quality_incharge','quality_supervisor','vice_principal','principal'];}
 function evCanManagePins(){return !!CU&&['superadmin','principal'].includes(CU.role);}
-// Those who may be given a PIN: the supervisors, and anyone who already has one
+// Someone made a supervisor through permissions rather than his role
+function evHasVisitAccess(a){
+  if(!a||!a.id)return false;
+  const p=(DB.get('user_permissions')||{})[a.id];
+  return !!(p&&(p.class_visits==='full'||p.teacher_reports==='full'));
+}
+// Those who may be given a PIN: the supervisors by role, anyone given class
+// visits through permissions, and anyone who already has a PIN.
 function evPinStaff(){
   return (DB.get('accounts')||[]).filter(function(a){
-    return a&&a.active!==false&&(evPinRoles().indexOf(a.role)>=0||a.evalPinHash);
+    return a&&a.active!==false&&(evPinRoles().indexOf(a.role)>=0||a.evalPinHash||evHasVisitAccess(a));
   }).sort(function(a,b){return String(a.firstName+' '+a.lastName).localeCompare(String(b.firstName+' '+b.lastName));});
+}
+// Every member of staff, when even that is not enough
+function evAllStaff(){
+  return (DB.get('accounts')||[]).filter(function(a){return a&&a.active!==false;})
+    .sort(function(a,b){return String(a.firstName+' '+a.lastName).localeCompare(String(b.firstName+' '+b.lastName));});
 }
 // Those who can use the QR form: a PIN must be set
 function evPortalStaff(){
@@ -5467,7 +5479,8 @@ function evName(a){return ((a.firstName||'')+' '+(a.lastName||'')).trim();}
 function evPinsM(){
   if(!evCanManagePins()){toast('Only the principal and the superadmin can set the PINs','danger');return;}
   const q=String.fromCharCode(39);
-  const list=evPinStaff();
+  const showAll=!!window._evShowAll;
+  const list=showAll?evAllStaff():evPinStaff();
   openM('<div class="mh"><h3>\u{1f511} Evaluation PINs</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
   +'<div class="al ai">A supervisor with a PIN can scan the evaluation code and fill a class visit without signing in. Give each one his own four digits. Only the PIN’s fingerprint is stored — the digits themselves are never kept, so a forgotten PIN is replaced rather than looked up.</div>'
@@ -5485,7 +5498,8 @@ function evPinsM(){
        +(a.evalPinHash?' <button class="btn bd3 bxs" onclick="evClearPin('+q+escJs(a.id)+q+')">Remove</button>':'')+'</td></tr>';
     }).join('')+'</tbody></table></div>'
    :'<div class="emp" style="padding:16px"><div class="ei">\u{1f511}</div><p style="font-size:11px">No supervisor accounts yet.</p></div>')
-  +'<div style="font-size:10px;color:var(--tx3);margin-top:8px">Subject supervisors, quality supervisors, the quality in-charge, vice principals and the principal can all be given a PIN.</div>'
+  +'<label style="display:flex;gap:7px;align-items:center;font-size:11px;margin-top:8px;cursor:pointer"><input type="checkbox" '+(showAll?'checked':'')+' onchange="window._evShowAll=this.checked;evPinsM()" style="width:auto;margin:0"> Show every member of staff</label>'
+  +'<div style="font-size:10px;color:var(--tx3);margin-top:4px">Listed here: subject supervisors, quality supervisors, the quality in-charge, vice principals, the principal, anyone given class visits through Permissions, and anyone who already has a PIN. Tick the box above to see everybody.</div>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
   +'<button class="btn bg2" onclick="evGiveAllM()">\u{1f3b2} Give PINs to those without one</button>'
   +'<button class="btn bs" onclick="evCardsM()">\u{1f4c4} PIN cards</button>'
@@ -5540,7 +5554,7 @@ function evRandomPin(taken){
 }
 function evGiveAllM(){
   if(!evCanManagePins()){toast('Only the principal and the superadmin can set the PINs','danger');return;}
-  const without=evPinStaff().filter(function(a){return !a.evalPinHash;});
+  const without=(window._evShowAll?evAllStaff():evPinStaff()).filter(function(a){return !a.evalPinHash;});
   if(!without.length){toast('Everyone on the list already has a PIN','info');return;}
   openM('<div class="mh"><h3>\u{1f3b2} Give PINs</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2"><div class="al ai">A different four digits is drawn for each of these '+without.length+' people. Nobody who already has a PIN is touched. The cards can be printed straight afterwards.</div>'
@@ -5574,12 +5588,12 @@ async function evGiveAll(){
 }
 // The card each supervisor is handed: his PIN and the code to scan
 function evCardStaff(){
-  return evPinStaff().filter(function(a){return a.evalPinHash&&a._evPinCard;});
+  return evAllStaff().filter(function(a){return a.evalPinHash&&a._evPinCard;});
 }
 function evCardsM(){
   if(!evCanManagePins()){toast('Only the principal and the superadmin can print the PIN cards','danger');return;}
   const list=evCardStaff();
-  const noCard=evPinStaff().filter(function(a){return a.evalPinHash&&!a._evPinCard;});
+  const noCard=evAllStaff().filter(function(a){return a.evalPinHash&&!a._evPinCard;});
   openM('<div class="mh"><h3>\u{1f4c4} PIN cards</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
   +'<div class="al ai">A card for each supervisor with his PIN and the code to scan. Print it, cut it out and hand it over — or save it as a PDF and send it to him.</div>'
