@@ -5440,9 +5440,307 @@ function expTevalPDF(id){
   toast('Evaluation form ready — use Print / Save as PDF','success');
 }
 
+// ═══════════════════════════════════════════════════════════
+// EVALUATION BY QR — a supervisor's own 4-digit PIN
+// A subject supervisor scans the code by the classroom door and fills the
+// class visit evaluation there and then, without signing in: he picks his
+// name and types the 4-digit PIN kept against his account. The PIN is
+// stored the way passwords are — only its fingerprint is saved, never the
+// digits — and the evaluation is filed as his, exactly as if he had signed
+// in and used the form.
+// ═══════════════════════════════════════════════════════════
+function evPinRoles(){return ['academic_supervisor','quality_incharge','quality_supervisor','vice_principal','principal'];}
+function evCanManagePins(){return !!CU&&['superadmin','principal'].includes(CU.role);}
+// Those who may be given a PIN: the supervisors, and anyone who already has one
+function evPinStaff(){
+  return (DB.get('accounts')||[]).filter(function(a){
+    return a&&a.active!==false&&(evPinRoles().indexOf(a.role)>=0||a.evalPinHash);
+  }).sort(function(a,b){return String(a.firstName+' '+a.lastName).localeCompare(String(b.firstName+' '+b.lastName));});
+}
+// Those who can use the QR form: a PIN must be set
+function evPortalStaff(){
+  return (DB.get('accounts')||[]).filter(function(a){return a&&a.active!==false&&a.evalPinHash;})
+    .sort(function(a,b){return String(a.firstName+' '+a.lastName).localeCompare(String(b.firstName+' '+b.lastName));});
+}
+function evName(a){return ((a.firstName||'')+' '+(a.lastName||'')).trim();}
+
+function evPinsM(){
+  if(!evCanManagePins()){toast('Only the principal and the superadmin can set the PINs','danger');return;}
+  const q=String.fromCharCode(39);
+  const list=evPinStaff();
+  openM('<div class="mh"><h3>\u{1f511} Evaluation PINs</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">A supervisor with a PIN can scan the evaluation code and fill a class visit without signing in. Give each one his own four digits. Only the PIN’s fingerprint is stored — the digits themselves are never kept, so a forgotten PIN is replaced rather than looked up.</div>'
+  +(list.length?'<div class="tw" style="max-height:340px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Name</th><th>Role</th><th>PIN</th><th></th></tr></thead><tbody>'
+    +list.map(function(a){
+      return '<tr><td><strong>'+esc(evName(a))+'</strong><div style="font-size:9px;color:var(--tx3)">'+esc(a.username||'')+'</div></td>'
+       +'<td><span class="badge bbl">'+esc(rL(a.role))+'</span></td>'
+       +'<td>'+(a.evalPinHash?'<span class="badge bgn">✓ set</span>'+(a.evalPinAt?'<div style="font-size:9px;color:var(--tx3)">'+esc(String(a.evalPinAt).slice(0,10))+'</div>':''):'<span class="badge bgr">not set</span>')+'</td>'
+       +'<td style="white-space:nowrap"><button class="btn bs bxs" onclick="evSetPinM('+q+escJs(a.id)+q+')">'+(a.evalPinHash?'Change':'Set PIN')+'</button>'
+       +(a.evalPinHash?' <button class="btn bd3 bxs" onclick="evClearPin('+q+escJs(a.id)+q+')">Remove</button>':'')+'</td></tr>';
+    }).join('')+'</tbody></table></div>'
+   :'<div class="emp" style="padding:16px"><div class="ei">\u{1f511}</div><p style="font-size:11px">No supervisor accounts yet.</p></div>')
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bp" onclick="evQrM()">\u{1f4f1} Evaluation QR</button></div>',true);
+}
+function evSetPinM(id){
+  const a=gA(id);if(!a){toast('Account not found','danger');return;}
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>\u{1f511} PIN for '+esc(evName(a))+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2"><div class="al ai">Four digits, his own. He types them after scanning the evaluation code. Tell him the PIN yourself — it cannot be read back here.</div>'
+  +'<div class="fg"><label>New PIN *</label><input id="ev-pin1" inputmode="numeric" maxlength="4" placeholder="4 digits" autocomplete="off" style="letter-spacing:6px;font-size:18px;text-align:center"></div>'
+  +'<div class="fg"><label>Type it again *</label><input id="ev-pin2" inputmode="numeric" maxlength="4" placeholder="4 digits" autocomplete="off" style="letter-spacing:6px;font-size:18px;text-align:center"></div>'
+  +'</div><div class="mf"><button class="btn bg2" onclick="evPinsM()">← Back</button>'
+  +'<button class="btn bp" onclick="evSavePin('+q+escJs(id)+q+')">Save PIN</button></div>');
+}
+async function evSavePin(id){
+  const p1=((document.getElementById('ev-pin1')||{}).value||'').trim();
+  const p2=((document.getElementById('ev-pin2')||{}).value||'').trim();
+  if(!/^\d{4}$/.test(p1)){toast('The PIN must be exactly four digits','danger');return;}
+  if(p1!==p2){toast('The two PINs are not the same','danger');return;}
+  const acc=DB.get('accounts')||[];
+  const i=acc.findIndex(function(a){return a.id===id;});
+  if(i<0){toast('Account not found','danger');return;}
+  acc[i]=Object.assign({},acc[i],{evalPinHash:await hashPassword(p1),evalPinAt:new Date().toISOString(),
+    evalPinBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim()});
+  DB.set('accounts',acc);
+  logA('Set the evaluation PIN for '+evName(acc[i]));
+  toast('PIN saved for '+evName(acc[i]),'success');
+  evPinsM();
+}
+function evClearPin(id){
+  const a=gA(id);if(!a)return;
+  if(!confirm('Remove the evaluation PIN for '+evName(a)+'?\n\nHe can still sign in as usual; only the QR form is closed to him until a new PIN is set.'))return;
+  const acc=DB.get('accounts')||[];
+  const i=acc.findIndex(function(x){return x.id===id;});
+  if(i<0)return;
+  const copy=Object.assign({},acc[i]);
+  delete copy.evalPinHash;delete copy.evalPinAt;delete copy.evalPinBy;
+  acc[i]=copy;
+  DB.set('accounts',acc);
+  logA('Removed the evaluation PIN for '+evName(a));
+  toast('PIN removed','danger');
+  evPinsM();
+}
+
+// ── The code by the classroom door ────────────────────────
+function evUrl(){
+  let u=window.location.origin+window.location.pathname+'?ev=1';
+  if(CURRENT_SCHOOL_ID)u+='&sch='+encodeURIComponent(CURRENT_SCHOOL_ID);
+  return u;
+}
+function evQrM(){
+  const url=evUrl();
+  const qr='https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data='+encodeURIComponent(url);
+  window._evQrUrl=url;
+  openM('<div class="mh"><h3>\u{1f4f1} Evaluation QR Code</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">One code for the whole school. A subject supervisor scans it, picks his name, types his four-digit PIN and fills the class visit evaluation there and then — no signing in. The evaluation is filed in his name and appears in Class Visits like any other.</div>'
+  +'<div style="text-align:center;padding:8px"><img src="'+qr+'" alt="" style="width:220px;height:220px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
+  +'<div style="background:var(--sf2);padding:8px;border-radius:var(--rs);font-size:10px;color:var(--ac);word-break:break-all;border:1px solid var(--bd)">'+esc(url)+'</div>'
+  +'<div style="font-size:11px;color:var(--tx3);margin-top:8px">'+evPortalStaff().length+' supervisor(s) have a PIN and can use it.</div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +(evCanManagePins()?'<button class="btn bg2" onclick="evPinsM()">\u{1f511} PINs</button>':'')
+  +'<button class="btn bs" onclick="evCopyQr()">\u{1f4cb} Copy Link</button>'
+  +'<button class="btn bp" onclick="evPrintPoster()">\u{1f5a8}️ Print Poster</button></div>',true);
+}
+function evCopyQr(){
+  const url=window._evQrUrl||evUrl();
+  try{navigator.clipboard.writeText(url).then(function(){toast('Link copied','success');},function(){prompt('Copy this link:',url);});}
+  catch(e){prompt('Copy this link:',url);}
+}
+function evPrintPoster(){
+  const s=DB.get('settings')||{};
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to print the poster','danger');return;}
+  const qr='https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=20&data='+encodeURIComponent(evUrl());
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Evaluation QR</title><style>'
+   +'@page{size:A4;margin:0}body{margin:0;font-family:Arial,sans-serif;color:#1a3a5c}'
+   +'.poster{padding:22mm 18mm;text-align:center;box-sizing:border-box}'
+   +'.school{font-size:22px;font-weight:bold}'
+   +'.title{font-size:34px;font-weight:bold;color:#1a5f7a;margin-top:12px}'
+   +'.sub{font-size:16px;color:#555;margin:8px 0 20px}'
+   +'.qr{display:inline-block;border:8px solid #1a5f7a;border-radius:18px;padding:16px;background:#fff}'
+   +'.qr img{width:300px;height:300px;display:block}'
+   +'.steps{margin:20px auto 0;font-size:16px;line-height:2;display:inline-block;text-align:left}'
+   +'</style></head><body><div class="poster">'
+   +'<div class="school">'+esc(s.schoolName||'School')+'</div>'
+   +'<div class="title">Class Visit Evaluation</div>'
+   +'<div class="sub">Subject supervisors — scan and evaluate, no sign-in needed</div>'
+   +'<div class="qr"><img src="'+qr+'" alt=""></div>'
+   +'<div><div class="steps">1. Scan the code<br>2. Choose your name<br>3. Type your 4-digit PIN<br>4. Fill the evaluation and send</div></div>'
+   +'</div><script>setTimeout(function(){window.print();},900);<\/script></body></html>');
+  w.document.close();
+}
+
+// ── The form the supervisor sees ──────────────────────────
+function checkEvMode(){
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('ev')==='1'){renderEvPortal();return true;}
+  return false;
+}
+function evState(){
+  if(!window._ev)window._ev={step:'who',accId:'',name:'',tries:0};
+  return window._ev;
+}
+function renderEvPortal(){
+  const s=DB.get('settings')||{};
+  const st=evState();
+  const lp=document.getElementById('lp');if(lp)lp.classList.add('hidden');
+  const ap=document.getElementById('app');if(ap)ap.classList.add('hidden');
+  const old=document.getElementById('evp');if(old)old.remove();
+  const staff=evPortalStaff();
+  const q=String.fromCharCode(39);
+  const wrap=document.createElement('div');
+  wrap.id='evp';
+  wrap.style.cssText='min-height:100vh;background:var(--bg);padding:18px 14px 40px';
+  let body='';
+  if(st.step==='who'){
+    body=pdpQ('1. Who are you?','Only supervisors given a PIN are listed.',
+      (staff.length
+        ?'<select id="evp-who" onchange="evState().accId=this.value"><option value="">— Choose your name —</option>'
+          +staff.map(function(a){return '<option value="'+esc(a.id)+'"'+(a.id===st.accId?' selected':'')+'>'+esc(evName(a))+' — '+esc(rL(a.role))+'</option>';}).join('')
+          +'</select>'
+        :'<div class="al aw" style="margin:0">No supervisor has a PIN yet. The principal sets them in Class Visits → 🔑 Evaluation PINs.</div>'),true)
+     +pdpQ('2. Your 4-digit PIN','','<input id="evp-pin" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" style="letter-spacing:10px;font-size:22px;text-align:center">',true)
+     +(staff.length?'<button class="btn bp" id="evp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px" onclick="evUnlock()">Unlock the form →</button>':'');
+  }else{
+    body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<div style="font-size:12px">✓ Signed in for this evaluation as <strong>'+esc(st.name)+'</strong></div>'
+      +'<button class="btn bg2 bsm" onclick="evLock()">Not you?</button></div>'
+      +pdpQ('1. The lesson','',
+        '<div class="fr f2"><div class="fg"><label>Teacher *</label><input id="evp-t" list="evp-tl" autocomplete="off" placeholder="Teacher name">'
+        +'<datalist id="evp-tl">'+(DB.get('teachers')||[]).filter(function(t){return t&&t.active!==false;}).map(function(t){return '<option value="'+esc(t.name)+'">'+esc(t.subject||'')+'</option>';}).join('')+'</datalist></div>'
+        +'<div class="fg"><label>Subject *</label><input id="evp-s" placeholder="e.g. Mathematics"></div></div>'
+        +'<div class="fr f3"><div class="fg"><label>Class</label><select id="evp-c"><option value="">—</option>'
+        +portalClasses().map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('')+'</select></div>'
+        +'<div class="fg"><label>Period</label><select id="evp-p"><option value="">—</option>'
+        +[1,2,3,4,5,6,7,8].map(function(p){return '<option>'+p+'</option>';}).join('')+'</select></div>'
+        +'<div class="fg"><label>Date</label><input type="date" id="evp-d" value="'+esc(ymd(new Date()))+'" max="'+esc(ymd(new Date()))+'"></div></div>',true)
+      +'<div class="card" style="margin-bottom:12px">'+buildEvalForm(null,false)+'</div>'
+      +pdpQ('3. Notes','',
+        '<div class="fg"><label>Strengths</label><textarea id="evp-st" style="min-height:52px" placeholder="What was done well"></textarea></div>'
+        +'<div class="fg"><label>Areas for improvement</label><textarea id="evp-im" style="min-height:52px"></textarea></div>'
+        +'<div class="fg" style="margin-bottom:0"><label>Follow-up</label><textarea id="evp-fu" style="min-height:52px"></textarea></div>',false)
+      +'<button class="btn bp" id="evp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px" onclick="evSubmit()">Send the evaluation →</button>';
+  }
+  wrap.innerHTML='<style>#evp select,#evp input,#evp textarea{width:100%;box-sizing:border-box;padding:10px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:14px;font-family:inherit}#evp .card{border-radius:10px}</style>'
+   +'<div style="max-width:660px;margin:0 auto">'
+   +'<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;border-top:9px solid var(--ac)"><div style="padding:20px">'
+   +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
+   +'<div style="width:46px;height:46px;background:linear-gradient(135deg,var(--ac),var(--pu));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex-shrink:0">'
+   +(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'\u{1f3eb}'))+'</div>'
+   +'<div style="min-width:0"><div style="font-size:13px;color:var(--tx2)">'+esc(s.schoolName||'School')+'</div>'
+   +'<div style="font-size:11px;color:var(--tx3)">'+esc(s.schoolNameAr||'')+'</div></div></div>'
+   +'<h1 style="font-size:22px;font-weight:700;color:var(--tx);margin-bottom:6px">Class Visit Evaluation</h1>'
+   +'<p style="font-size:13px;color:var(--tx2);line-height:1.6">For subject supervisors. Choose your name, type your PIN, then fill the evaluation.</p>'
+   +'</div></div>'
+   +'<div id="evp-body">'+body+'</div>'
+   +'<div style="text-align:center;margin-top:16px;font-size:11px;color:var(--tx3)"><a href="?" style="color:var(--ac);text-decoration:none">Staff sign in →</a></div>'
+   +'</div>';
+  document.body.appendChild(wrap);
+  if(st.step==='form'&&typeof updEvalTotal==='function')updEvalTotal();
+}
+async function evUnlock(){
+  const st=evState();
+  const id=((document.getElementById('evp-who')||{}).value||'').trim();
+  const pin=((document.getElementById('evp-pin')||{}).value||'').trim();
+  if(!id){toast('Choose your name','danger');return;}
+  if(!/^\d{4}$/.test(pin)){toast('Type your four-digit PIN','danger');return;}
+  const a=(DB.get('accounts')||[]).find(function(x){return x.id===id;});
+  if(!a||!a.evalPinHash){toast('No PIN is set for that name','danger');return;}
+  const btn=document.getElementById('evp-go');
+  if(btn){btn.disabled=true;btn.textContent='Checking…';}
+  let hash='';
+  try{hash=await hashPassword(pin);}catch(e){}
+  if(btn){btn.disabled=false;btn.textContent='Unlock the form →';}
+  if(hash!==a.evalPinHash){
+    st.tries++;
+    toast(st.tries>=3?'That PIN is not right. Ask the principal to set a new one.':'That PIN is not right','danger');
+    const el=document.getElementById('evp-pin');if(el){el.value='';el.focus();}
+    return;
+  }
+  st.accId=a.id;st.name=evName(a);st.role=a.role;st.step='form';st.tries=0;
+  renderEvPortal();
+}
+function evLock(){
+  window._ev={step:'who',accId:'',name:'',tries:0};
+  renderEvPortal();
+}
+// The evaluation is written on its own, merged into what is stored, so a
+// phone that has only just loaded cannot overwrite the school's visits.
+async function appendClassVisit(rec){
+  let remote=null;
+  if(typeof fbReady==='function'&&fbReady()&&CURRENT_SCHOOL_ID){
+    try{
+      const{db,ref,get}=window.__FB;
+      const snap=await get(ref(db,getFirebaseSchoolPath()+'class_visits'));
+      const v=snap.exists()?fromFbValue(snap.val()):[];
+      if(Array.isArray(v))remote=v;
+    }catch(e){remote=null;}
+  }
+  const seen={},merged=[];
+  (Array.isArray(remote)?remote:[]).concat(DB.get('class_visits')||[]).forEach(function(x){
+    if(!x||!x.id||seen[x.id])return;
+    seen[x.id]=1;merged.push(x);
+  });
+  if(rec&&rec.id&&!seen[rec.id])merged.push(rec);
+  DB.set('class_visits',merged);
+  return merged;
+}
+function evSubmit(){
+  const st=evState();
+  if(st.step!=='form')return;
+  const t=((document.getElementById('evp-t')||{}).value||'').trim();
+  const sub=((document.getElementById('evp-s')||{}).value||'').trim();
+  if(!t){toast('Write the teacher’s name','danger');return;}
+  if(!sub){toast('Write the subject','danger');return;}
+  const cls=((document.getElementById('evp-c')||{}).value||'').trim();
+  const parts=cls.split('-');
+  const scores=gatherEvalScores();
+  const total=evalGetTotal(scores);
+  const pct=Math.round(total/EVAL_TOTAL*100);
+  const date=((document.getElementById('evp-d')||{}).value||'')||ymd(new Date());
+  const btn=document.getElementById('evp-go');
+  if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  const rec={id:nid('cv'),supervisorId:st.accId,supervisorName:st.name,supervisorRole:st.role||'academic_supervisor',
+    teacher:t,subject:sub,grade:parts[0]||'',section:parts[1]||'',
+    date:date,period:((document.getElementById('evp-p')||{}).value||''),visitType:'Class Visit',
+    scores:scores,totalScore:total,percentage:pct,
+    strengths:((document.getElementById('evp-st')||{}).value||'').trim(),
+    improvements:((document.getElementById('evp-im')||{}).value||'').trim(),
+    followUp:((document.getElementById('evp-fu')||{}).value||'').trim(),
+    source:'qr',created:new Date().toISOString()};
+  appendClassVisit(rec).catch(function(){return null;}).then(function(){evDone(rec);});
+}
+function evDone(rec){
+  const body=document.getElementById('evp-body');
+  if(!body)return;
+  const pct=rec.percentage||0;
+  body.innerHTML='<div class="card" style="padding:26px;text-align:center" id="evp-done">'
+   +'<div style="font-size:46px;margin-bottom:10px">✅</div>'
+   +'<div style="font-size:18px;font-weight:700;color:var(--su);margin-bottom:8px">Evaluation sent</div>'
+   +'<div style="font-size:13px;color:var(--tx2);line-height:1.7"><strong>'+esc(rec.teacher)+'</strong> · '+esc(rec.subject)
+   +(rec.grade?'<br>Class '+esc(rec.grade+(rec.section?'-'+rec.section:'')):'')
+   +'<br>'+esc(rec.date)+(rec.period?' · period '+esc(rec.period):'')
+   +'<br>Score: <strong>'+rec.totalScore+' / '+EVAL_TOTAL+'</strong> · '+pct+'%'
+   +'<br>Filed in the name of <strong>'+esc(rec.supervisorName)+'</strong></div>'
+   +'<div style="margin-top:16px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">'
+   +'<button class="btn bp" onclick="evAgain()">Evaluate another lesson</button>'
+   +'<button class="btn bg2" onclick="evLock()">Finish</button></div></div>';
+}
+function evAgain(){
+  const st=evState();
+  window._ev={step:'form',accId:st.accId,name:st.name,role:st.role,tries:0};
+  renderEvPortal();
+}
+
 function rClassVisits(){
   const visits=DB.get('class_visits')||[];const isP=['superadmin','principal','quality_incharge'].includes(CU.role),isAc=CU.role==='academic_supervisor';const myV=isP||isAc?visits:visits.filter(v=>v.supervisorId===CU.id);const canC=['superadmin','academic_supervisor','quality_supervisor'].includes(CU.role);
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('class_visits')+' ('+myV.length+')</h3>'+(canC?'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="tevalM()">📋 Teacher Evaluation</button>'+(CU.role==='superadmin'?'<button class="btn bg2 bsm" onclick="editVisitMarksM()" title="Edit the class visit marks">⚙️ Visit Marks</button>':'')+'<button class="btn bp bsm" onclick="addVisitM()">+ New Evaluation</button></div>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Teacher Performance Evaluation Card — Total: '+EVAL_TOTAL+' points across 4 categories</div></div><div class="card"><div class="tw"><table><thead><tr><th>'+T('teacher')+'</th><th>'+T('subject')+'</th><th>'+T('grade')+'</th><th>'+T('date')+'</th><th>Score</th><th>'+T('rating')+'</th><th>Supervisor</th><th>Academic Ack</th><th>Principal Ack</th><th>Actions</th></tr></thead><tbody>'+myV.map(v=>{const total=v.scores?evalGetTotal(v.scores):0;const pct=Math.round(total/EVAL_TOTAL*100);const g=evalGetGrade(pct);return'<tr><td><strong>'+v.teacher+'</strong></td><td>'+v.subject+'</td><td>Gr '+v.grade+(v.section?'-'+v.section:'')+'</td><td style="font-size:10px;color:var(--tx3)">'+v.date+'</td><td><strong style="color:var(--ac)">'+total+'/'+EVAL_TOTAL+'</strong> <span style="font-size:10px;color:var(--tx3)">('+pct+'%)</span></td><td><span class="badge '+g.c+'">'+g.l+'</span></td><td style="font-size:11px;color:var(--tx3)">'+v.supervisorName+'</td><td>'+(v.academicAck?'<span class="badge btl">✓ '+(v.academicAckDate||'')+'</span>':'<span class="badge bgo">Pending</span>')+'</td><td>'+(v.principalAck?'<span class="badge bgn">✓ '+(v.principalAckDate||'')+'</span>':v.academicAck?'<span class="badge bbl">Ready</span>':'<span class="badge bgr">Waiting</span>')+'</td><td><button class="btn bg2 bxs" onclick="vVisit(\''+v.id+'\')">View</button></td></tr>';}).join('')+'</tbody></table></div>'+(myV.length===0?'<div class="emp"><div class="ei">📝</div><p>'+T('no_records')+'</p></div>':'')+'</div>'+buildTevalCard();
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('class_visits')+' ('+myV.length+')</h3>'+'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="evQrM()">📱 Evaluation QR</button>'
+   +(evCanManagePins()?'<button class="btn bg2 bsm" onclick="evPinsM()">🔑 Evaluation PINs</button>':'')+'</div>'
+   +(canC?'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bs bsm" onclick="tevalM()">📋 Teacher Evaluation</button>'+(CU.role==='superadmin'?'<button class="btn bg2 bsm" onclick="editVisitMarksM()" title="Edit the class visit marks">⚙️ Visit Marks</button>':'')+'<button class="btn bp bsm" onclick="addVisitM()">+ New Evaluation</button></div>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Teacher Performance Evaluation Card — Total: '+EVAL_TOTAL+' points across 4 categories</div></div><div class="card"><div class="tw"><table><thead><tr><th>'+T('teacher')+'</th><th>'+T('subject')+'</th><th>'+T('grade')+'</th><th>'+T('date')+'</th><th>Score</th><th>'+T('rating')+'</th><th>Supervisor</th><th>Academic Ack</th><th>Principal Ack</th><th>Actions</th></tr></thead><tbody>'+myV.map(v=>{const total=v.scores?evalGetTotal(v.scores):0;const pct=Math.round(total/EVAL_TOTAL*100);const g=evalGetGrade(pct);return'<tr><td><strong>'+v.teacher+'</strong></td><td>'+v.subject+'</td><td>Gr '+v.grade+(v.section?'-'+v.section:'')+'</td><td style="font-size:10px;color:var(--tx3)">'+v.date+'</td><td><strong style="color:var(--ac)">'+total+'/'+EVAL_TOTAL+'</strong> <span style="font-size:10px;color:var(--tx3)">('+pct+'%)</span></td><td><span class="badge '+g.c+'">'+g.l+'</span></td><td style="font-size:11px;color:var(--tx3)">'+v.supervisorName+'</td><td>'+(v.academicAck?'<span class="badge btl">✓ '+(v.academicAckDate||'')+'</span>':'<span class="badge bgo">Pending</span>')+'</td><td>'+(v.principalAck?'<span class="badge bgn">✓ '+(v.principalAckDate||'')+'</span>':v.academicAck?'<span class="badge bbl">Ready</span>':'<span class="badge bgr">Waiting</span>')+'</td><td><button class="btn bg2 bxs" onclick="vVisit(\''+v.id+'\')">View</button></td></tr>';}).join('')+'</tbody></table></div>'+(myV.length===0?'<div class="emp"><div class="ei">📝</div><p>'+T('no_records')+'</p></div>':'')+'</div>'+buildTevalCard();
 }
 
 // Saved administrative evaluations, listed under the class visits
@@ -13012,6 +13310,7 @@ function qExp(type,fmt){document.getElementById('exptype').value=type;doExp(fmt)
     else if(p.get('pd')==='1'){window.__earlyPortal='pd';}
     else if(p.get('bd')==='1'){window.__earlyPortal='bd';}
     else if(p.get('late')==='1'){window.__earlyPortal='late';}
+    else if(p.get('ev')==='1'){window.__earlyPortal='ev';}
     // Portal links carry the school so they work on a device that has never
     // signed in — otherwise there is no school context and no data.
     const sch=p.get('sch');
@@ -13044,6 +13343,8 @@ window.__doSeedAndStart=async function(){
     checkBdMode();
   }else if(window.__earlyPortal==='late'&&typeof checkLateMode==='function'){
     checkLateMode();
+  }else if(window.__earlyPortal==='ev'&&typeof checkEvMode==='function'){
+    checkEvMode();
   }else if(window.__earlyPortal==='excuse'&&typeof checkExcuseMode==='function'){
     checkExcuseMode();
   }else if(typeof checkExcuseMode==='function'&&checkExcuseMode()){
@@ -21614,6 +21915,7 @@ function portalRefreshOpen(){
     if(document.getElementById('pdp')&&!document.getElementById('pdp-done')&&typeof renderPdPortal==='function')renderPdPortal();
     else if(document.getElementById('bdp')&&!document.getElementById('bdp-done')&&typeof renderBdPortal==='function')renderBdPortal();
     else if(document.getElementById('ltp')&&!document.getElementById('ltp-done')&&typeof renderLatePortal==='function')renderLatePortal();
+    else if(document.getElementById('evp')&&!document.getElementById('evp-done')&&typeof renderEvPortal==='function'&&(window._ev||{}).step!=='form')renderEvPortal();
   }catch(e){console.warn('[Portal] refresh failed',e);}
 }
 
