@@ -4374,7 +4374,10 @@ function ctSavedAll(){
   return (Array.isArray(l)?l:[]).filter(function(x){return x&&x.id;});
 }
 function ctTemplates(){return CT_BUILTIN.concat(ctSaved());}
-function ctTemplate(id){return ctTemplates().find(function(t){return t.id===id;})||ctTemplates()[0];}
+function ctTemplate(id){
+  if(window._ctSetTpl&&window._ctSetTpl.id===id)return window._ctSetTpl;
+  return ctTemplates().find(function(t){return t.id===id;})||ctTemplates()[0];
+}
 function ctDefaultPrincipal(){
   const p=(DB.get('accounts')||[]).find(function(a){return a&&a.active!==false&&a.role==='principal';});
   return p?((p.firstName||'')+' '+(p.lastName||'')).trim():'';
@@ -4384,9 +4387,11 @@ function ctState(){
   let pr=null,fill=null;
   try{pr=localStorage.getItem('sms7_cert_principal');}catch(e){}
   try{fill=JSON.parse(localStorage.getItem('sms7_cert_fill')||'null');}catch(e){}
+  let sch=null;
+  try{sch=JSON.parse(localStorage.getItem('sms7_cert_school')||'null');}catch(e){}
   window._ct={tpl:CT_BUILTIN[0].id,grade:'',section:'',q:'',ids:[],
-    date:ymd(new Date()),
     principal:pr!==null?pr:ctDefaultPrincipal(),
+    schoolEn:sch&&sch.en!==undefined?sch.en:null,schoolAr:sch&&sch.ar!==undefined?sch.ar:null,
     fill:fill||{term:'this term',subject:''}};
   return window._ct;
 }
@@ -4400,14 +4405,19 @@ function rCertificates(){
   const tpls=ctTemplates();
   document.getElementById('pc').innerHTML=
    '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>\u{1f3c5} '+T('certificates')+'</h3>'
-   +(ctCanEdit()?'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="ctTplM()">\u{1f4dd} Wording / templates</button></div>':'')+'</div>'
+   +'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="ctSetsM()">\u{1f4c2} Saved certificates ('+ctSets().length+')</button>'
+   +(ctCanEdit()?'<button class="btn bg2 bsm" onclick="ctTplM()">\u{1f4dd} Wording / templates</button>':'')+'</div></div>'
    +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Choose the wording, then the students — a whole class or one by one. Each certificate prints on its own A4 sheet with the principal’s name at the foot.</div></div>'
    +'<div class="card" style="margin-bottom:13px"><div class="fr f3">'
    +'<div class="fg" style="margin-bottom:6px"><label>Certificate</label><select onchange="ctState().tpl=this.value;ctPreview()">'
+   +(window._ctSetTpl&&st.tpl===window._ctSetTpl.id?'<option value="'+esc(st.tpl)+'" selected>'+esc(window._ctSetTpl.title)+' (from a saved set)</option>':'')
    +tpls.map(function(t){return '<option value="'+esc(t.id)+'"'+(t.id===st.tpl?' selected':'')+'>'+esc(t.title)+(t.id.indexOf('bi-')===0?'':' ★')+'</option>';}).join('')
    +'</select></div>'
-   +'<div class="fg" style="margin-bottom:6px"><label>Date on the certificate</label><input type="date" value="'+esc(st.date)+'" onchange="ctState().date=this.value;ctPreview()"></div>'
-   +'<div class="fg" style="margin-bottom:6px"><label>Principal’s name</label><input value="'+esc(st.principal||'')+'" placeholder="e.g. Khalid Saeed" oninput="ctPrincipal(this.value)"></div></div>'
+   +'<div class="fg" style="margin-bottom:6px"><label>Principal’s name</label><input value="'+esc(st.principal||'')+'" placeholder="e.g. Khalid Saeed" oninput="ctPrincipal(this.value)"></div>'
+   +'<div class="fg" style="margin-bottom:6px"><label>School name on the certificate</label><input value="'+esc(ctSchool().en)+'" oninput="ctSchoolName('+q+'en'+q+',this.value)"></div></div>'
+   +'<div class="fr f2"><div class="fg" style="margin-bottom:6px"><label>School name in Arabic <span style="font-weight:400;color:var(--tx3);font-size:10px">— leave empty for none</span></label>'
+   +'<input dir="rtl" value="'+esc(ctSchool().ar)+'" oninput="ctSchoolName('+q+'ar'+q+',this.value)"></div>'
+   +'<div class="fg" style="margin-bottom:6px;display:flex;align-items:end"><button class="btn bg2 bsm" onclick="ctSchoolReset()" style="margin-bottom:2px">↺ Use the school’s own name</button></div></div>'
    +'<div class="fr f2"><div class="fg" style="margin-bottom:0"><label>Term / period <span style="font-weight:400;color:var(--tx3);font-size:10px">— fills {{term}}</span></label>'
    +'<input value="'+esc(st.fill.term||'')+'" placeholder="e.g. the first term 2026–2027" oninput="ctFill('+q+'term'+q+',this.value)"></div>'
    +'<div class="fg" style="margin-bottom:0"><label>Subject / reason <span style="font-weight:400;color:var(--tx3);font-size:10px">— fills {{subject}}</span></label>'
@@ -4416,6 +4426,7 @@ function rCertificates(){
    +'<div class="card"><div class="sh2"><h3>\u{1f465} Choose students</h3></div><div id="ct-pick"></div></div>'
    +'<div class="card"><div class="sh2"><h3>\u{1f5c2}️ Selected (<span id="ct-n">'+st.ids.length+'</span>)</h3>'
    +'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="ctClear()">Clear</button>'
+   +'<button class="btn bs bsm" onclick="ctSaveM()">\u{1f4be} Save certificates</button>'
    +'<button class="btn bp bsm" onclick="ctPrint()">\u{1f5a8}️ Print certificates</button></div></div>'
    +'<div id="ct-sel"></div>'
    +'<div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:12px 0 6px">Preview</div>'
@@ -4427,6 +4438,20 @@ function ctPrincipal(v){
   const st=ctState();st.principal=v;
   try{localStorage.setItem('sms7_cert_principal',v);}catch(e){}
   ctPreview();
+}
+// Typed only for the certificates — the school's own settings are untouched
+function ctSchoolName(k,v){
+  const st=ctState();
+  if(k==='ar')st.schoolAr=v;else st.schoolEn=v;
+  try{localStorage.setItem('sms7_cert_school',JSON.stringify({en:st.schoolEn,ar:st.schoolAr}));}catch(e){}
+  ctPreview();
+}
+function ctSchoolReset(){
+  const st=ctState();
+  st.schoolEn=null;st.schoolAr=null;
+  try{localStorage.removeItem('sms7_cert_school');}catch(e){}
+  rCertificates();
+  toast('Using the school’s own name','info');
 }
 function ctFill(k,v){
   const st=ctState();st.fill[k]=v;
@@ -4500,6 +4525,120 @@ function ctSel(){
   ctPreview();
 }
 
+// ── Saved certificates ────────────────────────────────────
+// A saved set is the wording, the students, the principal's name and what was
+// written in the term and subject boxes — kept with the school's records so it
+// can be opened or printed again from any device.
+function ctSetsAll(){
+  const l=DB.get('certificate_sets');
+  return (Array.isArray(l)?l:[]).filter(function(x){return x&&x.id;});
+}
+function ctSets(){
+  return ctSetsAll().filter(function(x){return !x.deleted;})
+    .sort(function(a,b){return String(b.created||'').localeCompare(String(a.created||''));});
+}
+function ctSaveM(){
+  const st=ctState();
+  if(!st.ids.length){toast('Choose the students first','danger');return;}
+  const t=ctTemplate(st.tpl);
+  const dflt=(t.title||'Certificates')+' — '+(st.grade?(st.grade+(st.section?'-'+st.section:''))+' · ':'')+st.ids.length+' student(s)';
+  openM('<div class="mh"><h3>\u{1f4be} Save these certificates</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2"><div class="al ai">The wording, the '+st.ids.length+' student(s), the principal’s name and the school name are saved, so the same certificates can be issued again at any time.</div>'
+  +'<div class="fg"><label>Name for this set *</label><input id="ct-set-name" value="'+esc(dflt)+'"></div></div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bp" onclick="ctSaveSet()">\u{1f4be} Save</button></div>');
+}
+function ctSaveSet(){
+  const st=ctState();
+  const name=((document.getElementById('ct-set-name')||{}).value||'').trim();
+  if(!name){toast('Give the set a name','danger');return;}
+  if(!st.ids.length){toast('Choose the students first','danger');return;}
+  const t=ctTemplate(st.tpl);
+  const sc=ctSchool();
+  const now=new Date().toISOString();
+  const list=ctSetsAll();
+  // the wording is kept with the set, so it reads the same however it is changed later
+  list.push({id:nid('cts'),name:name,tplId:st.tpl,title:t.title||'',subtitle:t.subtitle||'',body:t.body||'',
+    studentIds:st.ids.slice(),principal:st.principal||'',schoolEn:sc.en,schoolAr:sc.ar,
+    fill:{term:st.fill.term||'',subject:st.fill.subject||''},count:st.ids.length,
+    createdBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),created:now,updated:now});
+  DB.set('certificate_sets',list);
+  logA('Saved a set of '+st.ids.length+' certificate(s): '+name);
+  closeM();toast('Certificates saved','success');
+  rCertificates();
+}
+function ctSetsM(){
+  const sets=ctSets();
+  const q=String.fromCharCode(39);
+  const roll={};(DB.get('students')||[]).forEach(function(x){roll[x.id]=x;});
+  openM('<div class="mh"><h3>\u{1f4c2} Saved certificates</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Open a set to see and change who is in it, or print it straight away. Each set keeps the wording it was saved with.</div>'
+  +(sets.length?'<div class="tw" style="max-height:340px;overflow:auto"><table style="font-size:11px"><thead><tr>'
+    +'<th>Set</th><th>Certificate</th><th class="c">Students</th><th>Saved</th><th></th></tr></thead><tbody>'
+    +sets.map(function(x){
+       const on=(x.studentIds||[]).filter(function(id){return roll[id];}).length;
+       const gone=(x.studentIds||[]).length-on;
+       return '<tr><td><strong>'+esc(x.name||'—')+'</strong>'+(x.principal?'<div style="font-size:9px;color:var(--tx3)">Principal: '+esc(x.principal)+'</div>':'')+'</td>'
+        +'<td style="font-size:11px">'+esc(x.title||'')+(x.subtitle?'<div style="font-size:9px;color:var(--tx3)">'+esc(x.subtitle)+'</div>':'')+'</td>'
+        +'<td class="c">'+on+(gone?'<div style="font-size:9px;color:var(--dn)">'+gone+' no longer on the roll</div>':'')+'</td>'
+        +'<td style="font-size:10px;color:var(--tx3)">'+esc((x.created||'').slice(0,10))+(x.createdBy?'<br>'+esc(x.createdBy):'')+'</td>'
+        +'<td style="white-space:nowrap"><button class="btn bs bxs" onclick="ctOpenSet('+q+escJs(x.id)+q+')">Open</button> '
+        +'<button class="btn bp bxs" onclick="ctPrintSet('+q+escJs(x.id)+q+')">\u{1f5a8}️ Print</button> '
+        +'<button class="btn bd3 bxs" onclick="ctDelSet('+q+escJs(x.id)+q+')">Remove</button></td></tr>';
+     }).join('')+'</tbody></table></div>'
+   :'<div class="emp" style="padding:16px"><div class="ei">\u{1f4c2}</div><p style="font-size:11px">No certificates saved yet. Choose students and press Save certificates.</p></div>')
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
+}
+function ctSetOf(id){return ctSets().find(function(x){return x.id===id;});}
+function ctSetStudents(x){
+  const roll={};(DB.get('students')||[]).forEach(function(s){roll[s.id]=s;});
+  return (x.studentIds||[]).map(function(id){return roll[id];}).filter(Boolean);
+}
+// The wording kept with a set, used whether or not it still exists on its own
+function ctSetTpl(x){return {id:'set-'+x.id,title:x.title||'',subtitle:x.subtitle||'',body:x.body||''};}
+function ctApplySet(x){
+  const st=ctState();
+  st.tpl=x.tplId&&ctTemplates().some(function(t){return t.id===x.tplId&&t.title===x.title;})?x.tplId:('set-'+x.id);
+  window._ctSetTpl=ctSetTpl(x);
+  st.principal=x.principal||st.principal;
+  if(x.schoolEn!==undefined)st.schoolEn=x.schoolEn;
+  if(x.schoolAr!==undefined)st.schoolAr=x.schoolAr;
+  st.fill={term:(x.fill&&x.fill.term)||'',subject:(x.fill&&x.fill.subject)||''};
+}
+function ctOpenSet(id){
+  const x=ctSetOf(id);if(!x){toast('That set was not found','danger');return;}
+  const keep=ctSetStudents(x);
+  const st=ctState();
+  ctApplySet(x);
+  st.ids=keep.map(function(s){return s.id;});
+  st.grade='';st.section='';st.q='';
+  const gone=(x.studentIds||[]).length-keep.length;
+  closeM();rCertificates();
+  toast('Opened “'+x.name+'” — '+keep.length+' student(s)'+(gone?' · '+gone+' no longer on the roll':''),'success');
+}
+function ctPrintSet(id){
+  const x=ctSetOf(id);if(!x){toast('That set was not found','danger');return;}
+  const keep=ctSetStudents(x);
+  if(!keep.length){toast('None of that set’s students are on the roll any more','danger');return;}
+  const st=ctState();
+  const was={tpl:st.tpl,principal:st.principal,fill:st.fill,schoolEn:st.schoolEn,schoolAr:st.schoolAr,setTpl:window._ctSetTpl};
+  ctApplySet(x);
+  try{ctPrintList(keep);}
+  finally{st.tpl=was.tpl;st.principal=was.principal;st.fill=was.fill;st.schoolEn=was.schoolEn;st.schoolAr=was.schoolAr;window._ctSetTpl=was.setTpl;}
+}
+function ctDelSet(id){
+  const x=ctSetOf(id);if(!x)return;
+  if(!confirm('Remove the saved set “'+(x.name||'')+'”?\n\nCertificates already printed and every student record stay exactly as they are.'))return;
+  const now=new Date().toISOString();
+  DB.set('certificate_sets',ctSetsAll().map(function(y){
+    return y.id===id?Object.assign({},y,{deleted:true,deletedAt:now,deletedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),updated:now}):y;
+  }));
+  logA('Removed the saved certificate set: '+(x.name||''));
+  toast('Removed','danger');
+  ctSetsM();rCertificates();
+}
+
 // ── The wording ───────────────────────────────────────────
 function ctTplM(){
   if(!ctCanEdit()){toast('You cannot change the wording','danger');return;}
@@ -4564,96 +4703,133 @@ function ctDateText(d){
     return x.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   }catch(e){return d||'';}
 }
-function ctFillText(txt,s){
+// The school's name as it should read on the certificate: the school's own
+// unless a different wording has been typed for the certificates.
+function ctSchool(){
   const set=DB.get('settings')||{};const st=ctState();
+  return {en:(st.schoolEn!==undefined&&st.schoolEn!==null&&st.schoolEn!=='')?st.schoolEn:(set.schoolName||'School'),
+    ar:(st.schoolAr!==undefined&&st.schoolAr!==null)?st.schoolAr:(set.schoolNameAr||'')};
+}
+function ctFillText(txt,s){
+  const st=ctState();const sc=ctSchool();
   return String(txt||'')
     .replace(/\{\{\s*student\s*\}\}/gi,fN(s))
     .replace(/\{\{\s*class\s*\}\}/gi,ctClassOf(s))
-    .replace(/\{\{\s*school\s*\}\}/gi,set.schoolName||'')
-    .replace(/\{\{\s*date\s*\}\}/gi,ctDateText(st.date))
+    .replace(/\{\{\s*school\s*\}\}/gi,sc.en)
+    .replace(/\{\{\s*date\s*\}\}/gi,ctDateText(ymd(new Date())))
     .replace(/\{\{\s*sn\s*\}\}/gi,String(s.sn||''))
     .replace(/\{\{\s*term\s*\}\}/gi,st.fill.term||'')
     .replace(/\{\{\s*subject\s*\}\}/gi,st.fill.subject||'')
     .replace(/\{\{\s*principal\s*\}\}/gi,st.principal||'');
 }
 function ctCSS(){
-  return '.ctf{width:297mm;height:210mm;position:relative;background:#fffdf7;box-sizing:border-box;'
-   +'font-family:Georgia,"Times New Roman",serif;color:#1b2a3a;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+  return '.ctf{width:297mm;height:210mm;position:relative;background:#fffdf6;box-sizing:border-box;'
+   +'font-family:Georgia,"Times New Roman",serif;color:#16263a;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
    +'.ctf *{box-sizing:border-box}'
-   +'.ctf .bg{position:absolute;inset:0;background:radial-gradient(circle at 20% 18%,#fdf7e6 0%,#fffdf7 45%),radial-gradient(circle at 82% 88%,#f2f8fa 0%,rgba(255,253,247,0) 55%)}'
-   +'.ctf .fr1{position:absolute;inset:7mm;border:1.4mm solid #0b3d55;border-radius:2mm}'
-   +'.ctf .fr2{position:absolute;inset:9.4mm;border:.45mm solid #c8a14a;border-radius:1.4mm}'
-   +'.ctf .cor{position:absolute;width:26mm;height:26mm;opacity:.75}'
+   // the paper: warm light, a fine woven pattern and a soft vignette
+   +'.ctf .bg{position:absolute;inset:0;background:'
+     +'repeating-linear-gradient(45deg,rgba(11,61,85,.028) 0 .6mm,rgba(255,255,255,0) .6mm 2.4mm),'
+     +'repeating-linear-gradient(-45deg,rgba(200,161,74,.035) 0 .6mm,rgba(255,255,255,0) .6mm 2.4mm),'
+     +'radial-gradient(ellipse at 50% 42%,#fffefb 0%,#fdf8ea 58%,#f6edd8 100%)}'
+   // three frames: a navy band, a gold hairline and an inner gold rule
+   +'.ctf .fr1{position:absolute;inset:6mm;border:2.6mm solid #0b3d55;border-radius:1mm;'
+     +'box-shadow:inset 0 0 0 .5mm #c8a14a,0 0 0 .3mm rgba(11,61,85,.25)}'
+   +'.ctf .fr2{position:absolute;inset:11.5mm;border:.4mm solid rgba(200,161,74,.85);border-radius:.8mm}'
+   +'.ctf .fr3{position:absolute;inset:12.6mm;border:.2mm solid rgba(11,61,85,.35)}'
+   +'.ctf .cor{position:absolute;width:38mm;height:38mm}'
    +'.ctf .cor svg{width:100%;height:100%}'
-   +'.ctf .wm{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:120mm;height:120mm;opacity:.05;display:flex;align-items:center;justify-content:center}'
-   +'.ctf .wm img{width:100%;height:100%;object-fit:contain}.ctf .wm span{font-size:90mm;line-height:1}'
-   +'.ctf .in{position:absolute;inset:13mm 18mm 44mm;display:flex;flex-direction:column;align-items:center;text-align:center;overflow:hidden}'
-   +'.ctf .hd{display:flex;align-items:center;gap:5mm}'
-   +'.ctf .lg{width:17mm;height:17mm;border-radius:50%;background:#fff;border:.5mm solid #c8a14a;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}'
-   +'.ctf .lg img{width:100%;height:100%;object-fit:contain}.ctf .lg span{font-size:9mm;line-height:1}'
-   +'.ctf .sn1{font-size:6mm;font-weight:700;letter-spacing:.35mm;color:#0b3d55;line-height:1.2}'
-   +'.ctf .sn2{font-size:4.2mm;color:#6b5a2e;direction:rtl}'
-   +'.ctf .ttl{margin-top:6mm;font-size:15mm;line-height:1.05;letter-spacing:1.2mm;font-weight:700;color:#0b3d55;text-transform:uppercase}'
-   +'.ctf .sub{margin-top:1.5mm;font-size:4.6mm;letter-spacing:2.2mm;text-transform:uppercase;color:#c8a14a;font-family:Arial,Helvetica,sans-serif}'
-   +'.ctf .rule{margin:4mm 0 0;width:86mm;height:2.4mm;position:relative}'
-   +'.ctf .rule:before,.ctf .rule:after{content:"";position:absolute;top:1.1mm;height:.35mm;width:36mm;background:linear-gradient(90deg,rgba(200,161,74,0),#c8a14a)}'
+   +'.ctf .wm{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:118mm;height:118mm;opacity:.045;display:flex;align-items:center;justify-content:center}'
+   +'.ctf .wm img{width:100%;height:100%;object-fit:contain}.ctf .wm span{font-size:88mm;line-height:1}'
+   +'.ctf .in{position:absolute;inset:17mm 22mm 46mm;display:flex;flex-direction:column;align-items:center;text-align:center;overflow:hidden}'
+   // the crest: the school's badge in a gold ring
+   +'.ctf .crest{width:22mm;height:22mm;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;'
+     +'box-shadow:0 0 0 .55mm #c8a14a,0 0 0 1.4mm #fffdf6,0 0 0 1.8mm rgba(11,61,85,.55);flex-shrink:0}'
+   +'.ctf .crest img{width:78%;height:78%;object-fit:contain}.ctf .crest span{font-size:11mm;line-height:1}'
+   +'.ctf .sn1{margin-top:2.4mm;font-size:5.4mm;font-weight:700;letter-spacing:1.1mm;color:#0b3d55;text-transform:uppercase;white-space:nowrap;max-width:230mm;overflow:hidden}'
+   +'.ctf .sn2{margin-top:.8mm;font-size:4mm;color:#8a7434;direction:rtl;white-space:nowrap;max-width:230mm;overflow:hidden}'
+   +'.ctf .ttl{margin-top:5mm;font-size:16mm;line-height:1.02;letter-spacing:1.6mm;font-weight:700;color:#0b3d55;text-transform:uppercase;white-space:nowrap;max-width:240mm}'
+   +'.ctf .sub{margin-top:2.4mm;font-size:4.2mm;letter-spacing:3mm;text-transform:uppercase;color:#a9862f;font-family:Arial,Helvetica,sans-serif}'
+   // a gold flourish: two tapering rules with a diamond between them
+   +'.ctf .rule{margin-top:4mm;width:120mm;height:3mm;position:relative}'
+   +'.ctf .rule:before,.ctf .rule:after{content:"";position:absolute;top:1.4mm;height:.4mm;width:50mm;background:linear-gradient(90deg,rgba(200,161,74,0),#c8a14a)}'
    +'.ctf .rule:before{left:0}.ctf .rule:after{right:0;transform:scaleX(-1)}'
-   +'.ctf .rule i{position:absolute;left:50%;top:0;transform:translateX(-50%) rotate(45deg);width:2.4mm;height:2.4mm;background:#c8a14a}'
-   +'.ctf .pres{margin-top:5mm;font-size:4.4mm;font-style:italic;color:#4a5b6b}'
-   +'.ctf .nm{margin-top:2mm;white-space:nowrap;max-width:240mm;font-size:17mm;line-height:1.1;font-family:"Segoe Script","Brush Script MT","Lucida Handwriting",cursive;color:#0b3d55;max-width:230mm;padding:0 6mm}'
-   +'.ctf .nmline{width:150mm;height:.35mm;background:linear-gradient(90deg,rgba(11,61,85,0),#0b3d55,rgba(11,61,85,0));margin-top:1.5mm}'
-   +'.ctf .cls{margin-top:2.5mm;font-size:4.4mm;color:#4a5b6b;letter-spacing:.3mm}'
-   +'.ctf .bdy{margin-top:4.5mm;font-size:4.6mm;line-height:1.7;color:#243546;max-width:215mm;white-space:pre-wrap}'
-   +'.ctf .ft{position:absolute;left:18mm;right:18mm;bottom:15mm;display:flex;align-items:flex-end;justify-content:space-between;gap:10mm}'
-   +'.ctf .sig{width:70mm;text-align:center}'
-   +'.ctf .sig i{display:block;border-top:.4mm solid #0b3d55;margin-bottom:1.2mm}'
-   +'.ctf .sig b{display:block;font-size:4.6mm;color:#0b3d55}'
-   +'.ctf .sig small{display:block;font-size:3.4mm;letter-spacing:.8mm;text-transform:uppercase;color:#6b7d8c;font-family:Arial,Helvetica,sans-serif;margin-top:.8mm}'
-   +'.ctf .seal{width:34mm;height:34mm;position:relative;flex-shrink:0}'
-   +'.ctf .seal svg{width:100%;height:100%}';
+   +'.ctf .rule i{position:absolute;left:50%;top:.3mm;transform:translateX(-50%) rotate(45deg);width:2.4mm;height:2.4mm;background:#c8a14a;box-shadow:0 0 0 .5mm #fffdf6,0 0 0 .8mm rgba(200,161,74,.45)}'
+   +'.ctf .pres{margin-top:5mm;font-size:4.4mm;font-style:italic;color:#5b6a79;letter-spacing:.2mm}'
+   // the name, in script, between two small gold flourishes
+   +'.ctf .nmrow{margin-top:1.5mm;display:flex;align-items:center;justify-content:center;gap:5mm;width:245mm}'
+   +'.ctf .nmrow .fl{width:22mm;height:3mm;flex-shrink:0}'
+   +'.ctf .nmrow .fl svg{width:100%;height:100%}'
+   +'.ctf .nm{white-space:nowrap;max-width:190mm;overflow:hidden;font-size:19mm;line-height:1.16;font-family:"Segoe Script","Brush Script MT","Lucida Handwriting",cursive;color:#0b3d55}'
+   +'.ctf .nmline{margin-top:1mm;width:170mm;height:.4mm;background:linear-gradient(90deg,rgba(11,61,85,0),rgba(11,61,85,.75),rgba(11,61,85,0))}'
+   +'.ctf .cls{margin-top:2.6mm;font-size:4.4mm;color:#5b6a79;letter-spacing:.6mm;font-variant:small-caps}'
+   +'.ctf .bdy{margin-top:4mm;font-size:4.5mm;line-height:1.75;color:#22323f;max-width:212mm;white-space:pre-wrap}'
+   // the foot: the seal, then the principal
+   +'.ctf .ft{position:absolute;left:0;right:0;bottom:15mm;display:flex;flex-direction:column;align-items:center}'
+   +'.ctf .seal{width:30mm;height:30mm;position:relative}'
+   +'.ctf .seal svg{width:100%;height:100%}'
+   +'.ctf .sig{margin-top:1mm;width:96mm;text-align:center}'
+   +'.ctf .sig i{display:block;border-top:.45mm solid #0b3d55;margin-bottom:1.4mm}'
+   +'.ctf .sig b{display:block;font-size:5mm;color:#0b3d55;white-space:nowrap;overflow:hidden}'
+   +'.ctf .sig small{display:block;font-size:3.3mm;letter-spacing:1.2mm;text-transform:uppercase;color:#8090a0;font-family:Arial,Helvetica,sans-serif;margin-top:1mm}';
 }
+// A scrolled corner, drawn once and turned for each of the four corners
 function ctCorner(pos){
-  const svg='<svg viewBox="0 0 100 100" fill="none"><path d="M4 96V34C4 17 17 4 34 4h62" stroke="#c8a14a" stroke-width="2.4"/>'
-   +'<path d="M14 96V38c0-13 11-24 24-24h58" stroke="#0b3d55" stroke-width="1.2" opacity=".55"/>'
-   +'<circle cx="26" cy="26" r="3.6" fill="#c8a14a"/><path d="M4 74c14 0 26-12 26-26" stroke="#c8a14a" stroke-width="1" opacity=".7"/></svg>';
-  const style={tl:'left:11mm;top:11mm',tr:'right:11mm;top:11mm;transform:scaleX(-1)',
-    bl:'left:11mm;bottom:11mm;transform:scaleY(-1)',br:'right:11mm;bottom:11mm;transform:scale(-1,-1)'}[pos];
+  const svg='<svg viewBox="0 0 120 120" fill="none">'
+   +'<path d="M6 114V40C6 21 21 6 40 6h74" stroke="#c8a14a" stroke-width="1.6"/>'
+   +'<path d="M13 114V43c0-17 13-30 30-30h71" stroke="#0b3d55" stroke-width=".9" opacity=".5"/>'
+   +'<path d="M6 84c22 0 40-18 40-40 0-10 8-18 18-18" stroke="#c8a14a" stroke-width=".9" opacity=".75"/>'
+   +'<path d="M26 38c0-7 6-13 13-13 6 0 11 5 11 11s-5 10-10 10-9-4-9-9 4-8 8-8" stroke="#c8a14a" stroke-width=".9"/>'
+   +'<circle cx="39" cy="39" r="2.6" fill="#c8a14a"/>'
+   +'<path d="M62 13h16M70 6v14" stroke="#c8a14a" stroke-width=".8" opacity=".6"/>'
+   +'</svg>';
+  const style={tl:'left:9mm;top:9mm',tr:'right:9mm;top:9mm;transform:scaleX(-1)',
+    bl:'left:9mm;bottom:9mm;transform:scaleY(-1)',br:'right:9mm;bottom:9mm;transform:scale(-1,-1)'}[pos];
   return '<div class="cor" style="'+style+'">'+svg+'</div>';
 }
+// A gold seal: a laurel wreath around a star, on a ribbon
 function ctSeal(){
   return '<div class="seal"><svg viewBox="0 0 100 100">'
-   +'<g transform="translate(50,44)">'
-   +'<circle r="30" fill="#c8a14a" opacity=".16"/>'
-   +'<circle r="26" fill="none" stroke="#c8a14a" stroke-width="1.6"/>'
-   +'<circle r="21" fill="none" stroke="#0b3d55" stroke-width="1" opacity=".7"/>'
-   +'<path d="M0-30 6-9h22L10 4l7 21L0 12l-17 13 7-21-18-13h22z" fill="#c8a14a" opacity=".9"/>'
-   +'</g>'
-   +'<path d="M36 70l-8 26 12-6 10 6 10-6 12 6-8-26z" fill="#0b3d55" opacity=".85"/>'
+   +'<defs><radialGradient id="ctg" cx="35%" cy="30%"><stop offset="0%" stop-color="#f0d489"/><stop offset="55%" stop-color="#c8a14a"/><stop offset="100%" stop-color="#9c7726"/></radialGradient></defs>'
+   +'<path d="M31 78l-9 20 14-4 6 6 8-18z" fill="#0b3d55"/><path d="M69 78l9 20-14-4-6 6-8-18z" fill="#12677e"/>'
+   +'<circle cx="50" cy="44" r="30" fill="url(#ctg)"/>'
+   +'<circle cx="50" cy="44" r="25.5" fill="none" stroke="#fffdf6" stroke-width="1.1" opacity=".85"/>'
+   +'<circle cx="50" cy="44" r="21" fill="#fffdf6" opacity=".14"/>'
+   +'<path d="M50 26l5.2 10.9 11.8 1.6-8.6 8.2 2.2 11.8L50 52.9 39.4 58.5l2.2-11.8-8.6-8.2 11.8-1.6z" fill="#fffdf6" opacity=".92"/>'
+   +'<g stroke="#9c7726" stroke-width="1.1" fill="none" opacity=".55">'
+   +'<path d="M28 52c-5-6-5-14-1-20M72 52c5-6 5-14 1-20"/></g>'
    +'</svg></div>';
 }
 function ctSheet(s){
   const set=DB.get('settings')||{};const st=ctState();
+  const sc=ctSchool();
   const t=ctTemplate(st.tpl);
   const logo=(set.logo&&set.logo.startsWith&&set.logo.startsWith('data:'))?'<img src="'+set.logo+'" alt="">':'<span>'+esc(set.logo||'\u{1f393}')+'</span>';
-  return '<div class="ctf"><div class="bg"></div><div class="fr1"></div><div class="fr2"></div>'
+  const fl='<svg viewBox="0 0 60 8" fill="none"><path d="M0 4h38M44 4h16" stroke="#c8a14a" stroke-width="1"/><path d="M41 1.4l2.6 2.6L41 6.6 38.4 4z" fill="#c8a14a"/></svg>';
+  return '<div class="ctf"><div class="bg"></div><div class="fr1"></div><div class="fr2"></div><div class="fr3"></div>'
    +ctCorner('tl')+ctCorner('tr')+ctCorner('bl')+ctCorner('br')
    +'<div class="wm">'+logo+'</div>'
    +'<div class="in">'
-   +'<div class="hd"><div class="lg">'+logo+'</div><div><div class="sn1">'+esc(set.schoolName||'School')+'</div>'
-   +(set.schoolNameAr?'<div class="sn2">'+esc(set.schoolNameAr)+'</div>':'')+'</div></div>'
+   +'<div class="crest">'+logo+'</div>'
+   +'<div class="sn1">'+esc(sc.en)+'</div>'
+   +(sc.ar?'<div class="sn2">'+esc(sc.ar)+'</div>':'')
    +'<div class="ttl">'+esc(t.title||'Certificate')+'</div>'
    +(t.subtitle?'<div class="sub">'+esc(t.subtitle)+'</div>':'')
    +'<div class="rule"><i></i></div>'
    +'<div class="pres">This is to certify that</div>'
-   +'<div class="nm">'+esc(fN(s))+'</div><div class="nmline"></div>'
-   +'<div class="cls">Class '+esc(ctClassOf(s))+(s.sn?' · Student No. '+esc(String(s.sn)):'')+'</div>'
+   +'<div class="nmrow"><div class="fl">'+fl+'</div><div class="nm">'+esc(fN(s))+'</div><div class="fl" style="transform:scaleX(-1)">'+fl+'</div></div>'
+   +'<div class="nmline"></div>'
+   +'<div class="cls">Class '+esc(ctClassOf(s))+'</div>'
    +'<div class="bdy">'+esc(ctFillText(t.body||'',s))+'</div>'
    +'</div>'
-   +'<div class="ft">'
-   +'<div class="sig"><i></i><b>'+esc(ctDateText(st.date))+'</b><small>Date</small></div>'
-   +ctSeal()
+   +'<div class="ft">'+ctSeal()
    +'<div class="sig"><i></i><b>'+esc(st.principal||'')+'</b><small>Principal</small></div>'
    +'</div></div>';
+}
+function ctFit(root){
+  [].forEach.call(root.querySelectorAll('.ctf .nm,.ctf .ttl,.ctf .sn1,.ctf .sn2,.ctf .sig b'),function(e){
+    let f=parseFloat(getComputedStyle(e).fontSize),n=0;
+    while(e.scrollWidth>e.clientWidth+1&&n<40){f*=0.94;e.style.fontSize=f+'px';n++;}
+  });
 }
 function ctPreview(){
   const box=document.getElementById('ct-prev');if(!box)return;
@@ -4663,11 +4839,14 @@ function ctPreview(){
    +'<div style="width:100%;overflow:auto"><div style="transform:scale(.33);transform-origin:top left;width:297mm;height:210mm">'+ctSheet(s)+'</div>'
    +'<div style="height:72mm"></div></div>'
    +(list.length?'':'<div style="font-size:10px;color:var(--tx3)">A sample — choose students to see theirs.</div>');
-  [].forEach.call(box.querySelectorAll('.ctf .nm,.ctf .ttl'),function(e){let f=parseFloat(getComputedStyle(e).fontSize),n=0;while(e.scrollWidth>e.clientWidth+1&&n<40){f*=0.94;e.style.fontSize=f+'px';n++;}});
+  ctFit(box);
 }
 function ctPrint(){
   const list=ctSelected();
   if(!list.length){toast('Choose at least one student','danger');return;}
+  ctPrintList(list);
+}
+function ctPrintList(list){
   const st=ctState();
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to print the certificates','danger');return;}
@@ -4681,7 +4860,7 @@ function ctPrint(){
    +'</style></head><body><div class="bar"><button onclick="window.print()">\u{1f5a8}️ Print / Save as PDF</button> '
    +'<span style="font-size:12px;color:#333;margin-left:8px">'+list.length+' certificate(s) · A4 landscape, one a page</span></div>'
    +list.map(function(s){return '<div class="pg">'+ctSheet(s)+'</div>';}).join('')
-   +'<script>window.addEventListener("load",function(){[].forEach.call(document.querySelectorAll(".ctf .nm"),function(e){var f=parseFloat(getComputedStyle(e).fontSize),n=0;while(e.scrollWidth>e.clientWidth+1&&n<40){f*=0.94;e.style.fontSize=f+"px";n++;}});[].forEach.call(document.querySelectorAll(".ctf .ttl"),function(e){var f=parseFloat(getComputedStyle(e).fontSize),n=0;while(e.scrollWidth>e.clientWidth+1&&n<40){f*=0.94;e.style.fontSize=f+"px";n++;}});});<\/script>'
+   +'<script>window.addEventListener("load",function(){[].forEach.call(document.querySelectorAll(".ctf .nm,.ctf .ttl,.ctf .sn1,.ctf .sn2,.ctf .sig b"),function(e){var f=parseFloat(getComputedStyle(e).fontSize),n=0;while(e.scrollWidth>e.clientWidth+1&&n<40){f*=0.94;e.style.fontSize=f+"px";n++;}});});<\/script>'
    +'</body></html>');
   w.document.close();
   logA('Printed '+list.length+' certificate(s): '+(t.title||''));
@@ -11546,7 +11725,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions','user_permissions','late_arrivals','teacher_development',
-  'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','bd_exclusions','student_card_sets','certificate_templates','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
+  'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','bd_exclusions','student_card_sets','certificate_templates','certificate_sets','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -12021,7 +12200,7 @@ async function rosterMergedWrite(k,local){
 // Collections written a record at a time by many people at once. A whole-array
 // push for one of these can only ever destroy what the writer had not seen, so
 // the sync layer upserts the records instead and never removes on a bulk write.
-const APPEND_ONLY_KEYS=['period_discipline','break_discipline','tt_name_links','late_arrivals','teacher_development','bd_exclusions','student_card_sets','certificate_templates'];
+const APPEND_ONLY_KEYS=['period_discipline','break_discipline','tt_name_links','late_arrivals','teacher_development','bd_exclusions','student_card_sets','certificate_templates','certificate_sets'];
 function isAppendOnlyKey(k){return APPEND_ONLY_KEYS.indexOf(k)>=0;}
 
 // Upsert each record under its own key. Concurrent writers touch different
