@@ -3948,11 +3948,24 @@ function scDefaultPrincipal(){
   const p=(DB.get('accounts')||[]).find(function(a){return a&&a.active!==false&&a.role==='principal';});
   return p?((p.firstName||'')+' '+(p.lastName||'')).trim():'';
 }
+// Photos are kept on this device only — a set of them is far larger than the
+// school's whole record, so they are never sent to the cloud. A saved set
+// opened on another device simply shows the silhouette until photos are added.
+function scPhotos(){
+  if(!window._scPhotos){
+    try{window._scPhotos=JSON.parse(localStorage.getItem('sms7_card_photos')||'{}')||{};}catch(e){window._scPhotos={};}
+  }
+  return window._scPhotos;
+}
+function scKeepPhotos(){
+  try{localStorage.setItem('sms7_card_photos',JSON.stringify(scPhotos()));return true;}
+  catch(e){return false;}
+}
 function scState(){
   if(window._sc)return window._sc;
   let principal=null;
   try{principal=localStorage.getItem('sms7_card_principal');}catch(e){}
-  window._sc={kind:'id',grade:'',section:'',q:'',ids:[],photos:{},
+  window._sc={kind:'id',grade:'',section:'',q:'',ids:[],photos:scPhotos(),
     principal:principal!==null?principal:scDefaultPrincipal()};
   return window._sc;
 }
@@ -3974,8 +3987,9 @@ function rStudentCards(){
     {id:'bus',icon:'\u{1f68c}',title:'Bus Card',sub:'Photo, name, class and student number, with the father’s and mother’s phone numbers — all on one side.'}
   ];
   document.getElementById('pc').innerHTML=
-   '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>\u{1faaa} '+T('student_cards')+'</h3></div>'
-   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Choose the card, then the students — a whole class at once or one by one. Cards are one-sided, bank-card size, ten to an A4 sheet.</div></div>'
+   '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>\u{1faaa} '+T('student_cards')+'</h3>'
+   +'<button class="btn bg2 bsm" onclick="scSetsM()">\u{1f4c2} Saved cards ('+scSets().length+')</button></div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Choose the card, then the students — a whole class at once or one by one. Cards are one-sided, bank-card size, ten to an A4 sheet. A set can be saved and printed again later.</div></div>'
    +'<div class="cg g2" style="margin-bottom:13px">'
    +kinds.map(function(k){
       const on=st.kind===k.id;
@@ -3992,6 +4006,7 @@ function rStudentCards(){
    +'<div class="card"><div class="sh2"><h3>\u{1f465} Choose students</h3></div><div id="sc-pick"></div></div>'
    +'<div class="card"><div class="sh2"><h3>\u{1f5c2}️ Selected (<span id="sc-n">'+st.ids.length+'</span>)</h3>'
    +'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="scClear()">Clear</button>'
+   +'<button class="btn bs bsm" onclick="scSaveM()">\u{1f4be} Save cards</button>'
    +'<button class="btn bp bsm" onclick="scPrint()">\u{1f5a8}️ Print cards</button></div></div>'
    +'<div id="sc-sel"></div>'
    +'<div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:12px 0 6px">Preview</div>'
@@ -4087,11 +4102,114 @@ function scPhoto(id,input){
       g.fillStyle='#fff';g.fillRect(0,0,W,H);
       g.drawImage(img,(W-w)/2,(H-h)/2,w,h);
       scState().photos[id]=c.toDataURL('image/jpeg',0.86);
+      if(!scKeepPhotos())toast('The photo is on the card, but there was no room to keep it on this device for next time','info');
       scSel();
     };
     img.src=e.target.result;
   };
   rd.readAsDataURL(f);
+}
+
+// ── Saved cards ───────────────────────────────────────────
+// A saved set is the card, the students in it and the principal's name —
+// saved with the school's records, so it can be opened on any device and
+// printed again. Removing one marks it withdrawn; nothing is erased.
+function scSetsAll(){
+  const l=DB.get('student_card_sets');
+  return (Array.isArray(l)?l:[]).filter(function(x){return x&&x.id;});
+}
+function scSets(){
+  return scSetsAll().filter(function(x){return !x.deleted;})
+    .sort(function(a,b){return String(b.created||'').localeCompare(String(a.created||''));});
+}
+function scSaveM(){
+  const st=scState();
+  if(!st.ids.length){toast('Choose the students first','danger');return;}
+  const q=String.fromCharCode(39);
+  const dflt=(st.kind==='bus'?'Bus cards':'ID cards')+' — '
+    +(st.grade?(st.grade+(st.section?'-'+st.section:''))+' · ':'')+st.ids.length+' student(s)';
+  openM('<div class="mh"><h3>💾 Save these cards</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2"><div class="al ai">The card, the '+st.ids.length+' student(s) and the principal’s name are saved, so the same set can be opened and printed again at any time. Photos stay on this device.</div>'
+  +'<div class="fg"><label>Name for this set *</label><input id="sc-set-name" value="'+esc(dflt)+'"></div></div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bp" onclick="scSaveSet()">💾 Save</button></div>');
+}
+function scSaveSet(){
+  const st=scState();
+  const name=((document.getElementById('sc-set-name')||{}).value||'').trim();
+  if(!name){toast('Give the set a name','danger');return;}
+  if(!st.ids.length){toast('Choose the students first','danger');return;}
+  const now=new Date().toISOString();
+  const list=scSetsAll();
+  list.push({id:nid('scs'),name:name,kind:st.kind,studentIds:st.ids.slice(),principal:st.principal||'',
+    count:st.ids.length,createdBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),created:now,updated:now});
+  DB.set('student_card_sets',list);
+  logA('Saved a set of '+st.ids.length+' '+(st.kind==='bus'?'bus card':'student ID card')+'(s): '+name);
+  closeM();toast('Cards saved','success');
+  rStudentCards();
+}
+function scSetsM(){
+  const sets=scSets();
+  const q=String.fromCharCode(39);
+  const roll={};(DB.get('students')||[]).forEach(function(x){roll[x.id]=x;});
+  openM('<div class="mh"><h3>📂 Saved cards</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Open a set to see and change who is in it, or print it straight away. Photos come from the device they were added on.</div>'
+  +(sets.length?'<div class="tw" style="max-height:340px;overflow:auto"><table style="font-size:11px"><thead><tr>'
+    +'<th>Set</th><th>Card</th><th class="c">Students</th><th>Saved</th><th></th></tr></thead><tbody>'
+    +sets.map(function(x){
+       const on=(x.studentIds||[]).filter(function(id){return roll[id];}).length;
+       const gone=(x.studentIds||[]).length-on;
+       return '<tr><td><strong>'+esc(x.name||'—')+'</strong>'+(x.principal?'<div style="font-size:9px;color:var(--tx3)">Principal: '+esc(x.principal)+'</div>':'')+'</td>'
+        +'<td><span class="badge '+(x.kind==='bus'?'bgo':'bbl')+'">'+(x.kind==='bus'?'🚌 Bus':'🪪 ID')+'</span></td>'
+        +'<td class="c">'+on+(gone?'<div style="font-size:9px;color:var(--dn)">'+gone+' no longer on the roll</div>':'')+'</td>'
+        +'<td style="font-size:10px;color:var(--tx3)">'+esc((x.created||'').slice(0,10))+(x.createdBy?'<br>'+esc(x.createdBy):'')+'</td>'
+        +'<td style="white-space:nowrap"><button class="btn bs bxs" onclick="scOpenSet('+q+escJs(x.id)+q+')">Open</button> '
+        +'<button class="btn bp bxs" onclick="scPrintSet('+q+escJs(x.id)+q+')">🖨️ Print</button> '
+        +'<button class="btn bd3 bxs" onclick="scDelSet('+q+escJs(x.id)+q+')">Remove</button></td></tr>';
+     }).join('')+'</tbody></table></div>'
+   :'<div class="emp" style="padding:16px"><div class="ei">📂</div><p style="font-size:11px">No cards saved yet. Choose students and press Save cards.</p></div>')
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
+}
+function scSetOf(id){return scSets().find(function(x){return x.id===id;});}
+// The students of a set who are still on the roll
+function scSetStudents(x){
+  const roll={};(DB.get('students')||[]).forEach(function(s){roll[s.id]=s;});
+  return (x.studentIds||[]).map(function(id){return roll[id];}).filter(Boolean);
+}
+function scOpenSet(id){
+  const x=scSetOf(id);if(!x){toast('That set was not found','danger');return;}
+  const st=scState();
+  const keep=scSetStudents(x);
+  st.kind=x.kind==='bus'?'bus':'id';
+  st.ids=keep.map(function(s){return s.id;});
+  if(x.principal)st.principal=x.principal;
+  st.grade='';st.section='';st.q='';
+  const gone=(x.studentIds||[]).length-keep.length;
+  closeM();
+  rStudentCards();
+  toast('Opened “'+x.name+'” — '+keep.length+' student(s)'+(gone?' · '+gone+' no longer on the roll':''),'success');
+}
+function scPrintSet(id){
+  const x=scSetOf(id);if(!x){toast('That set was not found','danger');return;}
+  const keep=scSetStudents(x);
+  if(!keep.length){toast('None of that set’s students are on the roll any more','danger');return;}
+  const st=scState();
+  const was={kind:st.kind,principal:st.principal};
+  st.kind=x.kind==='bus'?'bus':'id';
+  if(x.principal)st.principal=x.principal;
+  try{scPrintList(keep);}finally{st.kind=was.kind;st.principal=was.principal;}
+}
+function scDelSet(id){
+  const x=scSetOf(id);if(!x)return;
+  if(!confirm('Remove the saved set “'+(x.name||'')+'”?\n\nThe cards themselves and every student record stay exactly as they are.'))return;
+  const now=new Date().toISOString();
+  DB.set('student_card_sets',scSetsAll().map(function(y){
+    return y.id===id?Object.assign({},y,{deleted:true,deletedAt:now,deletedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),updated:now}):y;
+  }));
+  logA('Removed the saved card set: '+(x.name||''));
+  toast('Removed','danger');
+  scSetsM();rStudentCards();
 }
 
 // ── The cards themselves ──────────────────────────────────
@@ -4182,9 +4300,12 @@ function scFit(root){
   [].forEach.call(root.querySelectorAll('.scx-sn1,.scx-sn2,.scx-pr b'),function(e){let f=parseFloat(getComputedStyle(e).fontSize),n=0;while(e.scrollWidth>e.clientWidth+1&&n<30){f*=0.94;e.style.fontSize=f+'px';n++;}});
 }
 function scPrint(){
-  const st=scState();
   const list=scSelected();
   if(!list.length){toast('Choose at least one student','danger');return;}
+  scPrintList(list);
+}
+function scPrintList(list){
+  const st=scState();
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to print the cards','danger');return;}
   const per=10,pages=[];
@@ -11068,7 +11189,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions','user_permissions','late_arrivals','teacher_development',
-  'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','bd_exclusions','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
+  'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','bd_exclusions','student_card_sets','break_discipline','school_timetable','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -11543,7 +11664,7 @@ async function rosterMergedWrite(k,local){
 // Collections written a record at a time by many people at once. A whole-array
 // push for one of these can only ever destroy what the writer had not seen, so
 // the sync layer upserts the records instead and never removes on a bulk write.
-const APPEND_ONLY_KEYS=['period_discipline','break_discipline','tt_name_links','late_arrivals','teacher_development','bd_exclusions'];
+const APPEND_ONLY_KEYS=['period_discipline','break_discipline','tt_name_links','late_arrivals','teacher_development','bd_exclusions','student_card_sets'];
 function isAppendOnlyKey(k){return APPEND_ONLY_KEYS.indexOf(k)>=0;}
 
 // Upsert each record under its own key. Concurrent writers touch different
