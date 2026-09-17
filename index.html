@@ -5751,11 +5751,11 @@ function renderEvPortal(){
         '<div class="fr f2"><div class="fg"><label>Teacher *</label><input id="evp-t" list="evp-tl" autocomplete="off" placeholder="Teacher name">'
         +'<datalist id="evp-tl">'+(DB.get('teachers')||[]).filter(function(t){return t&&t.active!==false;}).map(function(t){return '<option value="'+esc(t.name)+'">'+esc(t.subject||'')+'</option>';}).join('')+'</datalist></div>'
         +'<div class="fg"><label>Subject *</label><input id="evp-s" placeholder="e.g. Mathematics"></div></div>'
-        +'<div class="fr f3"><div class="fg"><label>Class</label><select id="evp-c"><option value="">—</option>'
+        +'<div class="fr f3"><div class="fg"><label>Class</label><select id="evp-c" onchange="evtPortal()"><option value="">—</option>'
         +portalClasses().map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('')+'</select></div>'
-        +'<div class="fg"><label>Period</label><select id="evp-p"><option value="">—</option>'
+        +'<div class="fg"><label>Period</label><select id="evp-p" onchange="evtPortal()"><option value="">—</option>'
         +[1,2,3,4,5,6,7,8].map(function(p){return '<option>'+p+'</option>';}).join('')+'</select></div>'
-        +'<div class="fg"><label>Date</label><input type="date" id="evp-d" value="'+esc(ymd(new Date()))+'" max="'+esc(ymd(new Date()))+'"></div></div>',true)
+        +'<div class="fg"><label>Date</label><input type="date" id="evp-d" onchange="evtPortal()" value="'+esc(ymd(new Date()))+'" max="'+esc(ymd(new Date()))+'"></div></div>'+'<div id="evp-tt" class="al ai" style="display:none;margin:8px 0 0;font-size:12px"></div>',true)
       +'<div class="card" style="margin-bottom:12px">'+buildEvalForm(null,false)+'</div>'
       +pdpQ('3. Notes','',
         '<div class="fg"><label>Strengths</label><textarea id="evp-st" style="min-height:52px" placeholder="What was done well"></textarea></div>'
@@ -5874,6 +5874,149 @@ function evAgain(){
   renderEvPortal();
 }
 
+// ── The teacher of the lesson, from the timetable ────────
+// When the class and the period are chosen on an evaluation form, the teacher
+// of that lesson is read from the school timetable — with any substitution
+// recorded for it — and filled in, so the supervisor does not have to type a
+// name. A split lesson has two teachers, and the form asks which one is being
+// watched rather than guessing. A name put in by hand is never overwritten.
+const EVT_SUBJECTS={'eng':'English','math':'Mathematics','sci':'Science','comp':'Computer',
+  'pe':'Physical Education','art':'Art','phy':'Physics','chem':'Chemistry','bio':'Biology',
+  'q':'Quran','ist':'Islamic Studies','ol':'Arabic','sst.e':'Social Studies (English)',
+  'sst a':'Social Studies (Arabic)','ssta':'Social Studies (Arabic)'};
+function evtSubjectName(code){
+  const c=String(code||'').trim();
+  return EVT_SUBJECTS[c.toLowerCase()]||c;
+}
+// The timetable spells names its own way ("M.Elsayed"). The teacher meant by
+// it is taken when the name is the same, when it has been confirmed against a
+// member of staff, or when exactly one teacher fits it word for word —
+// otherwise the timetable's own spelling is offered as it is written.
+function evtResolveName(tt){
+  const raw=String(tt||'').trim();
+  if(!raw)return '';
+  const list=(DB.get('teachers')||[]).filter(function(t){return t&&t.active!==false&&t.name;});
+  const k=normDutyName(raw);
+  const exact=list.filter(function(t){return normDutyName(t.name)===k;});
+  if(exact.length)return exact[0].name;
+  let own=null;
+  try{own=ttOwner(raw);}catch(e){}
+  if(own&&own.staffKey){
+    const linked=list.filter(function(t){return normDutyName(t.name)===own.staffKey;});
+    if(linked.length)return linked[0].name;
+  }
+  const strict=list.filter(function(t){return dutyStrictMatch(raw,t.name);});
+  if(strict.length===1)return strict[0].name;
+  return raw;
+}
+// The subject a teacher is down for on the staff list, when the timetable's
+// code says nothing useful
+function evtTeacherSubject(name){
+  const t=(DB.get('teachers')||[]).filter(function(x){
+    return x&&x.active!==false&&x.name&&normDutyName(x.name)===normDutyName(name);
+  })[0];
+  return t&&t.subject?t.subject:'';
+}
+// What the timetable says about a class in a period on a date
+function evtLesson(cls,date,period){
+  const p=parseInt(period,10);
+  if(!cls||!p)return null;
+  let t=null;
+  try{t=bdTeacherAt(cls,date||ymd(new Date()),p);}catch(e){return null;}
+  if(!t)return null;
+  const people=(t.names||[]).map(function(n){
+    const m=String(n).match(/^(.*?)\s*\(([^)]*substitut[^)]*)\)\s*$/i);
+    const base=(m?m[1]:String(n)).trim();
+    return {tt:base,name:evtResolveName(base),note:m?m[2].trim():''};
+  }).filter(function(x){return x.name;});
+  return {people:people,subject:evtSubjectName(t.subject||''),raw:t,
+    period:p,cls:cls,date:date,source:t.source,split:!!t.split};
+}
+
+// Which teacher name a form last had filled in for it
+function evtAuto(){return window._evtAuto||(window._evtAuto={});}
+function evtTypedIn(cfg){
+  const el=document.getElementById(cfg.hidden||cfg.t);
+  const v=el?String(el.value||'').trim():'';
+  return !!v&&v!==evtAuto()[cfg.t];
+}
+function evtSetTeacher(cfg,name,subject){
+  const vis=document.getElementById(cfg.t);if(vis)vis.value=name;
+  if(cfg.hidden){const h=document.getElementById(cfg.hidden);if(h)h.value=name;}
+  if(cfg.drop){const d=document.getElementById(cfg.drop);if(d)d.style.display='none';}
+  if(cfg.info){
+    const i=document.getElementById(cfg.info);
+    if(i){i.style.display='block';i.innerHTML='\u{1f4c5} <strong>'+esc(name)+'</strong> — from the timetable';}
+  }
+  evtAuto()[cfg.t]=name;
+  evtFillSubject(cfg,subject||evtTeacherSubject(name));
+}
+// The subject follows the lesson too, unless it was typed in by hand
+function evtFillSubject(cfg,subject){
+  const sf=cfg.s&&document.getElementById(cfg.s);
+  if(!sf||!subject)return;
+  const now=String(sf.value||'').trim();
+  if(now&&now!==evtAuto()['s:'+cfg.s])return;
+  sf.value=subject;evtAuto()['s:'+cfg.s]=subject;
+}
+// Fill the teacher in, or ask which of a split lesson's two teachers it is
+function evtApply(cfg,force){
+  const box=document.getElementById(cfg.box);if(!box)return null;
+  const hide=function(){box.style.display='none';box.innerHTML='';};
+  const cls=cfg.cls(),per=cfg.per(),date=cfg.date();
+  if(!cls||!per){hide();return null;}
+  const info=evtLesson(cls,date,per);
+  if(!info){hide();return null;}
+  evtFillSubject(cfg,info.subject);
+  const what=(info.subject?esc(info.subject)+', ':'')+'period '+info.period+' of '+esc(cls);
+  const typed=evtTypedIn(cfg);
+  let msg='';
+  if(!info.people.length){
+    msg='\u{270d}\u{fe0f} The timetable has no teacher for '+what+' — please type the name.';
+  }else if(info.people.length===1){
+    const one=info.people[0];
+    if(force||!typed)evtSetTeacher(cfg,one.name,info.subject);
+    msg='\u{1f4c5} From the timetable: <strong>'+esc(one.name)+'</strong> — '+what
+      +(one.note?' <em>('+esc(one.note)+')</em>':'')
+      +(force||!typed?'':' · <button type="button" class="btn bg2 bxs" onclick="'+cfg.pick+'(0)">Use this name</button>');
+  }else{
+    msg='\u{1f465} A split lesson — '+what+'. Which teacher are you evaluating?<div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">'
+      +info.people.map(function(p,i){
+        return '<button type="button" class="btn bg2 bxs" onclick="'+cfg.pick+'('+i+')">'+esc(p.name)+(p.note?' ('+esc(p.note)+')':'')+'</button>';
+      }).join('')+'</div>';
+  }
+  box.style.display='block';box.innerHTML=msg;
+  window[cfg.store]=info;
+  return info;
+}
+function evtChoose(cfg,i){
+  const info=window[cfg.store];
+  if(!info||!info.people[i])return;
+  evtSetTeacher(cfg,info.people[i].name,info.subject);
+  evtApply(cfg,true);
+}
+
+// The form scanned from the QR code
+const EVT_PORTAL={t:'evp-t',s:'evp-s',box:'evp-tt',pick:'evtPortalPick',store:'_evtPortalInfo',
+  cls:function(){return ((document.getElementById('evp-c')||{}).value||'').trim();},
+  per:function(){return ((document.getElementById('evp-p')||{}).value||'').trim();},
+  date:function(){return ((document.getElementById('evp-d')||{}).value||'').trim();}};
+function evtPortal(force){return evtApply(EVT_PORTAL,force);}
+function evtPortalPick(i){evtChoose(EVT_PORTAL,i);}
+
+// The evaluation filled in from inside the app
+const EVT_VISIT={t:'cv-tch-i',hidden:'cvt',drop:'cv-tch-d',info:'cv-tch-info',s:'cvs',
+  box:'cv-tt',pick:'evtVisitPick',store:'_evtVisitInfo',
+  cls:function(){
+    const g=((document.getElementById('cvg')||{}).value||'').trim();
+    const sc=((document.getElementById('cvsc')||{}).value||'').trim();
+    return g?(sc?g+'-'+sc:g):'';
+  },
+  per:function(){return ((document.getElementById('cvp')||{}).value||'').trim();},
+  date:function(){return ((document.getElementById('cvd')||{}).value||'').trim();}};
+function evtVisit(force){return evtApply(EVT_VISIT,force);}
+function evtVisitPick(i){evtChoose(EVT_VISIT,i);}
+
 function rClassVisits(){
   const visits=DB.get('class_visits')||[];const isP=['superadmin','principal','quality_incharge'].includes(CU.role),isAc=CU.role==='academic_supervisor';const myV=isP||isAc?visits:visits.filter(v=>v.supervisorId===CU.id);const canC=['superadmin','academic_supervisor','quality_supervisor'].includes(CU.role);
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('class_visits')+' ('+myV.length+')</h3>'+'<div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="evQrM()">📱 Evaluation QR</button>'
@@ -5930,7 +6073,7 @@ function updEvalTotal(){
 function gatherEvalScores(){const s={};evalRubric().forEach(c=>c.items.forEach(it=>{const el=document.getElementById('ev-'+it.k);s[it.k]=el?parseInt(el.value)||0:0;}));return s;}
 
 function addVisitM(){
-  openM('<div class="mh"><h3>📝 Teacher Performance Evaluation</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>'+T('teacher')+' *</label>'+tchSearchWidget('cv-tch-i','cv-tch-d','pickCvTch')+'</div><div id="cv-tch-info" style="display:none" class="al ai"></div><input type="hidden" id="cvt"><div class="fg"><label>'+T('subject')+' *</label><input id="cvs"></div><div class="fr f3"><div class="fg"><label>'+T('grade')+'</label><input id="cvg"></div><div class="fg"><label>'+T('section')+'</label><input id="cvsc"></div><div class="fg"><label>'+T('period')+'</label><input id="cvp"></div></div><div class="fr f2"><div class="fg"><label>'+T('date')+'</label><input type="date" id="cvd" value="'+new Date().toISOString().split('T')[0]+'"></div><div class="fg"><label>Visit Type</label><select id="cvty"><option>Scheduled</option><option>Unannounced</option><option>Follow-up</option></select></div></div>'+buildEvalForm({},false)+'<div class="fg" style="margin-top:13px"><label>'+T('strengths')+'</label><textarea id="cvst" placeholder="What the teacher did well..."></textarea></div><div class="fg"><label>'+T('improvements')+'</label><textarea id="cvi" placeholder="Areas for improvement..."></textarea></div><div class="fg"><label>'+T('follow_up')+'</label><textarea id="cvf" placeholder="Recommended follow-up actions..."></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveVisit()">Submit Evaluation →</button></div>',true);
+  openM('<div class="mh"><h3>📝 Teacher Performance Evaluation</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>'+T('teacher')+' *</label>'+tchSearchWidget('cv-tch-i','cv-tch-d','pickCvTch')+'</div><div id="cv-tch-info" style="display:none" class="al ai"></div><input type="hidden" id="cvt"><div class="fg"><label>'+T('subject')+' *</label><input id="cvs"></div><div class="fr f3"><div class="fg"><label>'+T('grade')+'</label><input id="cvg" oninput="evtVisit()"></div><div class="fg"><label>'+T('section')+'</label><input id="cvsc" oninput="evtVisit()"></div><div class="fg"><label>'+T('period')+'</label><input id="cvp" oninput="evtVisit()"></div></div><div class="fr f2"><div class="fg"><label>'+T('date')+'</label><input type="date" id="cvd" onchange="evtVisit()" value="'+new Date().toISOString().split('T')[0]+'"></div><div class="fg"><label>Visit Type</label><select id="cvty"><option>Scheduled</option><option>Unannounced</option><option>Follow-up</option></select></div></div><div id="cv-tt" class="al ai" style="display:none;margin:0 0 11px;font-size:12px"></div>'+buildEvalForm({},false)+'<div class="fg" style="margin-top:13px"><label>'+T('strengths')+'</label><textarea id="cvst" placeholder="What the teacher did well..."></textarea></div><div class="fg"><label>'+T('improvements')+'</label><textarea id="cvi" placeholder="Areas for improvement..."></textarea></div><div class="fg"><label>'+T('follow_up')+'</label><textarea id="cvf" placeholder="Recommended follow-up actions..."></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveVisit()">Submit Evaluation →</button></div>',true);
   window.pickCvTch=function(tid){const t=(DB.get('teachers')||[]).find(x=>x.id===tid);if(!t)return;document.getElementById('cv-tch-i').value=t.name;document.getElementById('cvt').value=t.name;document.getElementById('cv-tch-d').style.display='none';document.getElementById('cv-tch-info').style.display='block';document.getElementById('cv-tch-info').innerHTML='✓ <strong>'+esc(t.name)+'</strong>'+(t.subject?' — '+esc(t.subject):'')+(t.department?' · '+esc(t.department):'');if(t.subject&&!document.getElementById('cvs').value)document.getElementById('cvs').value=t.subject;};
 }
 
