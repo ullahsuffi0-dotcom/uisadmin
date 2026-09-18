@@ -1420,6 +1420,7 @@ function launch(){
   }else{navigate('dashboard');}
   checkEvts();
   setTimeout(showTodoPopup,1500);
+  if(typeof showInfAlertPopup==='function')setTimeout(showInfAlertPopup,2600);
   if(typeof renderSessionIndicator==='function')setTimeout(renderSessionIndicator,80);
 }
 function applyBrand(s){
@@ -1639,6 +1640,12 @@ function getNavBadges(){
   if(['superadmin','principal'].includes(role)){nb.vp_reports=countNew(DB.get('vp_reports')||[],'vp_reports');}
   // Infractions: new
   if(['superadmin','principal','vice_principal'].includes(role)){nb.infractions=countNew(DB.get('infractions')||[],'infractions');}
+  // What the vice principals, the advisors and the superadmin are chasing:
+  // infractions still under follow-up, or with the guardian not yet reached.
+  // It stands in place of the plain "new records" count while any are open.
+  if(typeof infAlertsFor==='function'&&infAlertsFor(role)){
+    try{const io=infOpenList().length;if(io)nb.infractions=io;}catch(e){}
+  }
   // My duties
   // My duties badge (teachers): new substitutions assigned to me + new duty rosters that include me
   if(role==='teacher'){
@@ -3202,6 +3209,97 @@ function irPickM(sid){
    +'<button class="btn bp" onclick="irWa('+q+escJs(cur)+q+')">\u{1f4f2} Send on WhatsApp</button>':'')
   +'</div>',true);
 }
+// ═══════════════════════════════════════════════════════════
+// INFRACTIONS STILL WANTING ATTENTION
+// An infraction left under follow-up, or whose guardian has not yet been
+// reached, is not finished with. The vice principals, the student advisors
+// and the superadmin are told: a count on the menu, a card at the top of the
+// tab naming every one of them, and a note at sign-in. It only reads the
+// records — nothing is marked, changed or cleared by the telling.
+// ═══════════════════════════════════════════════════════════
+function infAlertRoles(){return ['vice_principal','student_advisor','superadmin'];}
+function infAlertsFor(role){return infAlertRoles().indexOf(role||(CU&&CU.role))>=0;}
+// An infraction wants attention while it is not resolved, or while the
+// guardian is still to be reached.
+function infNeedsFollowUp(i){
+  if(!i)return false;
+  const st=infStatusOf(i);
+  return st==='Under Follow-up'||st==='Needs Additional Intervention'||st==='Referred to Administration'||!st;
+}
+function infGuardianPending(i){
+  const g=(i&&i.guardianContact)||'';
+  return g==='Pending'||g==='No Response'||g==='Meeting Scheduled'||!g;
+}
+function infWhyOpen(i){
+  const why=[];
+  if(infNeedsFollowUp(i))why.push(infStatusOf(i)||'no status yet');
+  if(infGuardianPending(i))why.push('guardian '+((i&&i.guardianContact)?String(i.guardianContact).toLowerCase():'not recorded'));
+  return why.join(' · ');
+}
+function infOpenList(){
+  return (DB.get('infractions')||[]).filter(function(i){
+    return i&&(infNeedsFollowUp(i)||infGuardianPending(i));
+  }).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
+}
+function infDaysSince(d){
+  if(!d)return 0;
+  const t=new Date(String(d)+'T00:00:00');
+  if(isNaN(t))return 0;
+  return Math.max(0,Math.round((new Date().setHours(0,0,0,0)-t.getTime())/86400000));
+}
+// The card at the top of the tab
+function infAlertCard(){
+  if(!infAlertsFor())return '';
+  const list=infOpenList();
+  if(!list.length)return '<div class="al ag" style="margin-bottom:12px">✅ Every infraction is resolved and every guardian has been reached.</div>';
+  const q=String.fromCharCode(39);
+  const fu=list.filter(infNeedsFollowUp).length;
+  const gp=list.filter(infGuardianPending).length;
+  return '<div class="card" style="margin-bottom:12px;border-left:5px solid var(--wn);background:var(--wnbg)">'
+   +'<div class="sh2"><h3 style="color:var(--wn)">\u{1f514} '+list.length+' infraction(s) still want attention</h3>'
+   +'<div style="font-size:11px;color:var(--tx2)">'+fu+' under follow-up · '+gp+' guardian not yet reached</div></div>'
+   +'<div class="tw" style="max-height:230px;overflow:auto;margin-top:8px"><table style="font-size:11px">'
+   +'<thead><tr><th>Date</th><th>Student</th><th>Violation</th><th>Waiting on</th><th>Days</th><th></th></tr></thead><tbody>'
+   +list.slice(0,40).map(function(i){
+      const d=infDaysSince(i.date);
+      return '<tr><td class="mono" style="font-size:10px">'+esc(i.date||'')+'</td>'
+       +'<td><strong>'+esc(i.studentName||'')+'</strong><div style="font-size:10px;color:var(--tx3)">'+esc(grSec(i.grade,i.section))+'</div></td>'
+       +'<td style="font-size:10px">'+esc(String(i.type||'').slice(0,50))+'</td>'
+       +'<td style="font-size:10px">'+esc(infWhyOpen(i))+'</td>'
+       +'<td><span class="badge '+(d>=7?'brd':d>=3?'bgo':'bbl')+'">'+d+'d</span></td>'
+       +'<td><button class="btn bg2 bxs" onclick="vInf('+q+escJs(i.id)+q+')">Open</button></td></tr>';
+    }).join('')+'</tbody></table></div>'
+   +(list.length>40?'<div style="font-size:10px;color:var(--tx3);margin-top:5px">and '+(list.length-40)+' more below</div>':'')
+   +'</div>';
+}
+// The note at sign-in
+function showInfAlertPopup(){
+  if(!CU||!infAlertsFor())return;
+  const list=infOpenList();
+  if(!list.length)return;
+  const q=String.fromCharCode(39);
+  const fu=list.filter(infNeedsFollowUp).length;
+  const gp=list.filter(infGuardianPending).length;
+  const old=document.querySelector('.ep.inf-ep');if(old)old.remove();
+  const p=document.createElement('div');
+  p.className='ep inf-ep';
+  p.style.cssText='max-width:390px;z-index:9999';
+  p.innerHTML='<div class="ept">\u{1f514} Infractions to follow up ('+list.length+')</div>'
+   +'<div style="font-size:10px;font-weight:700;margin-bottom:4px;text-transform:uppercase">'
+   +fu+' under follow-up · '+gp+' guardian not reached</div>'
+   +list.slice(0,5).map(function(i){
+      return '<div class="epi"><strong>'+esc(i.studentName||'')+'</strong> <span style="font-size:10px;opacity:.75">'
+       +esc(grSec(i.grade,i.section))+' · '+esc(String(i.type||'').slice(0,34))+'</span>'
+       +'<br><span style="font-size:10px;opacity:.75">'+esc(infWhyOpen(i))+' · '+infDaysSince(i.date)+' day(s)</span></div>';
+    }).join('')
+   +(list.length>5?'<div style="font-size:10px;opacity:.75;margin-top:4px">and '+(list.length-5)+' more…</div>':'')
+   +'<div style="display:flex;gap:6px;margin-top:8px">'
+   +'<button onclick="this.closest('+q+'.ep'+q+').remove();navigate('+q+'infractions'+q+')" style="flex:1;background:var(--ac);color:#fff;border:none;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:11px;font-family:inherit">Open Infractions →</button>'
+   +'<button onclick="this.closest('+q+'.ep'+q+').remove()" style="background:rgba(0,0,0,.15);border:none;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:11px;font-family:inherit">✕ Dismiss</button></div>';
+  const app=document.getElementById('app');
+  if(app)app.appendChild(p);
+  setTimeout(function(){if(p.parentElement)p.remove();},20000);
+}
 
 function rInfractions(){
   const inf=vpFilter(DB.get('infractions')||[]);const canC=mayEdit('infractions',['superadmin','principal','vice_principal']);const canViewAll=canC||CU.role==='quality_incharge';const myInf=canViewAll?inf:inf.filter(i=>i.createdBy===CU.id);
@@ -3210,6 +3308,7 @@ function rInfractions(){
   const totalPts=myInf.reduce((s,i)=>s+(parseInt(i.pointsDeducted)||0),0);
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>⚠️ '+T('infractions')+' ('+myInf.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(irCanUse()?'<button class="btn bs bsm" onclick="irPickM()" title="One student\'s whole record as a PDF">📄 Student Report</button>':'')+(canC?'<button class="btn bp bsm" onclick="addInfM()">+ '+T('add_infraction')+'</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">School policy rubric — 5 degrees, occurrence-based procedures with point deductions.</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">D1 Minor</div><div class="sv">'+byDeg['Degree 1 — Minor']+'</div><div class="sic">ℹ️</div></div><div class="stat go"><div class="sl2">D2 Moderate</div><div class="sv">'+byDeg['Degree 2 — Moderate']+'</div><div class="sic">⚠️</div></div><div class="stat rd"><div class="sl2">D3 + D4 + D5</div><div class="sv">'+(byDeg['Degree 3 — Serious']+byDeg['Degree 4 — Severe']+byDeg['Degree 5 — Critical'])+'</div><div class="sic">🚨</div></div><div class="stat go"><div class="sl2">Total Points Deducted</div><div class="sv">'+totalPts+'</div><div class="sic">📉</div></div></div>'
+  +infAlertCard()
   +'<div class="card"><div class="tw"><table><thead><tr><th>'+T('date')+'</th><th>Student</th><th>'+T('degree')+'</th><th>Violation</th><th>Occurrence</th><th>Points</th><th>Guardian</th><th>Status</th><th>Actions</th></tr></thead><tbody>'
   +myInf.slice().reverse().map(i=>'<tr><td class="mono" style="font-size:11px">'+i.date+'</td><td><strong>'+i.studentName+'</strong><br><span style="font-size:10px;color:var(--tx3)">Gr '+grSec(i.grade,i.section)+(i.studentId?' · Total: '+studentInfPoints(i.studentId)+' pts':'')+(i.studentId?'<br><button class="btn bg2 bxs" style="margin-top:3px" onclick="irPickM(\''+escJs(i.studentId)+'\')" title="His whole record as a PDF">📄 Report</button>':'')+'</span></td><td><span class="badge '+infBadge(i.degree)+'">'+i.degree.split(' — ')[0]+'</span></td><td style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(i.type||'')+'</td><td style="font-size:11px">'+(i.occurrence||'—')+'</td><td><strong style="color:var(--dn)">-'+(i.pointsDeducted||0)+'</strong></td><td style="font-size:10px"><span class="badge '+(i.guardianContact==='Contacted'?'bgn':i.guardianContact==='Pending'?'bgo':i.guardianContact==='No Response'?'brd':'bbl')+'">'+(i.guardianContact||'—')+'</span></td><td style="font-size:10px"><span class="badge '+infStatusTone(i.followUpStatus)+'">'+esc((i.followUpStatus||'—').slice(0,18))+'</span>'+((i.statusHistory||[]).length?'<br><span style="color:var(--tx3);font-size:9px">'+(i.statusHistory||[]).length+' update(s)</span>':'')+'</td><td><button class="btn bg2 bxs" onclick="vInf(\''+i.id+'\')">View</button></td></tr>').join('')
   +'</tbody></table></div>'+(myInf.length===0?'<div class="emp"><div class="ei">⚠️</div><p>'+T('no_records')+'</p></div>':'')+'</div>';
