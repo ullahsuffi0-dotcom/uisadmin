@@ -21125,7 +21125,16 @@ function wpViewM(cls){
   +'</div>',true);
 }
 
-// The sheet, laid out as the school's own weekly plan
+// The sheet as it is printed and sent: the school's logo and name at the head,
+// each day in its own colour down the side, and every column ruled, so a plan
+// looks like something worth putting on a noticeboard.
+const WP_DAYCOLS={Sunday:'#e11d48',Monday:'#ea580c',Tuesday:'#059669',Wednesday:'#2563eb',Thursday:'#7c3aed'};
+function wpSheetLogo(s){
+  const l=s&&s.logo;
+  if(l&&String(l).startsWith('data:'))
+    return '<img src="'+l+'" style="width:100%;height:100%;object-fit:contain;display:block">';
+  return '<div style="font-size:26px;line-height:46px;text-align:center">'+(l||'\u{1f3eb}')+'</div>';
+}
 function wpSheetHTML(w,cls){
   const s=DB.get('settings')||{};
   const m=wpMap(w.id,cls),ls=wpLessons(cls);
@@ -21133,33 +21142,74 @@ function wpSheetHTML(w,cls){
   bdTtDayNames().forEach(function(day){
     const dl=ls.filter(function(l){return l.day===day;});
     if(!dl.length)return;
+    const col=WP_DAYCOLS[day]||'#334155';
     dl.forEach(function(l,i){
       const r=m[wpIdOf(w.id,cls,l)]||{};
-      body+='<tr>'+(i===0?'<td class="day" rowspan="'+dl.length+'">'+esc(day.toUpperCase())+'</td>':'')
-       +'<td class="sub"><b>'+esc(l.subject||'')+'</b><div class="pt">P'+l.period+(l.teacher?'<br>'+esc(l.teacher):'')+'</div></td>'
-       +'<td>'+esc(r.topic||'').replace(/\n/g,'<br>')+'</td>'
+      const tint=i%2?'#ffffff':'#fbfdff';
+      body+='<tr style="background:'+tint+'">'
+       +(i===0?'<td class="day" rowspan="'+dl.length+'" style="background:'+col+'">'+esc(day.toUpperCase())+'</td>':'')
+       +'<td class="sub" style="border-left:3px solid '+col+'"><b style="color:'+col+'">'+esc(l.subject||'')+'</b>'
+         +'<div class="pt">P'+l.period+(l.teacher?'<br>'+esc(l.teacher):'')
+         +(l.shared?'<br><span class="shr">shared</span>':'')+'</div></td>'
+       +'<td class="tp">'+esc(r.topic||'').replace(/\n/g,'<br>')+'</td>'
        +'<td>'+esc(r.homework||'').replace(/\n/g,'<br>')+'</td>'
        +'<td>'+esc(r.resources||'').replace(/\n/g,'<br>')+'</td></tr>';
     });
   });
-  return '<div class="wpsheet" style="width:190mm;padding:8mm;background:#fff;color:#12263f;font-family:Arial,sans-serif;box-sizing:border-box">'
-   +'<div style="text-align:center;font-size:15px;font-weight:bold;margin-bottom:2px">'+esc(s.schoolName||'School')+'</div>'
-   +'<div style="text-align:center;font-size:14px;font-weight:bold;margin-bottom:6px">Weekly Plan '+esc(w.year||'')+' – '+esc(w.term||'')+'</div>'
-   +'<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:bold;margin-bottom:6px">'
-     +'<span>Grade '+esc(cls)+'</span><span>'+esc(w.label||'')+'</span><span>Starting Date: '+esc(wpDateText(w.start))+'</span></div>'
-   +(w.quote?'<div style="text-align:center;font-size:11px;margin-bottom:6px"><b>Quote of the Week</b><div style="font-style:italic">\u{201c}'+esc(w.quote)+'\u{201d}</div></div>':'')
-   +'<style>.wpsheet table{width:100%;border-collapse:collapse}.wpsheet th,.wpsheet td{border:1px solid #333;padding:4px 5px;font-size:9.5px;vertical-align:top;text-align:left}'
-   +'.wpsheet thead th{background:#dce8f1;text-align:center;font-size:10px}.wpsheet td.day{writing-mode:vertical-rl;transform:rotate(180deg);text-align:center;font-weight:bold;width:16px;background:#f2f6fa}'
-   +'.wpsheet td.sub{width:62px;font-size:9.5px}.wpsheet .pt{font-size:8px;color:#5a6b80;font-weight:normal}</style>'
-   +'<table><thead><tr><th style="width:16px">Day</th><th style="width:62px">Subject</th><th>Topic &amp; Edu Objectives</th><th style="width:95px">Homework</th><th style="width:80px">Required resources</th></tr></thead>'
-   +'<tbody>'+(body||'<tr><td colspan="5">No lessons on the timetable.</td></tr>')+'</tbody></table></div>';
+  const chip=function(label,val){
+    return '<div style="flex:1;border:2px solid #0b3d6b;border-radius:7px;padding:4px 8px;background:#fff">'
+     +'<div style="font-size:7.5px;font-weight:bold;letter-spacing:1px;color:#2b6cb0;text-transform:uppercase">'+esc(label)+'</div>'
+     +'<div style="font-size:12px;font-weight:bold;color:#0b3d6b">'+esc(val||'—')+'</div></div>';
+  };
+  return '<div class="wpsheet" style="width:190mm;padding:7mm;background:#fff;color:#12263f;font-family:Arial,Helvetica,sans-serif;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact">'
+   +'<style>'
+   +'.wpsheet *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}'
+   +'.wpsheet table{width:100%;border-collapse:collapse;border:2.5px solid #0b3d6b}'
+   +'.wpsheet th,.wpsheet td{border:1px solid #b9cbdc;padding:5px 6px;font-size:9.5px;vertical-align:top;text-align:left;line-height:1.35}'
+   +'.wpsheet thead th{background:#0b3d6b;color:#fff;text-align:center;font-size:10px;font-weight:bold;letter-spacing:.6px;'
+     +'text-transform:uppercase;border:1px solid #0b3d6b;padding:6px 5px}'
+   +'.wpsheet td.day{writing-mode:vertical-rl;transform:rotate(180deg);text-align:center;font-weight:bold;width:17px;'
+     +'color:#fff;font-size:10px;letter-spacing:1.5px;border:1px solid #0b3d6b}'
+   +'.wpsheet td.sub{width:66px;font-weight:bold;background:#f4f9ff}'
+   +'.wpsheet td.tp{font-weight:600;color:#12263f}'
+   +'.wpsheet .pt{font-size:7.5px;color:#5a6b80;font-weight:normal;margin-top:2px}'
+   +'.wpsheet .shr{background:#fde68a;color:#7c4a03;font-weight:bold;padding:0 3px;border-radius:3px;font-size:7px}'
+   +'</style>'
+   // the head: logo, school, and the title on a bright band
+   +'<div style="border:3px solid #0b3d6b;border-radius:10px;overflow:hidden;margin-bottom:7px">'
+   +'<div style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:#eef6ff">'
+   +'<div style="width:46px;height:46px;flex:0 0 46px;border:2px solid #0b3d6b;border-radius:9px;background:#fff;overflow:hidden">'+wpSheetLogo(s)+'</div>'
+   +'<div style="flex:1;min-width:0">'
+     +'<div style="font-size:15px;font-weight:bold;color:#0b3d6b;letter-spacing:.3px">'+esc(s.schoolName||'School')+'</div>'
+     +(s.schoolNameAr?'<div style="font-size:11px;font-weight:bold;color:#2b6cb0;direction:rtl">'+esc(s.schoolNameAr)+'</div>':'')
+     +'<div style="font-size:9px;color:#42607e;font-weight:bold">'+esc(w.term||'')+(w.year?' · '+esc(w.year):'')+'</div>'
+   +'</div>'
+   +'<div style="flex:0 0 auto;background:linear-gradient(135deg,#0b3d6b,#2b6cb0);color:#fff;border-radius:8px;padding:7px 14px;text-align:center">'
+     +'<div style="font-size:16px;font-weight:bold;letter-spacing:1.5px">WEEKLY PLAN</div>'
+     +'<div style="font-size:9px;letter-spacing:.5px">'+esc(w.label||'')+'</div></div>'
+   +'</div>'
+   +'<div style="display:flex;gap:6px;padding:7px 10px;background:#fff;border-top:2px solid #0b3d6b">'
+     +chip('Grade',cls)+chip('Week',w.label||'')+chip('Starting date',wpDateText(w.start))
+     +(w.weekEnd?chip('Ending date',wpDateText(w.weekEnd)):'')
+   +'</div></div>'
+   // the quote
+   +(w.quote?'<div style="border:2px solid #f59e0b;border-left:7px solid #f59e0b;border-radius:8px;background:#fffbeb;padding:5px 10px;margin-bottom:7px;text-align:center">'
+     +'<span style="font-size:8px;font-weight:bold;letter-spacing:1.2px;color:#b45309;text-transform:uppercase">Quote of the Week</span>'
+     +'<div style="font-size:11px;font-weight:bold;font-style:italic;color:#7c4a03">\u{201c}'+esc(w.quote)+'\u{201d}</div></div>':'')
+   +'<table><thead><tr><th style="width:17px">Day</th><th style="width:66px">Subject</th>'
+   +'<th>Topic &amp; Edu Objectives</th><th style="width:92px">Homework</th><th style="width:78px">Required resources</th></tr></thead>'
+   +'<tbody>'+(body||'<tr><td colspan="5">No lessons on the timetable.</td></tr>')+'</tbody></table>'
+   +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:8px;color:#42607e;font-weight:bold">'
+     +'<span>'+esc(s.schoolName||'')+' · Weekly Plan · '+esc(cls)+'</span>'
+     +'<span>'+esc(w.label||'')+' · '+esc(wpDateText(w.start))+'</span></div>'
+   +'</div>';
 }
 function wpPrint(cls){
   const w=wpCur();if(!w){toast('Open a week first','danger');return;}
   const win=window.open('','_blank');
   if(!win){toast('Allow pop-ups to print','danger');return;}
   win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Weekly Plan '+esc(cls)+'</title>'
-   +'<style>@page{size:A4;margin:6mm}body{margin:0}</style></head><body>'+wpSheetHTML(w,cls)
+   +'<style>@page{size:A4;margin:5mm}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body>'+wpSheetHTML(w,cls)
    +'<script>setTimeout(function(){window.print();},700);<\/script></body></html>');
   win.document.close();
   logA('Printed the weekly plan of '+cls+' for '+wpWeekLabel(w));
