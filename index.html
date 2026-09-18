@@ -20857,21 +20857,28 @@ function wpPinsM(){
   const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f511} Weekly plan PINs</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai" style="font-size:11px">A teacher with a PIN types it on the link and goes straight to his own classes. Every name on the timetable can be given one. The four digits are kept so a card can be printed; a teacher without a PIN can still choose his name as before.</div>'
-  +'<div class="tw" style="max-height:50vh;overflow:auto"><table style="font-size:11px"><thead><tr><th>Teacher</th><th>PIN</th><th>Set it</th></tr></thead><tbody>'
+  +'<div class="al ai" style="font-size:11px">A teacher with a PIN types it on the link and goes straight to his own classes. Every name on the timetable can be given one — type it, or press \u{1f3b2} to draw one at random. Tick whoever you are handing cards to, then print them or save them as a PDF; \u{1f4c4} on a row makes that one teacher\u2019s card on its own, ready to send him. A teacher without a PIN can still choose his name as before.</div>'
+  +'<div class="tw" style="max-height:48vh;overflow:auto"><table style="font-size:11px"><thead><tr>'
+  +'<th style="width:30px"><input type="checkbox" checked onclick="wpPinTickAll(this.checked)" title="All or none" style="width:15px;height:15px"></th>'
+  +'<th>Teacher</th><th>PIN</th><th>Set it</th></tr></thead><tbody>'
   +names.map(function(n,i){
     const r=wpPinOf(n);
-    return '<tr'+(wpIsExcludedTeacher(n)?' style="opacity:.5"':'')+'><td><strong>'+esc(n)+'</strong>'
+    return '<tr'+(wpIsExcludedTeacher(n)?' style="opacity:.5"':'')+'>'
+     +'<td style="text-align:center">'+(r?'<input type="checkbox" class="wp-pin-tick" value="'+esc(r.id)+'" checked style="width:15px;height:15px">':'')+'</td>'
+     +'<td><strong>'+esc(n)+'</strong>'
      +(wpIsExcludedTeacher(n)?' <span class="badge bgr" style="font-size:9px">not asked</span>':'')+'</td>'
      +'<td>'+(r?'<span class="badge bgn mono">'+esc(r.card||'••••')+'</span>':'<span style="color:var(--tx3)">—</span>')+'</td>'
-     +'<td style="display:flex;gap:4px"><input id="wp-pin-'+i+'" inputmode="numeric" maxlength="4" placeholder="••••" style="width:64px;padding:4px 6px;background:var(--sf);border:1px solid var(--bd);border-radius:4px;color:var(--tx);font-size:11px;text-align:center;letter-spacing:3px">'
+     +'<td style="display:flex;gap:4px;flex-wrap:wrap"><input id="wp-pin-'+i+'" inputmode="numeric" maxlength="4" placeholder="••••" style="width:60px;padding:4px 6px;background:var(--sf);border:1px solid var(--bd);border-radius:4px;color:var(--tx);font-size:11px;text-align:center;letter-spacing:3px">'
      +'<button class="btn bp bxs" onclick="wpSavePinRow('+i+','+q+escJs(n)+q+')">Save</button>'
-     +(r?'<button class="btn bd3 bxs" onclick="wpClearPin('+q+escJs(n)+q+')">Remove</button>':'')+'</td></tr>';
+     +'<button class="btn bg2 bxs" onclick="wpRandomPinFor('+q+escJs(n)+q+')" title="Draw one at random">\u{1f3b2}</button>'
+     +(r?'<button class="btn bs bxs" onclick="wpPinPdfOne('+q+escJs(n)+q+')" title="His card as a PDF">\u{1f4c4}</button>'
+        +'<button class="btn bd3 bxs" onclick="wpClearPin('+q+escJs(n)+q+')">Remove</button>':'')+'</td></tr>';
   }).join('')+'</tbody></table></div>'
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
   +'<button class="btn bg2 bsm" onclick="wpGiveAllPins()">\u{1f3b2} Give a PIN to everyone without one</button>'
-  +(wpPinsInUse()?'<button class="btn bs bsm" onclick="wpPrintPins()">\u{1f5a8}\u{fe0f} Print the PINs</button>':'')
+  +(wpPinsInUse()?'<button class="btn bg2 bsm" onclick="wpPrintPins()">\u{1f5a8}\u{fe0f} Print the cards</button>'
+    +'<button class="btn bs" onclick="wpPinsPdf()">\u{1f4c4} PDF cards</button>':'')
   +'</div>',true);
 }
 function wpSavePinRow(i,name){
@@ -20881,29 +20888,155 @@ function wpSavePinRow(i,name){
     if(ok){toast('PIN saved for '+name,'success');wpPinsM();}
   });
 }
+// ── The cards the PINs are given out on ──────────────────
+// Eight to an A4 sheet, each with the school's logo, the teacher's name, his
+// PIN and the code to scan. The card carries the plain link rather than one
+// week's, so it stays good all year. They print, and they save as a PDF that
+// can be sent to a teacher as it is.
+function wpPinCardCSS(){
+  return '@page{size:A4 portrait;margin:9mm}*{box-sizing:border-box}'
+   +'body{margin:0;background:#8a96a0;font-family:Arial,Helvetica,sans-serif}'
+   +'.bar{padding:8px;background:#eef4f8;text-align:center}'
+   +'.bar button{padding:7px 16px;background:#0b3d6b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px}'
+   +'.sheet{width:192mm;margin:8px auto;background:#fff;padding:0;page-break-after:always}'
+   +'.sheet:last-of-type{page-break-after:auto}'
+   +'.grid{display:grid;grid-template-columns:93mm 93mm;gap:5mm;justify-content:center}'
+   +'.c{height:63mm;overflow:hidden;border:.7mm solid #0b3d6b;border-radius:3mm;padding:3.4mm 4.6mm;position:relative;color:#12263f;'
+     +'-webkit-print-color-adjust:exact;print-color-adjust:exact;background:linear-gradient(135deg,#ffffff 0%,#eaf3ff 100%)}'
+   +'.c:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3.4mm;background:linear-gradient(180deg,#0b3d6b,#2b6cb0)}'
+   +'.hd{display:flex;align-items:center;gap:2.6mm;padding-left:2mm}'
+   +'.lg{width:11mm;height:11mm;border-radius:2mm;background:#fff;border:.5mm solid #0b3d6b;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}'
+   +'.lg img{width:100%;height:100%;object-fit:contain}.lg span{font-size:6mm;line-height:1}'
+   +'.sn{font-size:3.3mm;font-weight:bold;color:#0b3d6b;line-height:1.2}'
+   +'.ttl{font-size:2.5mm;letter-spacing:.7mm;color:#b45309;text-transform:uppercase;font-weight:bold}'
+   +'.nm{margin-top:2.4mm;padding-left:2mm;font-size:5mm;font-weight:bold;color:#0b3d6b;max-width:56mm;line-height:1.15}'
+   +'.pin{margin-top:2.2mm;margin-left:2mm;display:inline-block;background:linear-gradient(135deg,#0b3d6b,#2b6cb0);color:#fff;border-radius:2mm;'
+     +'padding:2mm 4mm;font-size:7.4mm;letter-spacing:2.4mm;font-weight:bold;font-family:"Courier New",monospace}'
+   +'.pl{font-size:2.4mm;color:#5a6b80;letter-spacing:.4mm;text-transform:uppercase;margin-top:1mm;padding-left:2mm;font-weight:bold}'
+   +'.qr{position:absolute;right:4.6mm;top:15mm;width:25mm;height:25mm;border:.4mm solid #0b3d6b;border-radius:1.5mm;padding:1mm;background:#fff}'
+   +'.qr img{width:100%;height:100%;display:block}'
+   +'.st{position:absolute;left:6.6mm;right:32mm;bottom:3.2mm;font-size:2.5mm;line-height:1.4;color:#42607e;font-weight:bold}'
+   +'.wn{position:absolute;right:4.6mm;bottom:3.4mm;width:25mm;font-size:2.2mm;color:#b45309;text-align:center;font-weight:bold}'
+   +'@media print{body{background:#fff}.bar{display:none}.sheet{margin:0;width:auto}}';
+}
+function wpPinCardHTML(r,s,qr){
+  const logo=(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:'))
+    ?'<img src="'+s.logo+'" alt="">':'<span>'+esc(s.logo||'\u{1f3eb}')+'</span>';
+  return '<div class="c">'
+   +'<div class="hd"><div class="lg">'+logo+'</div>'
+   +'<div><div class="sn">'+esc(s.schoolName||'School')+'</div>'
+   +'<div class="ttl">Weekly Plan · personal PIN</div></div></div>'
+   +'<div class="nm">'+esc(r.name||'')+'</div>'
+   +'<div class="pin">'+esc(r.card||'••••')+'</div>'
+   +'<div class="pl">Your four-digit PIN</div>'
+   +'<div class="qr"><img src="'+qr+'" alt=""></div>'
+   +'<div class="st">Scan the code or open the school’s weekly plan link, type your PIN, and your own classes open for you to fill in.</div>'
+   +'<div class="wn">Keep it to yourself</div>'
+   +'</div>';
+}
+// Whole A4 sheets, eight cards to each
+function wpPinSheetsHTML(list,s,qr){
+  let html='';
+  for(let i=0;i<list.length;i+=8){
+    html+='<div class="sheet"><div class="grid">'
+     +list.slice(i,i+8).map(function(r){return wpPinCardHTML(r,s,qr);}).join('')
+     +'</div></div>';
+  }
+  return html;
+}
+function wpPinQr(){
+  return 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=0&data='+encodeURIComponent(wpUrl(''));
+}
+// Whoever is ticked in the PIN window, or everybody with a PIN
+function wpPinPicked(){
+  const boxes=[].filter.call(document.querySelectorAll('.wp-pin-tick'),function(c){return c.checked;});
+  const keys=boxes.map(function(c){return c.value;});
+  const all=wpPins().slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
+  return keys.length?all.filter(function(r){return keys.indexOf(r.id)>=0;}):all;
+}
+function wpPinTickAll(on){
+  [].forEach.call(document.querySelectorAll('.wp-pin-tick'),function(c){c.checked=!!on;});
+}
 function wpPrintPins(){
   if(!wpCanManage())return;
+  const list=wpPinPicked();
+  if(!list.length){toast('Nobody has a PIN yet','danger');return;}
   const s=DB.get('settings')||{};
-  const list=wpPins().slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
-  const url=wpUrl((wpCur()||{}).id);
   const win=window.open('','_blank');
-  if(!win){toast('Allow pop-ups to print','danger');return;}
-  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Weekly plan PINs</title>'
-  +'<style>@page{size:A4;margin:10mm}body{font-family:Arial,sans-serif;color:#12263f;margin:0}'
-  +'h1{font-size:17px;margin:0 0 3px}h2{font-size:11px;margin:0 0 10px;color:#4a5b70;font-weight:normal}'
-  +'.g{display:flex;flex-wrap:wrap;gap:6mm}.c{width:84mm;border:2.5px solid #0b3d6b;border-radius:8px;padding:6mm;box-sizing:border-box}'
-  +'.n{font-size:14px;font-weight:bold;color:#0b3d6b}.p{font-size:26px;font-weight:bold;letter-spacing:8px;color:#0b3d6b;margin:4px 0}'
-  +'.u{font-size:8px;color:#4a5b70;word-break:break-all}.k{font-size:9px;color:#b45309;font-weight:bold;margin-top:4px}'
-  +'</style></head><body>'
-  +'<h1>'+esc(s.schoolName||'School')+'</h1><h2>Weekly plan — personal PINs</h2><div class="g">'
-  +list.map(function(r){
-    return '<div class="c"><div class="n">'+esc(r.name)+'</div><div class="p">'+esc(r.card||'••••')+'</div>'
-     +'<div class="u">'+esc(url)+'</div>'
-     +'<div class="k">Type your PIN on the link and your classes open. Keep it to yourself.</div></div>';
-  }).join('')+'</div>'
-  +'<script>setTimeout(function(){window.print();},700);<\/script></body></html>');
+  if(!win){toast('Allow pop-ups to print the cards','danger');return;}
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Weekly plan PIN cards — '+list.length+'</title>'
+   +'<style>'+wpPinCardCSS()+'</style></head><body>'
+   +'<div class="bar"><button onclick="window.print()">\u{1f5a8}\u{fe0f} Print '+list.length+' card(s)</button></div>'
+   +wpPinSheetsHTML(list,s,wpPinQr())+'</body></html>');
   win.document.close();
-  logA('Printed the weekly plan PINs ('+list.length+')');
+  logA('Printed '+list.length+' weekly plan PIN card(s)');
+}
+// The same cards as a PDF file, to send as they are
+async function wpPinsPdfFile(list){
+  await rbLoadPdfLibs();
+  const s=DB.get('settings')||{};
+  const holder=document.createElement('div');
+  holder.style.cssText='position:fixed;left:-10000px;top:0;z-index:-1;background:#fff';
+  holder.innerHTML='<style>'+wpPinCardCSS()+'</style>'+wpPinSheetsHTML(list,s,wpPinQr());
+  document.body.appendChild(holder);
+  try{
+    const sheets=[].slice.call(holder.querySelectorAll('.sheet'));
+    const pdf=new window.jspdf.jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+    const W=210,H=297,mg=9;
+    for(let i=0;i<sheets.length;i++){
+      const canvas=await window.html2canvas(sheets[i],{scale:2,backgroundColor:'#ffffff',useCORS:true});
+      const wdt=W-2*mg,h=Math.min(canvas.height*wdt/canvas.width,H-2*mg);
+      if(i)pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg',0.92),'JPEG',mg,mg,wdt,h);
+    }
+    const nm=list.length===1
+      ?('Weekly-Plan-PIN-'+String(list[0].name||'').replace(/[^A-Za-z0-9-]+/g,'_')+'.pdf')
+      :('Weekly-Plan-PIN-cards-'+list.length+'.pdf');
+    return new File([pdf.output('blob')],nm,{type:'application/pdf'});
+  }finally{holder.remove();}
+}
+async function wpPinsPdf(){
+  if(!wpCanManage())return;
+  const list=wpPinPicked();
+  if(!list.length){toast('Nobody has a PIN yet','danger');return;}
+  toast('Making the cards…','info');
+  let file;
+  try{file=await wpPinsPdfFile(list);}
+  catch(e){toast('Could not make the PDF: '+(e&&e.message||e),'danger');return;}
+  const url=URL.createObjectURL(file);
+  const a=document.createElement('a');a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},60000);
+  toast(list.length+' card(s) saved as '+file.name,'success');
+  logA('Made a PDF of '+list.length+' weekly plan PIN card(s)');
+}
+// One teacher's card, ready to send to him
+async function wpPinPdfOne(name){
+  if(!wpCanManage())return;
+  const r=wpPinOf(name);
+  if(!r){toast(name+' has no PIN yet','danger');return;}
+  toast('Making the card…','info');
+  let file;
+  try{file=await wpPinsPdfFile([r]);}
+  catch(e){toast('Could not make the PDF: '+(e&&e.message||e),'danger');return;}
+  const text='Your weekly plan PIN — '+name+'\nOpen the link, type your PIN and your classes open:\n'+wpUrl('');
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'Weekly plan PIN — '+name,text:text});
+      logA('Shared the weekly plan PIN card of '+name);
+      return;
+    }
+  }catch(e){if(e&&e.name==='AbortError')return;}
+  const url=URL.createObjectURL(file);
+  const a=document.createElement('a');a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},60000);
+  toast('Card saved as '+file.name+' — attach it to his message','success');
+  logA('Made the weekly plan PIN card of '+name);
+}
+// A PIN drawn at random for one teacher
+async function wpRandomPinFor(name){
+  if(!wpCanManage()){toast('You may not set the PINs','danger');return;}
+  const p=evRandomPin(wpPinCards());
+  if(await wpSavePin(name,p)){toast(name+'’s PIN is '+p,'success');wpPinsM();}
 }
 
 // ── Teachers who are not asked for a plan ────────────────
