@@ -20679,6 +20679,10 @@ function wpDeadlineText(w){
 }
 
 // ── The lessons a class has in a week, from the timetable ──
+// A lesson the class is divided for has two teachers at the same time, and
+// each of them plans his own half — so it comes back once for each of them.
+// The first keeps the plain key the lesson has always had, so nothing filled
+// in before is lost; the others are kept beside it.
 function wpLessons(cls){
   const tt=(typeof bdTimetable==='function')?bdTimetable(cls):null;
   const out=[];
@@ -20690,15 +20694,27 @@ function wpLessons(cls){
       const sub=String(cell[0]||'').trim();
       const tch=String(cell[1]||'').trim();
       if(!sub&&!tch)continue;
-      out.push({day:day,period:p,subject:sub,teacher:tch});
+      const names=tch?tch.split(' / ').map(function(x){return x.trim();}).filter(Boolean):[];
+      if(names.length<2){
+        out.push({day:day,period:p,subject:sub,teacher:tch,slot:0,shared:0,all:tch});
+      }else{
+        names.forEach(function(n,i){
+          out.push({day:day,period:p,subject:sub,teacher:n,slot:i,shared:names.length,all:tch});
+        });
+      }
     }
   });
   return out;
 }
+// The box on screen, and the key a lesson is saved under
+function wpKey(l){return l.day.slice(0,3)+l.period+(l.slot?'_'+l.slot:'');}
+function wpIdOf(wk,cls,l){return wpId(wk,cls,l.day,l.period,l.slot);}
 function wpClasses(){return (typeof bdTtClassNames==='function')?bdTtClassNames():[];}
 
 // ── What has been filled in ──────────────────────────────
-function wpId(wk,cls,day,p){return [wk,cls,day,'P'+p].join('~');}
+function wpId(wk,cls,day,p,slot){
+  return [wk,cls,day,'P'+p].join('~')+(slot?'~t'+slot:'');
+}
 function wpAll(){
   const a=fbToArrayShape(DB.get('weekly_plans'));
   return (Array.isArray(a)?a:[]).filter(function(r){return r&&r.id&&!r.deleted;});
@@ -20717,7 +20733,7 @@ function wpHasText(r){
 function wpClassStats(wk,cls){
   const ls=wpLessons(cls),m=wpMap(wk,cls);
   let filled=0;
-  ls.forEach(function(l){if(wpHasText(m[wpId(wk,cls,l.day,l.period)]))filled++;});
+  ls.forEach(function(l){if(wpHasText(m[wpIdOf(wk,cls,l)]))filled++;});
   return {total:ls.length,filled:filled,left:ls.length-filled,
     pct:ls.length?Math.round(filled/ls.length*100):0};
 }
@@ -20727,16 +20743,38 @@ function wpMissing(wk){
   wpClasses().forEach(function(cls){
     const m=wpMap(wk,cls);
     wpLessons(cls).forEach(function(l){
-      if(wpHasText(m[wpId(wk,cls,l.day,l.period)]))return;
-      const names=l.teacher?l.teacher.split(' / ').map(function(x){return x.trim();}).filter(Boolean)
-                           :['(nobody named on the timetable)'];
-      names.forEach(function(n){
-        (by[n]=by[n]||[]).push({cls:cls,day:l.day,period:l.period,subject:l.subject});
-      });
+      if(wpHasText(m[wpIdOf(wk,cls,l)]))return;
+      const n=l.teacher||'(nobody named on the timetable)';
+      (by[n]=by[n]||[]).push({cls:cls,day:l.day,period:l.period,subject:l.subject});
     });
   });
   return Object.keys(by).sort(function(a,b){return by[b].length-by[a].length||a.localeCompare(b);})
    .map(function(n){return {teacher:n,missing:by[n]};});
+}
+
+// ── Clearing a class ─────────────────────────────────────
+// Everything filled in for one class this week is set aside in a single
+// press, for when a week has to be started again. The records are marked as
+// cleared rather than destroyed, so nothing is truly lost and the cloud keeps
+// its copy; the timetable and every other class are untouched.
+function wpClearClass(cls){
+  if(!wpCanManage()){toast('Only the principal, vice principals and academic supervisors can clear a plan','danger');return;}
+  const w=wpCur();if(!w||!cls)return;
+  const cur=wpAll().slice();
+  const mine=cur.filter(function(r){return r.wk===w.id&&r.cls===cls&&wpHasText(r);});
+  if(!mine.length){toast('There is nothing filled in for '+cls+' this week','info');return;}
+  if(!confirm('Clear the weekly plan of '+cls+'?\n\n'+mine.length+' lesson(s) filled in for '
+    +wpWeekLabel(w)+' will be emptied so the teachers can fill them in again.\nNo other class and no other week is touched.'))return;
+  const now=new Date().toISOString();
+  const by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  const out=cur.map(function(r){
+    if(r.wk!==w.id||r.cls!==cls)return r;
+    return Object.assign({},r,{deleted:true,clearedBy:by,clearedAt:now});
+  });
+  DB.set('weekly_plans',out);
+  logA('Cleared the weekly plan of '+cls+' for '+wpWeekLabel(w)+' ('+mine.length+' lesson(s))');
+  toast(mine.length+' lesson(s) cleared for '+cls,'success');
+  rWeeklyPlan();
 }
 
 // ── The link teachers are given ──────────────────────────
@@ -20770,7 +20808,8 @@ function rWeeklyPlan(){
      +'<td style="display:flex;gap:4px;flex-wrap:wrap">'
        +'<button class="btn bg2 bxs" onclick="wpViewM('+q+escJs(c)+q+')">View</button>'
        +'<button class="btn bg2 bxs" onclick="wpPrint('+q+escJs(c)+q+')">\u{1f5a8}\u{fe0f}</button>'
-       +(canM?'<button class="btn bs bxs" onclick="wpWaShare('+q+escJs(c)+q+')">\u{1f4f2} WhatsApp</button>':'')
+       +(canM?'<button class="btn bs bxs" onclick="wpWaShare('+q+escJs(c)+q+')">\u{1f4f2} WhatsApp</button>'
+              +(s.filled?'<button class="btn bd3 bxs" onclick="wpClearClass('+q+escJs(c)+q+')" title="Empty this class\u2019s plan for this week">\u{1f9f9} Clear</button>':''):'')
      +'</td></tr>';
   }).join('');
   document.getElementById('pc').innerHTML=
@@ -21062,9 +21101,10 @@ function wpViewM(cls){
     if(!dl.length)return;
     body+='<tr><td rowspan="'+dl.length+'" style="font-weight:700;background:var(--sf2);white-space:nowrap">'+esc(day)+'</td>'
       +dl.map(function(l,i){
-        const r=m[wpId(w.id,cls,day,l.period)]||{};
+        const r=m[wpIdOf(w.id,cls,l)]||{};
         const cell='<td style="white-space:nowrap"><strong>'+esc(l.subject||'—')+'</strong>'
-          +'<div style="font-size:9px;color:var(--tx3)">P'+l.period+(l.teacher?' · '+esc(l.teacher):'')+'</div></td>'
+          +'<div style="font-size:9px;color:var(--tx3)">P'+l.period+(l.teacher?' · '+esc(l.teacher):'')
+          +(l.shared?' <span class="badge bbl" style="font-size:8px">shared</span>':'')+'</div></td>'
           +'<td>'+(esc(r.topic||'').replace(/\n/g,'<br>')||'<span style="color:var(--dn)">— not filled in —</span>')+'</td>'
           +'<td>'+(esc(r.homework||'').replace(/\n/g,'<br>')||'—')+'</td>'
           +'<td>'+(esc(r.resources||'').replace(/\n/g,'<br>')||'—')+'</td>';
@@ -21094,7 +21134,7 @@ function wpSheetHTML(w,cls){
     const dl=ls.filter(function(l){return l.day===day;});
     if(!dl.length)return;
     dl.forEach(function(l,i){
-      const r=m[wpId(w.id,cls,day,l.period)]||{};
+      const r=m[wpIdOf(w.id,cls,l)]||{};
       body+='<tr>'+(i===0?'<td class="day" rowspan="'+dl.length+'">'+esc(day.toUpperCase())+'</td>':'')
        +'<td class="sub"><b>'+esc(l.subject||'')+'</b><div class="pt">P'+l.period+(l.teacher?'<br>'+esc(l.teacher):'')+'</div></td>'
        +'<td>'+esc(r.topic||'').replace(/\n/g,'<br>')+'</td>'
@@ -21221,7 +21261,7 @@ function wpTeacherClasses(name){
 function wpTeacherStats(wk,name,cls){
   const ls=wpTeacherLessons(name,cls),m=wpMap(wk,cls);
   let filled=0;
-  ls.forEach(function(l){if(wpHasText(m[wpId(wk,cls,l.day,l.period)]))filled++;});
+  ls.forEach(function(l){if(wpHasText(m[wpIdOf(wk,cls,l)]))filled++;});
   return {total:ls.length,filled:filled};
 }
 // The other sections of the same grade this teacher also takes
@@ -21309,14 +21349,14 @@ function renderWpPortal(){
       if(!dl.length)return;
       rows+='<div style="font-size:12px;font-weight:700;color:var(--ac);margin:12px 0 6px">'+esc(day)+'</div>';
       dl.forEach(function(l){
-        const id=wpId(w.id,cls,day,l.period);
-        const r=m[id]||{};
-        const k=day.slice(0,3)+l.period;
+        const r=m[wpIdOf(w.id,cls,l)]||{};
+        const k=wpKey(l);
         rows+='<div class="card" style="padding:11px;margin-bottom:8px">'
          +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:7px">'
          +'<div><strong style="font-size:13px">'+esc(l.subject||'—')+'</strong>'
            +' <span style="font-size:11px;color:var(--tx3)">· Period '+l.period+'</span></div>'
-         +'<div style="font-size:11px;color:var(--tx3)">'+(l.teacher?'\u{1f9d1}\u{200d}\u{1f3eb} '+esc(l.teacher):'no teacher on the timetable')+'</div></div>'
+         +'<div style="font-size:11px;color:var(--tx3)">'+(l.teacher?'\u{1f9d1}\u{200d}\u{1f3eb} '+esc(l.teacher):'no teacher on the timetable')
+           +(l.shared?' <span class="badge bbl" style="font-size:9px">shared lesson — your own space</span>':'')+'</div></div>'
          +(og.ok
            ?'<textarea id="wpf-t-'+k+'" placeholder="Topic &amp; educational objectives" style="min-height:58px">'+esc(r.topic||'')+'</textarea>'
             +'<div class="fr f2" style="margin-top:6px"><div class="fg" style="margin-bottom:0"><label>Homework</label><textarea id="wpf-h-'+k+'" style="min-height:42px">'+esc(r.homework||'')+'</textarea></div>'
@@ -21392,7 +21432,7 @@ function wpPCopy(src){
   const m=wpMap(w.id,src);
   const bySub={};
   from.forEach(function(l){
-    const r=m[wpId(w.id,src,l.day,l.period)];
+    const r=m[wpIdOf(w.id,src,l)];
     if(!wpHasText(r))return;
     const k=String(l.subject||'').toLowerCase();
     (bySub[k]=bySub[k]||[]).push(r);
@@ -21406,7 +21446,7 @@ function wpPCopy(src){
     const r=list[used[k]]||list[list.length-1];
     if(!r)return;
     used[k]++;
-    const key=l.day.slice(0,3)+l.period;
+    const key=wpKey(l);
     let any=false,left=false;
     [['t','topic'],['h','homework'],['r','resources']].forEach(function(p){
       const e=document.getElementById('wpf-'+p[0]+'-'+key);
@@ -21438,17 +21478,18 @@ function wpPSave(){
   // only the lessons on screen, so filling in by name never touches another
   // teacher's lesson in the same class
   wpPLessons().forEach(function(l){
-    const k=l.day.slice(0,3)+l.period;
+    const k=wpKey(l);
     const g=function(p){const e=document.getElementById('wpf-'+p+'-'+k);return e?String(e.value||'').trim():'';};
     const topic=g('t'),hw=g('h'),res=g('r');
-    const id=wpId(w.id,cls,l.day,l.period);
+    const id=wpIdOf(w.id,cls,l);
     const old=cur.filter(function(x){return x.id===id;})[0];
     const was=old?[(old.topic||''),(old.homework||''),(old.resources||'')].join(SEP):'';
     const val=[topic,hw,res].join(SEP);
     if(was===val)return;
     if(!topic&&!hw&&!res&&!old)return;
     const rec={id:id,wk:w.id,cls:cls,day:l.day,period:l.period,subject:l.subject,
-      teacher:l.teacher,topic:topic,homework:hw,resources:res,
+      teacher:l.teacher,slot:l.slot||0,shared:l.shared||0,
+      topic:topic,homework:hw,resources:res,deleted:false,
       byName:st.teacher||l.teacher||'',at:now};
     const i=cur.findIndex(function(x){return x.id===id;});
     if(i>=0)cur[i]=Object.assign({},cur[i],rec);else cur.push(rec);
