@@ -20607,6 +20607,39 @@ function wpPutWeek(rec){
   if(i>=0)arr[i]=Object.assign({},arr[i],rec);else arr.push(rec);
   DB.set('weekly_plan_weeks',arr);
 }
+// The weeks the school has already set out under Academic Calendar → Terms
+// & Weeks. A weekly plan is opened on one of those, so its number is the
+// school's own and its dates need not be typed again.
+function wpCalWeeks(){
+  const out=[];
+  (typeof sortedTerms==='function'?sortedTerms():[]).forEach(function(t){
+    (typeof termWeeks==='function'?termWeeks(t):[]).forEach(function(w){
+      if(!w||!w.from)return;
+      out.push({key:t.id+'|'+w.no,termId:t.id,termName:t.name||'',no:w.no,from:w.from,to:w.to||''});
+    });
+  });
+  return out.sort(function(a,b){return String(a.from).localeCompare(String(b.from));});
+}
+function wpCalWeek(key){return wpCalWeeks().filter(function(w){return w.key===key;})[0]||null;}
+function wpCalLabel(w){
+  return (w.termName?w.termName+' — ':'')+'Week '+w.no
+   +' ('+wpDateText(w.from)+(w.to?' → '+wpDateText(w.to):'')+')';
+}
+// The week today falls in, else the next one to come. A week whose plan is
+// already open is passed over, so the dialog offers the one after it.
+function wpCalDefault(skipOpen){
+  const list=wpCalWeeks();
+  if(!list.length)return '';
+  const taken={};
+  if(skipOpen)wpWeeks().forEach(function(x){taken[x.start]=1;});
+  const free=list.filter(function(w){return !taken[w.from];});
+  if(!free.length)return list[list.length-1].key;
+  const today=ymd(new Date());
+  const now=free.filter(function(w){return w.from<=today&&(!w.to||today<=w.to);})[0];
+  if(now)return now.key;
+  const next=free.filter(function(w){return w.from>today;})[0];
+  return (next||free[free.length-1]).key;
+}
 // The Sunday a week starts on. Friday and Saturday are not school days, so
 // on one of those the week being opened is the one about to begin.
 function wpWeekStart(date){
@@ -20624,7 +20657,7 @@ function wpDateText(d){
 }
 function wpWeekLabel(w){
   if(!w)return '—';
-  return (w.label||'Week')+' · starting '+wpDateText(w.start);
+  return (w.label||'Week')+' · '+wpDateText(w.start)+(w.weekEnd?' → '+wpDateText(w.weekEnd):'');
 }
 // Is the week still open to be filled in?
 function wpOpen(w){
@@ -20785,9 +20818,8 @@ function wpWeekM(id){
   openM('<div class="mh"><h3>\u{1f5d3}\u{fe0f} '+(w?'Week and deadline':'Open a new week')+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
   +'<div class="al ai" style="font-size:11px">The week the teachers fill in. The closing time can be changed whenever you like — after it passes the link still opens, but it shows the plan as read-only until you move the time or unlock it.</div>'
-  +'<div class="fr f2"><div class="fg"><label>Week name</label><input id="wp-label" value="'+esc(w?w.label||'':'Week # '+n)+'" placeholder="Week # 5"></div>'
-  +'<div class="fg"><label>Starting date (Sunday)</label><input type="date" id="wp-start" value="'+esc(start)+'"'+(w?' disabled':'')+'></div></div>'
-  +'<div class="fr f2"><div class="fg"><label>Term</label><input id="wp-term" value="'+esc(w?w.term||'':(s.term||'First Term'))+'" placeholder="First Term"></div>'
+  +wpWeekPickHTML(w,start,n)
+  +'<div class="fr f2"><div class="fg"><label>Term</label><input id="wp-term" value="'+esc(w?w.term||'':(wpCalWeek(wpCalDefault(true))||{}).termName||s.term||'First Term')+'" placeholder="First Term"></div>'
   +'<div class="fg"><label>Academic year</label><input id="wp-year" value="'+esc(w?w.year||'':(s.academicYear||'2026-2027'))+'" placeholder="2026-2027"></div></div>'
   +'<div class="fg"><label>Quote of the week</label><input id="wp-quote" value="'+esc(w?w.quote||'':'')+'" placeholder="Shown at the top of every printed plan"></div>'
   +'<div class="fr f2"><div class="fg"><label>Closes on</label><input type="date" id="wp-dl-d" value="'+esc(w&&w.deadline?String(w.deadline).split('T')[0]:'')+'"></div>'
@@ -20797,10 +20829,45 @@ function wpWeekM(id){
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
   +'<button class="btn bp" onclick="wpWeekSave('+(w?String.fromCharCode(39)+escJs(w.id)+String.fromCharCode(39):'')+')">'+(w?'Save':'Open this week')+' →</button></div>',true);
 }
+// Which week is being opened: one of the school's own, when the Academic
+// Calendar has them, otherwise a name and a Sunday typed in by hand
+function wpWeekPickHTML(w,start,n){
+  const cal=wpCalWeeks();
+  if(w){
+    return '<div class="fg"><label>Week</label>'
+     +'<div style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:13px">'
+     +esc(w.label||'Week')+' · starting '+esc(wpDateText(w.start))+(w.weekEnd?' → '+esc(wpDateText(w.weekEnd)):'')
+     +(w.termName?' <span style="color:var(--tx3)">· '+esc(w.termName)+'</span>':'')+'</div>'
+     +'<input type="hidden" id="wp-label" value="'+esc(w.label||'')+'">'
+     +'<input type="hidden" id="wp-start" value="'+esc(w.start||'')+'"></div>';
+  }
+  if(!cal.length){
+    return '<div class="al aw" style="font-size:11px">No weeks are set out under <strong>Academic Calendar → Terms &amp; Weeks</strong> yet. Add them there and the week numbers appear here on their own. In the meantime the week can be named by hand.</div>'
+     +'<div class="fr f2"><div class="fg"><label>Week name</label><input id="wp-label" value="Week # '+n+'" placeholder="Week # 5"></div>'
+     +'<div class="fg"><label>Starting date (Sunday)</label><input type="date" id="wp-start" value="'+esc(start)+'"></div></div>';
+  }
+  const taken={};
+  wpWeeks().forEach(function(x){taken[x.start]=x.label||'opened';});
+  const def=wpCalDefault(true);
+  return '<div class="fg"><label>Week (from the Academic Calendar)</label>'
+   +'<select id="wp-cw">'+cal.map(function(x){
+      const used=taken[x.from];
+      return '<option value="'+esc(x.key)+'"'+(used?' disabled':'')+(x.key===def&&!used?' selected':'')+'>'
+        +esc(wpCalLabel(x))+(used?' — already opened':'')+'</option>';
+    }).join('')+'</select>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">The numbers and dates come from Academic Calendar → Terms &amp; Weeks.</div></div>';
+}
+
 function wpWeekSave(id){
   if(!wpCanManage()){toast('You may not change the weeks','danger');return;}
   const v=function(x){const e=document.getElementById(x);return e?String(e.value||'').trim():'';};
-  const start=id?(wpWeek(id)||{}).start:v('wp-start');
+  let start=id?(wpWeek(id)||{}).start:v('wp-start');
+  let cw=null;
+  if(!id&&document.getElementById('wp-cw')){
+    cw=wpCalWeek(v('wp-cw'));
+    if(!cw){toast('Choose the week','danger');return;}
+    start=cw.from;
+  }
   if(!start){toast('Choose the starting date','danger');return;}
   const dd=v('wp-dl-d'),dt=v('wp-dl-t');
   if(dd&&!dt){toast('Give the time the week closes as well','danger');return;}
@@ -20809,7 +20876,13 @@ function wpWeekSave(id){
   const old=wpWeek(wid);
   if(!id&&old){toast('A week starting '+wpDateText(start)+' is already open','danger');return;}
   const rec=Object.assign({},old||{},{
-    id:wid,start:start,label:v('wp-label')||'Week',term:v('wp-term'),year:v('wp-year'),
+    id:wid,start:start,
+    label:cw?('Week # '+cw.no):(v('wp-label')||'Week'),
+    weekNo:cw?cw.no:(old?old.weekNo:undefined),
+    weekEnd:cw?cw.to:(old?old.weekEnd:undefined),
+    termId:cw?cw.termId:(old?old.termId:undefined),
+    termName:cw?cw.termName:(old?old.termName:undefined),
+    term:cw&&!v('wp-term')?cw.termName:v('wp-term'),year:v('wp-year'),
     quote:v('wp-quote'),deadline:dd&&dt?dd+'T'+dt:'',
     by:CU.id,byName:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),
     at:new Date().toISOString()});
