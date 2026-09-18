@@ -2946,16 +2946,272 @@ function rTaskReqs(){
 function newTrM(){openM('<div class="mh"><h3>📨 New Task Request</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Title *</label><input id="trt"></div><div class="fg"><label>'+T('description')+' *</label><textarea id="trd"></textarea></div><div class="fr f3"><div class="fg"><label>Send To *</label><select id="trto"><option value="">— Select —</option>'+sOpts()+'</select></div><div class="fg"><label>'+T('priority')+'</label><select id="trp"><option>High</option><option selected>Medium</option><option>Low</option></select></div><div class="fg"><label>Needed By *</label><input type="date" id="trdt"></div></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveTR()">Send →</button></div>');}
 function saveTR(){const t=document.getElementById('trt').value.trim(),d=document.getElementById('trd').value.trim(),toId=document.getElementById('trto').value,dt=document.getElementById('trdt').value;if(!t||!d||!toId||!dt){toast('Fill required fields','danger');return;}const u=gA(toId),reqs=DB.get('task_requests')||[];reqs.push({id:nid('tr'),title:t,description:d,requestedBy:CU.id,requestedByName:CU.firstName+' '+CU.lastName,requestedTo:toId,requestedToName:u.firstName+' '+u.lastName,priority:document.getElementById('trp').value,neededBy:dt,status:'Pending',responseNote:'',assignedToId:'',assignedToName:'',created:new Date().toISOString()});DB.set('task_requests',reqs);logA('Task request "'+t+'" sent to '+u.firstName+' '+u.lastName);closeM();toast('Request sent','success');rTaskReqs();}
 function handleTR(id){const reqs=DB.get('task_requests')||[];const r=reqs.find(x=>x.id===id);if(!r)return;openM('<div class="mh"><h3>Respond to Request</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div style="background:var(--sf2);border-radius:var(--rs);padding:11px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:4px">'+r.title+'</div><div style="font-size:12px;color:var(--tx2)">'+r.description+'</div><div style="font-size:11px;color:var(--tx3);margin-top:5px">From: '+r.requestedByName+' · Needed: '+r.neededBy+'</div></div><div class="fg"><label>Response</label><select id="trrs"><option value="Accepted">Accept & Assign</option><option value="Rejected">Reject</option></select></div><div class="fg"><label>Assign To (if accepting)</label><select id="tras"><option value="">— Select —</option>'+sOpts()+'</select></div><div class="fg"><label>'+T('note')+'</label><textarea id="trnt" placeholder="Note to requester…"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveTRResp(\''+id+'\')">Submit →</button></div>');}
-function saveTRResp(id){const reqs=DB.get('task_requests')||[];const i=reqs.findIndex(r=>r.id===id);if(i<0)return;const resp=document.getElementById('trrs').value,aId=document.getElementById('tras').value;reqs[i].status=resp;reqs[i].responseNote=document.getElementById('trnt').value;if(resp==='Accepted'&&aId){const u=gA(aId);reqs[i].assignedToId=aId;reqs[i].assignedToName=u.firstName+' '+u.lastName;reqs[i].status='Assigned';const tasks=DB.get('tasks')||[];tasks.push({id:nid('t'),title:reqs[i].title,desc:reqs[i].description+' [Request from '+reqs[i].requestedByName+']',assignedTo:aId,assignedName:u.firstName+' '+u.lastName,assignedBy:CU.id,assignedByName:CU.firstName+' '+CU.lastName,status:'Pending',priority:reqs[i].priority,progress:0,dueDate:reqs[i].neededBy,taskType:'request',remarks:[],created:new Date().toISOString().split('T')[0],updated:new Date().toISOString().split('T')[0]});DB.set('tasks',tasks);}DB.set('task_requests',reqs);closeM();toast('Response sent','success');rTaskReqs();}
+function saveTRResp(id){const reqs=DB.get('task_requests')||[];const i=reqs.findIndex(r=>r.id===id);if(i<0)return;const resp=document.getElementById('trrs').value,aId=document.getElementById('tras').value;reqs[i].status=resp;reqs[i].responseNote=document.getElementById('trnt').value;if(resp==='Accepted'&&aId){const u=gA(aId);reqs[i].assignedToId=aId;reqs[i].assignedToName=u.firstName+' '+u.lastName;reqs[i].status='Assigned';const tasks=DB.get('tasks')||[];tasks.push({id:nid('t'),title:reqs[i].title,desc:reqs[i].description+' [Request from '+reqs[i].requestedByName+']',assignedTo:aId,assignedName:u.firstName+' '+u.lastName,assignedBy:CU.id,assignedByName:CU.firstName+' '+CU.lastName,status:'Pending',priority:reqs[i].priority,progress:0,dueDate:reqs[i].neededBy,taskType:'request',remarks:[],created:new Date().toISOString().split('T')[0],updated:new Date().toISOString().split('T')[0]});DB.set('tasks',tasks);}DB.set('task_requests',reqs);closeM();toast('Response sent','success');rTaskReqs();}// ═══════════════════════════════════════════════════════════
+// ONE STUDENT'S INFRACTION REPORT
+// Everything on a boy's record in one sheet: every infraction, its degree,
+// what it was, the points taken, whether the guardian was reached, where it
+// stands now and how it got there. It prints, it saves as a PDF, and it goes
+// to his parents on WhatsApp. It only reads the record — nothing is written.
+// ═══════════════════════════════════════════════════════════
+function irCanUse(){return mayView('infractions',['superadmin','principal','vice_principal','quality_incharge','student_advisor']);}
+function irFor(sid){
+  return (DB.get('infractions')||[]).filter(function(i){return i&&i.studentId===sid;})
+   .sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))
+     ||String(a.created||'').localeCompare(String(b.created||''));});
+}
+function irStudents(){
+  const by={};
+  (DB.get('infractions')||[]).forEach(function(i){
+    if(!i||!i.studentId)return;
+    if(!by[i.studentId])by[i.studentId]={id:i.studentId,name:i.studentName||'',grade:i.grade||'',section:i.section||'',n:0,pts:0};
+    by[i.studentId].n++;
+    by[i.studentId].pts+=parseInt(i.pointsDeducted)||0;
+  });
+  return Object.keys(by).map(function(k){return by[k];})
+   .sort(function(a,b){return b.n-a.n||String(a.name).localeCompare(String(b.name));});
+}
+function irSummary(list){
+  const s={n:list.length,pts:0,byDeg:{},resolved:0,open:0,contacted:0};
+  list.forEach(function(i){
+    s.pts+=parseInt(i.pointsDeducted)||0;
+    const d=String(i.degree||'').split(' — ')[0]||'—';
+    s.byDeg[d]=(s.byDeg[d]||0)+1;
+    if(infStatusOf(i)==='Resolved')s.resolved++;else s.open++;
+    if(i.guardianContact==='Contacted')s.contacted++;
+  });
+  return s;
+}
+function irWhen(t){
+  if(!t)return '';
+  const d=String(t).split('T')[0];
+  return d?wpDateText(d):'';
+}
+function irSheetHTML(sid){
+  const s=DB.get('settings')||{};
+  const stu=(typeof gS==='function')?gS(sid):null;
+  const list=irFor(sid);
+  const first=list[0]||{};
+  const name=(stu?fN(stu):first.studentName)||'';
+  const grade=(stu?stu.grade:first.grade)||'';
+  const section=(stu?stu.section:first.section)||'';
+  const sum=irSummary(list);
+  const logo=(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:'))
+    ?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">'
+    :'<div style="font-size:9mm;line-height:16mm;text-align:center">'+(s.logo||'\u{1f3eb}')+'</div>';
+  const chip=function(label,val,tone){
+    return '<div class="ch '+(tone||'')+'"><div class="l">'+esc(label)+'</div><div class="v">'+esc(String(val))+'</div></div>';
+  };
+  const degLine=Object.keys(sum.byDeg).sort().map(function(d){return esc(d)+': '+sum.byDeg[d];}).join(' · ');
+  const rows=list.map(function(i,n){
+    const log=infStatusLog(i);
+    const last=log[log.length-1]||{};
+    const st=infStatusOf(i);
+    return '<tr>'
+     +'<td class="c">'+(n+1)+'</td>'
+     +'<td class="nw"><b>'+esc(irWhen(i.date))+'</b></td>'
+     +'<td class="nw"><b>'+esc(String(i.degree||'').split(' — ')[0])+'</b>'
+       +'<div class="sm">'+esc(String(i.degree||'').split(' — ')[1]||'')+'</div></td>'
+     +'<td><b>'+esc(i.type||'—')+'</b>'
+       +(i.description?'<div class="sm">'+esc(String(i.description).slice(0,150))+'</div>':'')
+       +(i.procedure?'<div class="sm"><i>Procedure: '+esc(i.procedure)+'</i></div>':'')+'</td>'
+     +'<td class="c nw">'+esc(i.occurrence||'—')+'</td>'
+     +'<td class="c"><b>-'+(parseInt(i.pointsDeducted)||0)+'</b></td>'
+     +'<td class="c nw">'+esc(i.guardianContact||'—')+'</td>'
+     +'<td class="nw"><b>'+esc(st||'No status yet')+'</b>'
+       +(last&&!last.first?'<div class="sm">'+esc(irWhen(last.at))+(last.by?' · '+esc(last.by):'')+'</div>':'')
+       +(last&&last.note&&!last.first?'<div class="sm">'+esc(String(last.note).slice(0,90))+'</div>':'')
+       +((i.statusHistory||[]).length>1?'<div class="sm">'+(i.statusHistory||[]).length+' updates</div>':'')+'</td>'
+     +'</tr>';
+  }).join('');
+  return '<div class="irsheet" style="width:190mm;padding:8mm;background:#fff;color:#12263f;font-family:Arial,Helvetica,sans-serif;box-sizing:border-box;'
+   +'-webkit-print-color-adjust:exact;print-color-adjust:exact">'
+   +'<style>.irsheet *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}'
+   +'.irsheet table{width:100%;border-collapse:collapse;border:2.5px solid #7f1d1d;margin-top:4mm}'
+   +'.irsheet th,.irsheet td{border:1px solid #e0b4b4;padding:2.4mm 2.4mm;font-size:9px;text-align:left;vertical-align:top;line-height:1.35}'
+   +'.irsheet thead th{background:#7f1d1d;color:#fff;text-transform:uppercase;letter-spacing:.4px;font-size:8.5px;text-align:center}'
+   +'.irsheet td.c{text-align:center}.irsheet td.nw{white-space:nowrap}'
+   +'.irsheet .sm{font-size:7.5px;color:#6b5555;font-weight:normal;margin-top:.6mm}'
+   +'.irsheet tbody tr:nth-child(even){background:#fdf7f7}'
+   +'.irsheet .ch{flex:1;border:2px solid #7f1d1d;border-radius:2mm;padding:2mm 3mm;background:#fff;text-align:center}'
+   +'.irsheet .ch .l{font-size:7.5px;font-weight:bold;letter-spacing:.8px;color:#a13b3b;text-transform:uppercase}'
+   +'.irsheet .ch .v{font-size:15px;font-weight:bold;color:#7f1d1d}'
+   +'.irsheet .ch.g{border-color:#0f766e}.irsheet .ch.g .l{color:#0f766e}.irsheet .ch.g .v{color:#0f766e}'
+   +'</style>'
+   +'<div style="border:3px solid #7f1d1d;border-radius:10px;overflow:hidden;margin-bottom:5mm">'
+   +'<div style="display:flex;align-items:center;gap:4mm;padding:4mm 5mm;background:#fdf2f2">'
+   +'<div style="width:16mm;height:16mm;flex:0 0 16mm;border:2px solid #7f1d1d;border-radius:3mm;background:#fff;overflow:hidden">'+logo+'</div>'
+   +'<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:bold;color:#7f1d1d">'+esc(s.schoolName||'School')+'</div>'
+   +(s.schoolNameAr?'<div style="font-size:11px;font-weight:bold;color:#a13b3b;direction:rtl">'+esc(s.schoolNameAr)+'</div>':'')
+   +'<div style="font-size:9px;color:#6b5555;font-weight:bold">'+esc(s.academicYear||'')+'</div></div>'
+   +'<div style="background:linear-gradient(135deg,#7f1d1d,#b91c1c);color:#fff;border-radius:8px;padding:3mm 6mm;text-align:center">'
+   +'<div style="font-size:14px;font-weight:bold;letter-spacing:1px">INFRACTION RECORD</div>'
+   +'<div style="font-size:9px;letter-spacing:.5px">STUDENT REPORT</div></div></div>'
+   +'<div style="display:flex;gap:5mm;padding:4mm 5mm;border-top:2px solid #7f1d1d">'
+   +'<div style="flex:2"><div style="font-size:8px;font-weight:bold;letter-spacing:.8px;color:#a13b3b;text-transform:uppercase">Student</div>'
+     +'<div style="font-size:17px;font-weight:bold;color:#7f1d1d">'+esc(name)+'</div></div>'
+   +'<div style="flex:1"><div style="font-size:8px;font-weight:bold;letter-spacing:.8px;color:#a13b3b;text-transform:uppercase">Class</div>'
+     +'<div style="font-size:13px;font-weight:bold">'+esc(grade)+(section?'-'+esc(section):'')+'</div></div>'
+   +'<div style="flex:1"><div style="font-size:8px;font-weight:bold;letter-spacing:.8px;color:#a13b3b;text-transform:uppercase">Student ID</div>'
+     +'<div style="font-size:13px;font-weight:bold">'+esc((stu&&stu.sn)||'—')+'</div></div>'
+   +'</div></div>'
+   +'<div style="display:flex;gap:4mm">'
+   +chip('Infractions',sum.n)+chip('Points deducted','-'+sum.pts)
+   +chip('Resolved',sum.resolved,'g')+chip('Still open',sum.open)
+   +chip('Guardian contacted',sum.contacted,'g')+'</div>'
+   +(degLine?'<div style="font-size:9px;color:#6b5555;font-weight:bold;margin-top:2.5mm">By degree — '+degLine+'</div>':'')
+   +'<table><thead><tr><th style="width:7mm">#</th><th style="width:19mm">Date</th><th style="width:20mm">Degree</th>'
+   +'<th>Violation &amp; detail</th><th style="width:17mm">Occurrence</th><th style="width:12mm">Points</th>'
+   +'<th style="width:20mm">Guardian</th><th style="width:30mm">Status</th></tr></thead>'
+   +'<tbody>'+(rows||'<tr><td colspan="8" style="text-align:center;padding:6mm">This student has no infraction on record.</td></tr>')+'</tbody></table>'
+   +'<div style="display:flex;justify-content:space-between;gap:8mm;margin-top:9mm;font-size:10px">'
+   +'<div style="flex:1"><div style="border-top:1px solid #7f1d1d;padding-top:2mm;font-weight:bold">Vice principal — signature</div></div>'
+   +'<div style="flex:1"><div style="border-top:1px solid #7f1d1d;padding-top:2mm;font-weight:bold">Parent / guardian — signature</div></div>'
+   +'<div style="flex:1"><div style="border-top:1px solid #7f1d1d;padding-top:2mm;font-weight:bold">Date</div>'
+     +'<div style="color:#6b5555">'+esc(wpDateText(ymd(new Date())))+'</div></div></div>'
+   +'<div style="margin-top:4mm;font-size:8px;color:#6b5555;font-weight:bold">'
+   +esc(s.schoolName||'')+' · Infraction record of '+esc(name)+' · printed '+esc(wpDateText(ymd(new Date())))+'</div>'
+   +'</div>';
+}
+function irText(sid){
+  const s=DB.get('settings')||{};
+  const stu=(typeof gS==='function')?gS(sid):null;
+  const list=irFor(sid);
+  const sum=irSummary(list);
+  const name=stu?fN(stu):((list[0]||{}).studentName||'');
+  return (s.schoolName||'School')+'\nInfraction record — '+name
+   +(stu?' ('+String(stu.grade||'')+(stu.section?'-'+stu.section:'')+')':'')+'\n\n'
+   +(list.length
+     ?list.map(function(i,n){
+        return (n+1)+'. '+irWhen(i.date)+' · '+String(i.degree||'').split(' — ')[0]+' · '+(i.type||'')
+          +'\n   Points: -'+(parseInt(i.pointsDeducted)||0)
+          +' · Status: '+(infStatusOf(i)||'no status yet')
+          +(i.guardianContact?' · Guardian: '+i.guardianContact:'');
+      }).join('\n')
+      +'\n\nIn all: '+sum.n+' infraction(s), '+sum.pts+' point(s) deducted, '+sum.resolved+' resolved, '+sum.open+' still open.'
+     :'No infraction is on record for him.')
+   +'\n\n(The full report is attached.)';
+}
+function irPrint(sid){
+  if(!irCanUse()){toast('You may not take out this report','danger');return;}
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to print','danger');return;}
+  const stu=(typeof gS==='function')?gS(sid):null;
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Infraction record — '+esc(stu?fN(stu):'')+'</title>'
+   +'<style>@page{size:A4;margin:5mm}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style>'
+   +'</head><body>'+irSheetHTML(sid)
+   +'<script>setTimeout(function(){window.print();},700);<\/script></body></html>');
+  w.document.close();
+  logA('Printed the infraction record of '+(stu?fN(stu):sid));
+}
+async function irPdfFile(sid){
+  await rbLoadPdfLibs();
+  const stu=(typeof gS==='function')?gS(sid):null;
+  const holder=document.createElement('div');
+  holder.style.cssText='position:fixed;left:-10000px;top:0;z-index:-1;background:#fff';
+  holder.innerHTML=irSheetHTML(sid);
+  document.body.appendChild(holder);
+  try{
+    const canvas=await window.html2canvas(holder.firstChild,{scale:2,backgroundColor:'#ffffff',useCORS:true});
+    const pdf=new window.jspdf.jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+    const W=210,H=297,mg=6;
+    const wdt=W-2*mg,h=canvas.height*wdt/canvas.width;
+    let left=h,y=0;
+    while(left>0){
+      pdf.addImage(canvas.toDataURL('image/jpeg',0.92),'JPEG',mg,mg-y,wdt,h);
+      left-=(H-2*mg);
+      if(left>0){pdf.addPage();y+=(H-2*mg);}
+    }
+    const nm=('Infraction-record-'+(stu?fN(stu):sid)).replace(/[^A-Za-z0-9-]+/g,'_')+'.pdf';
+    return new File([pdf.output('blob')],nm,{type:'application/pdf'});
+  }finally{holder.remove();}
+}
+async function irPdf(sid){
+  if(!irCanUse()){toast('You may not take out this report','danger');return;}
+  toast('Making the report…','info');
+  let file;
+  try{file=await irPdfFile(sid);}
+  catch(e){toast('Could not make the PDF: '+(e&&e.message||e),'danger');return;}
+  const url=URL.createObjectURL(file);
+  const a=document.createElement('a');a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},60000);
+  toast('Saved as '+file.name,'success');
+  logA('Made the infraction record PDF of '+((typeof gS==='function'&&gS(sid))?fN(gS(sid)):sid));
+}
+// To the parents
+async function irWa(sid){
+  if(!irCanUse()){toast('You may not share this report','danger');return;}
+  const stu=(typeof gS==='function')?gS(sid):null;
+  toast('Preparing the report…','info');
+  let file;
+  try{file=await irPdfFile(sid);}
+  catch(e){toast('Could not make the PDF: '+(e&&e.message||e),'danger');return;}
+  const text=irText(sid);
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'Infraction record — '+(stu?fN(stu):''),text:text});
+      logA('Shared the infraction record of '+(stu?fN(stu):sid));
+      return;
+    }
+  }catch(e){if(e&&e.name==='AbortError')return;}
+  const url=URL.createObjectURL(file);
+  const a=document.createElement('a');a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},60000);
+  const phones=stu?rbParentPhones(stu):[];
+  const q=String.fromCharCode(39);
+  window.__irMsg=text;
+  openM('<div class="mh"><h3>\u{1f4ce} Report saved — '+esc(stu?fN(stu):'')+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2"><div class="al ag">✅ <strong>'+esc(file.name)+'</strong> has been saved to this computer.</div>'
+  +'<div class="al ai">Open the parent’s chat and attach the saved PDF with the 📎 button in WhatsApp — the message is already written. On a phone the PDF goes straight into WhatsApp instead.</div>'
+  +(phones.length?phones.map(function(p){
+      return '<button class="btn bg2" style="width:100%;justify-content:flex-start;margin-bottom:6px" onclick="window.open(buildWaUrl('+q+escJs(p.phone)+q+',window.__irMsg),'+q+'_blank'+q+')">\u{1f4f2} Open the chat with '+esc(p.label)+' — '+esc(p.phone)+'</button>';
+    }).join('')
+   :'<div class="al aw">No parent number is on record for this student.</div>')
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
+  logA('Prepared the infraction record of '+(stu?fN(stu):sid)+' for WhatsApp');
+}
+// Choosing whose report to take out
+function irPickM(sid){
+  if(!irCanUse()){toast('You may not take out this report','danger');return;}
+  const people=irStudents();
+  const cur=sid||window._irSid||((people[0]||{}).id||'');
+  window._irSid=cur;
+  const q=String.fromCharCode(39);
+  const list=cur?irFor(cur):[];
+  const sum=irSummary(list);
+  openM('<div class="mh"><h3>\u{1f4c4} Infraction record of one student</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai" style="font-size:11px">Everything on the boy’s record in one sheet — every infraction, the points taken, whether the guardian was reached and where each one stands. Print it, save it as a PDF, or send it to his parents on WhatsApp.</div>'
+  +(people.length
+    ?'<div class="fg"><label>Student</label><select onchange="irPickM(this.value)">'
+     +people.map(function(p){
+        return '<option value="'+esc(p.id)+'"'+(p.id===cur?' selected':'')+'>'+esc(p.name)
+          +' — '+esc(p.grade)+(p.section?'-'+esc(p.section):'')+' · '+p.n+' infraction(s), -'+p.pts+' pts</option>';
+      }).join('')+'</select></div>'
+     +'<div class="cg g4" style="margin-bottom:10px">'
+     +'<div class="stat bl"><div class="sl2">Infractions</div><div class="sv">'+sum.n+'</div><div class="sic">⚠️</div></div>'
+     +'<div class="stat rd"><div class="sl2">Points</div><div class="sv">-'+sum.pts+'</div><div class="sic">\u{1f4c9}</div></div>'
+     +'<div class="stat gn"><div class="sl2">Resolved</div><div class="sv">'+sum.resolved+'</div><div class="sic">✅</div></div>'
+     +'<div class="stat go"><div class="sl2">Still open</div><div class="sv">'+sum.open+'</div><div class="sic">⏳</div></div></div>'
+     +'<div style="background:#fff;overflow:auto;max-height:44vh;border:1px solid var(--bd);border-radius:var(--rs)">'
+     +'<div style="transform:scale(.8);transform-origin:top left;width:125%">'+irSheetHTML(cur)+'</div></div>'
+    :'<div class="al aw">No infraction has been recorded for anybody yet.</div>')
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +(people.length?'<button class="btn bg2 bsm" onclick="irPrint('+q+escJs(cur)+q+')">\u{1f5a8}\u{fe0f} Print</button>'
+   +'<button class="btn bs bsm" onclick="irPdf('+q+escJs(cur)+q+')">\u{1f4c4} PDF</button>'
+   +'<button class="btn bp" onclick="irWa('+q+escJs(cur)+q+')">\u{1f4f2} Send on WhatsApp</button>':'')
+  +'</div>',true);
+}
+
 function rInfractions(){
   const inf=vpFilter(DB.get('infractions')||[]);const canC=mayEdit('infractions',['superadmin','principal','vice_principal']);const canViewAll=canC||CU.role==='quality_incharge';const myInf=canViewAll?inf:inf.filter(i=>i.createdBy===CU.id);
   // Stats by degree
   const byDeg={};INF_DEGREES.forEach(d=>{byDeg[d]=myInf.filter(i=>i.degree===d).length;});
   const totalPts=myInf.reduce((s,i)=>s+(parseInt(i.pointsDeducted)||0),0);
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>⚠️ '+T('infractions')+' ('+myInf.length+')</h3>'+(canC?'<button class="btn bp bsm" onclick="addInfM()">+ '+T('add_infraction')+'</button>':'')+'</div><div style="font-size:11px;color:var(--tx3);margin-top:4px">School policy rubric — 5 degrees, occurrence-based procedures with point deductions.</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>⚠️ '+T('infractions')+' ('+myInf.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(irCanUse()?'<button class="btn bs bsm" onclick="irPickM()" title="One student\'s whole record as a PDF">📄 Student Report</button>':'')+(canC?'<button class="btn bp bsm" onclick="addInfM()">+ '+T('add_infraction')+'</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">School policy rubric — 5 degrees, occurrence-based procedures with point deductions.</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">D1 Minor</div><div class="sv">'+byDeg['Degree 1 — Minor']+'</div><div class="sic">ℹ️</div></div><div class="stat go"><div class="sl2">D2 Moderate</div><div class="sv">'+byDeg['Degree 2 — Moderate']+'</div><div class="sic">⚠️</div></div><div class="stat rd"><div class="sl2">D3 + D4 + D5</div><div class="sv">'+(byDeg['Degree 3 — Serious']+byDeg['Degree 4 — Severe']+byDeg['Degree 5 — Critical'])+'</div><div class="sic">🚨</div></div><div class="stat go"><div class="sl2">Total Points Deducted</div><div class="sv">'+totalPts+'</div><div class="sic">📉</div></div></div>'
   +'<div class="card"><div class="tw"><table><thead><tr><th>'+T('date')+'</th><th>Student</th><th>'+T('degree')+'</th><th>Violation</th><th>Occurrence</th><th>Points</th><th>Guardian</th><th>Status</th><th>Actions</th></tr></thead><tbody>'
-  +myInf.slice().reverse().map(i=>'<tr><td class="mono" style="font-size:11px">'+i.date+'</td><td><strong>'+i.studentName+'</strong><br><span style="font-size:10px;color:var(--tx3)">Gr '+grSec(i.grade,i.section)+(i.studentId?' · Total: '+studentInfPoints(i.studentId)+' pts':'')+'</span></td><td><span class="badge '+infBadge(i.degree)+'">'+i.degree.split(' — ')[0]+'</span></td><td style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(i.type||'')+'</td><td style="font-size:11px">'+(i.occurrence||'—')+'</td><td><strong style="color:var(--dn)">-'+(i.pointsDeducted||0)+'</strong></td><td style="font-size:10px"><span class="badge '+(i.guardianContact==='Contacted'?'bgn':i.guardianContact==='Pending'?'bgo':i.guardianContact==='No Response'?'brd':'bbl')+'">'+(i.guardianContact||'—')+'</span></td><td style="font-size:10px"><span class="badge '+infStatusTone(i.followUpStatus)+'">'+esc((i.followUpStatus||'—').slice(0,18))+'</span>'+((i.statusHistory||[]).length?'<br><span style="color:var(--tx3);font-size:9px">'+(i.statusHistory||[]).length+' update(s)</span>':'')+'</td><td><button class="btn bg2 bxs" onclick="vInf(\''+i.id+'\')">View</button></td></tr>').join('')
+  +myInf.slice().reverse().map(i=>'<tr><td class="mono" style="font-size:11px">'+i.date+'</td><td><strong>'+i.studentName+'</strong><br><span style="font-size:10px;color:var(--tx3)">Gr '+grSec(i.grade,i.section)+(i.studentId?' · Total: '+studentInfPoints(i.studentId)+' pts':'')+(i.studentId?'<br><button class="btn bg2 bxs" style="margin-top:3px" onclick="irPickM(\''+escJs(i.studentId)+'\')" title="His whole record as a PDF">📄 Report</button>':'')+'</span></td><td><span class="badge '+infBadge(i.degree)+'">'+i.degree.split(' — ')[0]+'</span></td><td style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(i.type||'')+'</td><td style="font-size:11px">'+(i.occurrence||'—')+'</td><td><strong style="color:var(--dn)">-'+(i.pointsDeducted||0)+'</strong></td><td style="font-size:10px"><span class="badge '+(i.guardianContact==='Contacted'?'bgn':i.guardianContact==='Pending'?'bgo':i.guardianContact==='No Response'?'brd':'bbl')+'">'+(i.guardianContact||'—')+'</span></td><td style="font-size:10px"><span class="badge '+infStatusTone(i.followUpStatus)+'">'+esc((i.followUpStatus||'—').slice(0,18))+'</span>'+((i.statusHistory||[]).length?'<br><span style="color:var(--tx3);font-size:9px">'+(i.statusHistory||[]).length+' update(s)</span>':'')+'</td><td><button class="btn bg2 bxs" onclick="vInf(\''+i.id+'\')">View</button></td></tr>').join('')
   +'</tbody></table></div>'+(myInf.length===0?'<div class="emp"><div class="ei">⚠️</div><p>'+T('no_records')+'</p></div>':'')+'</div>';
 }
 function addInfM(){openM('<div class="mh"><h3>⚠️ Add Infraction</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fr f2"><div class="fg"><label>Class</label><select id="infgr" onchange="infClassPick()"><option value="">— All classes —</option>'+infGradeOpts()+'</select></div><div class="fg"><label>Section</label><select id="infsec" onchange="infClassPick()"><option value="">— Choose the class first —</option></select></div></div><div class="fg"><label>Student *</label><div style="position:relative"><input id="infssi" placeholder="'+T('select_student')+'" autocomplete="off" oninput="infStuType(this.value)" style="width:100%;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;font-family:inherit"><div id="infsd" class="sd"></div></div><div id="infstul" style="display:none;margin-top:6px;max-height:190px;overflow:auto;border:1px solid var(--bd);border-radius:var(--rs)"></div></div><div id="infss" style="display:none" class="al ai"></div><input type="hidden" id="infsid"><div class="fr f2"><div class="fg"><label>'+T('degree')+' *</label><select id="infde" onchange="ldInfT()"><option value="">— Select —</option>'+INF_DEGREES.map(d=>'<option>'+d+'</option>').join('')+'</select></div><div class="fg"><label>Occurrence *</label><select id="infoc" onchange="updInfProc()"><option value="">— Select —</option>'+INF_OCCURRENCE.map(o=>'<option>'+o+'</option>').join('')+'</select></div></div><div class="fg"><label>'+T('infraction_type')+' / Violation *</label><input list="infty-list" id="infty" placeholder="— Select or type custom —" autocomplete="off" style="width:100%;padding:9px 11px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><datalist id="infty-list"></datalist></div><div class="fg"><label>Procedure (auto-suggested by degree + occurrence)</label><div id="infprocd" style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-size:12px;color:var(--tx2);min-height:38px;display:flex;align-items:center"><em style="color:var(--tx3)">Select degree and occurrence first…</em></div><input type="hidden" id="infproc"><input type="hidden" id="infpts" value="0"></div><div class="fg"><label>'+T('description')+' / Detail *</label><textarea id="infd" placeholder="Describe what happened in detail"></textarea></div><div class="fr f3"><div class="fg"><label>'+T('date')+'</label><input type="date" id="infdt" value="'+new Date().toISOString().split('T')[0]+'"></div><div class="fg"><label>Guardian Contact</label><select id="infgc"><option value="">— Select —</option>'+INF_GUARDIAN.map(g=>'<option>'+g+'</option>').join('')+'</select></div><div class="fg"><label>Follow-up Status</label><select id="inffu"><option value="">— Select —</option>'+INF_FOLLOWUP.map(f=>'<option>'+f+'</option>').join('')+'</select></div></div><div class="fg"><label>Notes (action taken, witnesses, etc.)</label><textarea id="infat" placeholder="Additional notes, action taken, who handled the case…"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveInf()">Save →</button></div>');
