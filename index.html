@@ -12350,7 +12350,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions','user_permissions','late_arrivals','teacher_development',
-  'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','bd_exclusions','student_card_sets','certificate_templates','certificate_sets','break_discipline','school_timetable','weekly_plans','weekly_plan_weeks','class_wa_links','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
+  'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','bd_exclusions','student_card_sets','certificate_templates','certificate_sets','break_discipline','school_timetable','weekly_plans','weekly_plan_weeks','class_wa_links','wp_teacher_pins','wp_excluded_teachers','wp_day_notices','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -12379,7 +12379,7 @@ const AUTO_REFRESH_MAP = {
   reexam_schedules:['rReexam'],
   duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
   duty_places:['rDutyRoster'],duty_blocks:['rDutyRoster'],tt_name_links:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
-  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],bd_exclusions:['rBreakDiscipline','rPeriodDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],school_timetable:['rBreakDiscipline','rPeriodDiscipline'],weekly_plans:['rWeeklyPlan'],weekly_plan_weeks:['rWeeklyPlan'],class_wa_links:['rWeeklyPlan'],sub_preferences:['rSubstitutions'],
+  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],bd_exclusions:['rBreakDiscipline','rPeriodDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],school_timetable:['rBreakDiscipline','rPeriodDiscipline'],weekly_plans:['rWeeklyPlan'],weekly_plan_weeks:['rWeeklyPlan'],class_wa_links:['rWeeklyPlan'],wp_teacher_pins:['rWeeklyPlan'],wp_excluded_teachers:['rWeeklyPlan'],wp_day_notices:['rWeeklyPlan'],sub_preferences:['rSubstitutions'],
   sessions:['rSessions'],active_session_id:['rSessions'],
   todos:['rMyTodos']
 };
@@ -12825,7 +12825,7 @@ async function rosterMergedWrite(k,local){
 // Collections written a record at a time by many people at once. A whole-array
 // push for one of these can only ever destroy what the writer had not seen, so
 // the sync layer upserts the records instead and never removes on a bulk write.
-const APPEND_ONLY_KEYS=['period_discipline','break_discipline','weekly_plans','weekly_plan_weeks','class_wa_links','tt_name_links','late_arrivals','teacher_development','bd_exclusions','student_card_sets','certificate_templates','certificate_sets'];
+const APPEND_ONLY_KEYS=['period_discipline','break_discipline','weekly_plans','weekly_plan_weeks','class_wa_links','wp_teacher_pins','wp_excluded_teachers','wp_day_notices','tt_name_links','late_arrivals','teacher_development','bd_exclusions','student_card_sets','certificate_templates','certificate_sets'];
 function isAppendOnlyKey(k){return APPEND_ONLY_KEYS.indexOf(k)>=0;}
 
 // Upsert each record under its own key. Concurrent writers touch different
@@ -20731,7 +20731,7 @@ function wpHasText(r){
   return !!(r&&((r.topic||'').trim()||(r.homework||'').trim()||(r.resources||'').trim()));
 }
 function wpClassStats(wk,cls){
-  const ls=wpLessons(cls),m=wpMap(wk,cls);
+  const ls=wpDue(wk,cls),m=wpMap(wk,cls);
   let filled=0;
   ls.forEach(function(l){if(wpHasText(m[wpIdOf(wk,cls,l)]))filled++;});
   return {total:ls.length,filled:filled,left:ls.length-filled,
@@ -20742,7 +20742,7 @@ function wpMissing(wk){
   const by={};
   wpClasses().forEach(function(cls){
     const m=wpMap(wk,cls);
-    wpLessons(cls).forEach(function(l){
+    wpDue(wk,cls).forEach(function(l){
       if(wpHasText(m[wpIdOf(wk,cls,l)]))return;
       const n=l.teacher||'(nobody named on the timetable)';
       (by[n]=by[n]||[]).push({cls:cls,day:l.day,period:l.period,subject:l.subject});
@@ -20775,6 +20775,301 @@ function wpClearClass(cls){
   logA('Cleared the weekly plan of '+cls+' for '+wpWeekLabel(w)+' ('+mine.length+' lesson(s))');
   toast(mine.length+' lesson(s) cleared for '+cls,'success');
   rWeeklyPlan();
+}
+
+// ═══════════════════════════════════════════════════════════
+// WHO FILLS THE PLAN IN, AND WHAT IS NOT ASKED FOR
+// A teacher can be given a four-digit PIN, so the link takes him straight to
+// his own classes without hunting for his name. A teacher the school does not
+// ask for a plan is set aside and disappears from the list and the counting.
+// A class can be excused for one day — a trip, an examination — and a notice,
+// in words or as a photograph, takes the place of that day's lessons.
+// Nothing here changes the timetable; it only says what is expected of whom.
+// ═══════════════════════════════════════════════════════════
+function wpNameKey(n){return String(n||'').trim().toLowerCase().replace(/\s+/g,' ');}
+
+// ── The teachers' PINs ───────────────────────────────────
+function wpPins(){
+  const a=fbToArrayShape(DB.get('wp_teacher_pins'));
+  return (Array.isArray(a)?a:[]).filter(function(r){return r&&r.id&&!r.deleted&&r.pinHash;});
+}
+function wpPinOf(name){
+  const k=wpNameKey(name);
+  return wpPins().filter(function(r){return r.id===k;})[0]||null;
+}
+function wpPinsInUse(){return wpPins().length>0;}
+function wpPinCards(){return wpPins().map(function(r){return r.card||'';}).filter(Boolean);}
+function wpPutPin(rec){
+  const a=fbToArrayShape(DB.get('wp_teacher_pins'));
+  const arr=(Array.isArray(a)?a:[]).slice();
+  const i=arr.findIndex(function(r){return r&&r.id===rec.id;});
+  if(i>=0)arr[i]=Object.assign({},arr[i],rec);else arr.push(rec);
+  DB.set('wp_teacher_pins',arr);
+}
+async function wpSavePin(name,pin){
+  if(!wpCanManage()){toast('You may not set the PINs','danger');return false;}
+  const p=String(pin||'').trim();
+  if(!/^\d{4}$/.test(p)){toast('A PIN is exactly four digits','danger');return false;}
+  const taken=wpPins().filter(function(r){return r.id!==wpNameKey(name)&&r.card===p;});
+  if(taken.length){toast('That PIN is already '+taken[0].name+'’s — choose another','danger');return false;}
+  wpPutPin({id:wpNameKey(name),name:name,pinHash:await hashPassword(p),card:p,deleted:false,
+    by:CU.id,byName:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),at:new Date().toISOString()});
+  logA('Set the weekly plan PIN of '+name);
+  return true;
+}
+function wpClearPin(name){
+  if(!wpCanManage()){toast('You may not set the PINs','danger');return;}
+  const r=wpPinOf(name);if(!r)return;
+  if(!confirm('Take away '+name+'’s PIN?\n\nHe can still fill the plan in by choosing his name.'))return;
+  wpPutPin({id:r.id,name:name,pinHash:'',card:'',deleted:true,at:new Date().toISOString()});
+  logA('Took away the weekly plan PIN of '+name);
+  toast('PIN removed','success');
+  wpPinsM();
+}
+async function wpGiveAllPins(){
+  if(!wpCanManage()){toast('You may not set the PINs','danger');return;}
+  const without=wpTeacherNames().filter(function(n){return !wpPinOf(n)&&!wpIsExcludedTeacher(n);});
+  if(!without.length){toast('Everybody already has a PIN','info');return;}
+  if(!confirm('Give a PIN to '+without.length+' teacher(s) who have none?\n\nAnybody who already has one keeps it.'))return;
+  const taken=wpPinCards().slice();
+  for(const n of without){
+    const p=evRandomPin(taken);
+    taken.push(p);
+    wpPutPin({id:wpNameKey(n),name:n,pinHash:await hashPassword(p),card:p,deleted:false,
+      by:CU.id,byName:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),at:new Date().toISOString()});
+  }
+  logA('Gave a weekly plan PIN to '+without.length+' teacher(s)');
+  toast(without.length+' PIN(s) given','success');
+  wpPinsM();
+}
+// The teacher a typed PIN belongs to
+async function wpPinHolder(pin){
+  const p=String(pin||'').trim();
+  if(!/^\d{4}$/.test(p))return '';
+  const h=await hashPassword(p);
+  const r=wpPins().filter(function(x){return x.pinHash===h;})[0];
+  return r?r.name:'';
+}
+
+function wpPinsM(){
+  if(!wpCanManage()){toast('Only the principal, vice principals and academic supervisors can set the PINs','danger');return;}
+  const names=wpTeacherNames();
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>\u{1f511} Weekly plan PINs</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai" style="font-size:11px">A teacher with a PIN types it on the link and goes straight to his own classes. Every name on the timetable can be given one. The four digits are kept so a card can be printed; a teacher without a PIN can still choose his name as before.</div>'
+  +'<div class="tw" style="max-height:50vh;overflow:auto"><table style="font-size:11px"><thead><tr><th>Teacher</th><th>PIN</th><th>Set it</th></tr></thead><tbody>'
+  +names.map(function(n,i){
+    const r=wpPinOf(n);
+    return '<tr'+(wpIsExcludedTeacher(n)?' style="opacity:.5"':'')+'><td><strong>'+esc(n)+'</strong>'
+     +(wpIsExcludedTeacher(n)?' <span class="badge bgr" style="font-size:9px">not asked</span>':'')+'</td>'
+     +'<td>'+(r?'<span class="badge bgn mono">'+esc(r.card||'••••')+'</span>':'<span style="color:var(--tx3)">—</span>')+'</td>'
+     +'<td style="display:flex;gap:4px"><input id="wp-pin-'+i+'" inputmode="numeric" maxlength="4" placeholder="••••" style="width:64px;padding:4px 6px;background:var(--sf);border:1px solid var(--bd);border-radius:4px;color:var(--tx);font-size:11px;text-align:center;letter-spacing:3px">'
+     +'<button class="btn bp bxs" onclick="wpSavePinRow('+i+','+q+escJs(n)+q+')">Save</button>'
+     +(r?'<button class="btn bd3 bxs" onclick="wpClearPin('+q+escJs(n)+q+')">Remove</button>':'')+'</td></tr>';
+  }).join('')+'</tbody></table></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bg2 bsm" onclick="wpGiveAllPins()">\u{1f3b2} Give a PIN to everyone without one</button>'
+  +(wpPinsInUse()?'<button class="btn bs bsm" onclick="wpPrintPins()">\u{1f5a8}\u{fe0f} Print the PINs</button>':'')
+  +'</div>',true);
+}
+function wpSavePinRow(i,name){
+  const e=document.getElementById('wp-pin-'+i);
+  if(!e)return;
+  wpSavePin(name,e.value).then(function(ok){
+    if(ok){toast('PIN saved for '+name,'success');wpPinsM();}
+  });
+}
+function wpPrintPins(){
+  if(!wpCanManage())return;
+  const s=DB.get('settings')||{};
+  const list=wpPins().slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
+  const url=wpUrl((wpCur()||{}).id);
+  const win=window.open('','_blank');
+  if(!win){toast('Allow pop-ups to print','danger');return;}
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Weekly plan PINs</title>'
+  +'<style>@page{size:A4;margin:10mm}body{font-family:Arial,sans-serif;color:#12263f;margin:0}'
+  +'h1{font-size:17px;margin:0 0 3px}h2{font-size:11px;margin:0 0 10px;color:#4a5b70;font-weight:normal}'
+  +'.g{display:flex;flex-wrap:wrap;gap:6mm}.c{width:84mm;border:2.5px solid #0b3d6b;border-radius:8px;padding:6mm;box-sizing:border-box}'
+  +'.n{font-size:14px;font-weight:bold;color:#0b3d6b}.p{font-size:26px;font-weight:bold;letter-spacing:8px;color:#0b3d6b;margin:4px 0}'
+  +'.u{font-size:8px;color:#4a5b70;word-break:break-all}.k{font-size:9px;color:#b45309;font-weight:bold;margin-top:4px}'
+  +'</style></head><body>'
+  +'<h1>'+esc(s.schoolName||'School')+'</h1><h2>Weekly plan — personal PINs</h2><div class="g">'
+  +list.map(function(r){
+    return '<div class="c"><div class="n">'+esc(r.name)+'</div><div class="p">'+esc(r.card||'••••')+'</div>'
+     +'<div class="u">'+esc(url)+'</div>'
+     +'<div class="k">Type your PIN on the link and your classes open. Keep it to yourself.</div></div>';
+  }).join('')+'</div>'
+  +'<script>setTimeout(function(){window.print();},700);<\/script></body></html>');
+  win.document.close();
+  logA('Printed the weekly plan PINs ('+list.length+')');
+}
+
+// ── Teachers who are not asked for a plan ────────────────
+function wpExcl(){
+  const a=fbToArrayShape(DB.get('wp_excluded_teachers'));
+  return (Array.isArray(a)?a:[]).filter(function(r){return r&&r.id&&!r.deleted&&r.excluded;});
+}
+function wpIsExcludedTeacher(name){
+  const k=wpNameKey(name);
+  if(!k)return false;
+  return wpExcl().some(function(r){return r.id===k;});
+}
+function wpExclM(){
+  if(!wpCanManage()){toast('Only the principal, vice principals and academic supervisors can change this','danger');return;}
+  const names=wpTeacherNames();
+  openM('<div class="mh"><h3>\u{1f64b} Teachers not asked for a plan</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai" style="font-size:11px">Tick anybody the school does not ask for a weekly plan. His lessons then stop appearing — his name is not on the list teachers choose from, his periods are not shown, and he is not counted as behind. Nothing he has already filled in is deleted; untick him and it is all back.</div>'
+  +'<div class="tw" style="max-height:52vh;overflow:auto"><table style="font-size:11px"><thead><tr><th style="width:34px">Not asked</th><th>Teacher</th><th>Lessons</th></tr></thead><tbody>'
+  +names.map(function(n,i){
+    const cnt=wpClasses().reduce(function(a,c){return a+wpTeacherLessons(n,c).length;},0);
+    return '<tr><td style="text-align:center"><input type="checkbox" id="wp-ex-'+i+'"'+(wpIsExcludedTeacher(n)?' checked':'')+' style="width:16px;height:16px"></td>'
+     +'<td><strong>'+esc(n)+'</strong></td><td style="color:var(--tx3)">'+cnt+'</td></tr>';
+  }).join('')+'</tbody></table></div></div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bp" onclick="wpExclSave()">Save</button></div>',true);
+}
+function wpExclSave(){
+  if(!wpCanManage()){toast('You may not change this','danger');return;}
+  const names=wpTeacherNames();
+  const a=fbToArrayShape(DB.get('wp_excluded_teachers'));
+  const cur=(Array.isArray(a)?a:[]).slice();
+  const now=new Date().toISOString();
+  const by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  let n=0;
+  names.forEach(function(nm,i){
+    const e=document.getElementById('wp-ex-'+i);
+    if(!e)return;
+    const want=!!e.checked, was=wpIsExcludedTeacher(nm);
+    if(want===was)return;
+    const k=wpNameKey(nm);
+    const rec={id:k,name:nm,excluded:want,deleted:false,by:CU.id,byName:by,at:now};
+    const j=cur.findIndex(function(x){return x&&x.id===k;});
+    if(j>=0)cur[j]=Object.assign({},cur[j],rec);else cur.push(rec);
+    n++;
+  });
+  if(!n){toast('Nothing was changed','info');return;}
+  DB.set('wp_excluded_teachers',cur);
+  logA('Changed who is asked for a weekly plan ('+n+' teacher(s))');
+  closeM();toast(n+' teacher(s) changed','success');
+  rWeeklyPlan();
+}
+
+// ── A class excused for a day, with a notice in its place ─
+function wpNotices(){
+  const a=fbToArrayShape(DB.get('wp_day_notices'));
+  return (Array.isArray(a)?a:[]).filter(function(r){return r&&r.id&&!r.deleted;});
+}
+function wpNoticeId(wk,cls,day){return [wk,cls,day].join('~');}
+function wpNotice(wk,cls,day){
+  const id=wpNoticeId(wk,cls,day);
+  return wpNotices().filter(function(r){return r.id===id;})[0]||null;
+}
+function wpDayOff(wk,cls,day){return !!wpNotice(wk,cls,day);}
+function wpNoticesM(){
+  if(!wpCanManage()){toast('Only the principal, vice principals and academic supervisors can set a notice','danger');return;}
+  const w=wpCur();if(!w){toast('Open a week first','danger');return;}
+  const classes=wpClasses();
+  const q=String.fromCharCode(39);
+  const list=wpNotices().filter(function(r){return r.wk===w.id;});
+  window._wpPhoto='';
+  openM('<div class="mh"><h3>\u{1f4cc} A day off, with a notice</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai" style="font-size:11px">Excuse a class from planning one day — a trip, an examination, a holiday — and put a notice in its place. That day then asks for nothing, is not counted against anybody, and the notice is what shows on the plan and on the printed sheet.</div>'
+  +'<div class="fr f2"><div class="fg"><label>Class</label><select id="wp-nc-cls">'
+  +classes.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('')+'</select></div>'
+  +'<div class="fg"><label>Day</label><select id="wp-nc-day">'
+  +bdTtDayNames().map(function(d){return '<option value="'+esc(d)+'">'+esc(d)+'</option>';}).join('')+'</select></div></div>'
+  +'<div class="fg"><label>The notice</label><textarea id="wp-nc-text" style="min-height:64px" placeholder="e.g. School trip to the Science Centre — no lessons today"></textarea></div>'
+  +'<div class="fg"><label>A photograph instead of, or beside, the words</label>'
+  +'<input type="file" id="wp-nc-photo" accept="image/*" onchange="wpNoticePhoto(this)"></div>'
+  +'<div id="wp-nc-prev"></div>'
+  +(list.length?'<div style="font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;margin:10px 0 4px">Notices this week</div>'
+    +'<div class="tw" style="max-height:26vh;overflow:auto"><table style="font-size:11px"><thead><tr><th>Class</th><th>Day</th><th>Notice</th><th></th></tr></thead><tbody>'
+    +list.map(function(r){
+      return '<tr><td><strong>'+esc(r.cls)+'</strong></td><td>'+esc(r.day)+'</td>'
+       +'<td style="font-size:10px">'+(r.photo?'\u{1f5bc}\u{fe0f} ':'')+esc((r.text||'').slice(0,60))+'</td>'
+       +'<td><button class="btn bd3 bxs" onclick="wpNoticeDel('+q+escJs(r.cls)+q+','+q+escJs(r.day)+q+')">Remove</button></td></tr>';
+    }).join('')+'</tbody></table></div>':'')
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +'<button class="btn bp" onclick="wpNoticeSave()">Put the notice up</button></div>',true);
+}
+function wpNoticePhoto(input){
+  const f=input&&input.files&&input.files[0];
+  const box=document.getElementById('wp-nc-prev');
+  if(!f||!box){return;}
+  const rd=new FileReader();
+  rd.onload=function(){
+    const img=new Image();
+    img.onload=function(){
+      // kept small enough to travel with the plan
+      const max=1100;
+      const sc=Math.min(1,max/Math.max(img.width,img.height));
+      const cv=document.createElement('canvas');
+      cv.width=Math.round(img.width*sc);cv.height=Math.round(img.height*sc);
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      window._wpPhoto=cv.toDataURL('image/jpeg',0.82);
+      box.innerHTML='<div style="margin-top:6px"><img src="'+window._wpPhoto+'" style="max-width:100%;max-height:170px;border:1px solid var(--bd);border-radius:6px">'
+       +'<button class="btn bg2 bxs" style="margin-left:6px" onclick="window._wpPhoto=\'\';document.getElementById(\'wp-nc-prev\').innerHTML=\'\'">Remove the photo</button></div>';
+    };
+    img.onerror=function(){toast('That file could not be read as a picture','danger');};
+    img.src=rd.result;
+  };
+  rd.readAsDataURL(f);
+}
+function wpNoticeSave(){
+  if(!wpCanManage()){toast('You may not set a notice','danger');return;}
+  const w=wpCur();if(!w)return;
+  const cls=((document.getElementById('wp-nc-cls')||{}).value||'').trim();
+  const day=((document.getElementById('wp-nc-day')||{}).value||'').trim();
+  const text=((document.getElementById('wp-nc-text')||{}).value||'').trim();
+  const photo=window._wpPhoto||'';
+  if(!cls||!day){toast('Choose the class and the day','danger');return;}
+  if(!text&&!photo){toast('Write the notice, or add a photograph','danger');return;}
+  const a=fbToArrayShape(DB.get('wp_day_notices'));
+  const cur=(Array.isArray(a)?a:[]).slice();
+  const id=wpNoticeId(w.id,cls,day);
+  const rec={id:id,wk:w.id,cls:cls,day:day,text:text,photo:photo,deleted:false,
+    by:CU.id,byName:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),at:new Date().toISOString()};
+  const i=cur.findIndex(function(x){return x&&x.id===id;});
+  if(i>=0)cur[i]=Object.assign({},cur[i],rec);else cur.push(rec);
+  DB.set('wp_day_notices',cur);
+  window._wpPhoto='';
+  logA('Put up a weekly plan notice for '+cls+' on '+day+' ('+wpWeekLabel(w)+')');
+  toast('The notice is up for '+cls+' on '+day,'success');
+  wpNoticesM();
+  rWeeklyPlan();
+}
+function wpNoticeDel(cls,day){
+  if(!wpCanManage()){toast('You may not change a notice','danger');return;}
+  const w=wpCur();if(!w)return;
+  if(!confirm('Take down the notice for '+cls+' on '+day+'?\n\nThat day is asked for again.'))return;
+  const a=fbToArrayShape(DB.get('wp_day_notices'));
+  const cur=(Array.isArray(a)?a:[]).slice();
+  const id=wpNoticeId(w.id,cls,day);
+  const i=cur.findIndex(function(x){return x&&x.id===id;});
+  if(i<0)return;
+  cur[i]=Object.assign({},cur[i],{deleted:true,at:new Date().toISOString()});
+  DB.set('wp_day_notices',cur);
+  logA('Took down the weekly plan notice for '+cls+' on '+day);
+  toast('Notice taken down','success');
+  wpNoticesM();
+  rWeeklyPlan();
+}
+
+// ── What a plan is actually expected for ─────────────────
+// The timetable says what is taught; this says what is asked for. A teacher
+// set aside and a day excused are left out of the form, the counting and the
+// chasing alike.
+function wpDue(wk,cls){
+  return wpLessons(cls).filter(function(l){
+    if(wpIsExcludedTeacher(l.teacher))return false;
+    if(wk&&wpDayOff(wk,cls,l.day))return false;
+    return true;
+  });
 }
 
 // ── The link teachers are given ──────────────────────────
@@ -20822,6 +21117,9 @@ function rWeeklyPlan(){
    +(w?'<button class="btn bs bsm" onclick="wpShareM()">\u{1f517} Share the link</button>':'')
    +(w&&canM?'<button class="btn bg2 bsm" onclick="wpWeekM('+q+escJs(w.id)+q+')">\u{23f0} Week &amp; deadline</button>':'')
    +(w?'<button class="btn bg2 bsm" onclick="wpMissingM()">\u{1f464} Who has not filled</button>':'')
+   +(canM?'<button class="btn bg2 bsm" onclick="wpPinsM()">\u{1f511} Teacher PINs</button>':'')
+   +(canM?'<button class="btn bg2 bsm" onclick="wpExclM()">\u{1f64b} Not asked</button>':'')
+   +(w&&canM?'<button class="btn bg2 bsm" onclick="wpNoticesM()">\u{1f4cc} Day notices</button>':'')
    +(canM?'<button class="btn bg2 bsm" onclick="wpWaLinksM()">\u{1f4ac} WhatsApp groups</button>':'')
    +(w&&canM?'<button class="btn '+(w.locked?'bs':'bd3')+' bsm" onclick="wpLockToggle()">'+(w.locked?'\u{1f513} Unlock':'\u{1f512} Lock')+'</button>':'')
    +'</div></div>'
@@ -21093,10 +21391,19 @@ function wpWaSave(){
 // ── The plan itself ──────────────────────────────────────
 function wpViewM(cls){
   const w=wpCur();if(!w)return;
-  const m=wpMap(w.id,cls),ls=wpLessons(cls);
+  const m=wpMap(w.id,cls),ls=wpDue(w.id,cls);
   const q=String.fromCharCode(39);
   let body='';
   bdTtDayNames().forEach(function(day){
+    const nt=wpNotice(w.id,cls,day);
+    if(nt){
+      body+='<tr><td style="font-weight:700;background:var(--sf2);white-space:nowrap">'+esc(day)+'</td>'
+       +'<td colspan="4" style="background:var(--wnbg)"><strong>📌 Notice — no plan asked for</strong>'
+       +(nt.text?'<div>'+esc(nt.text).replace(/\n/g,'<br>')+'</div>':'')
+       +(nt.photo?'<div style="margin-top:4px"><img src="'+esc(nt.photo)+'" style="max-height:120px;max-width:100%;border-radius:6px"></div>':'')
+       +'</td></tr>';
+      return;
+    }
     const dl=ls.filter(function(l){return l.day===day;});
     if(!dl.length)return;
     body+='<tr><td rowspan="'+dl.length+'" style="font-weight:700;background:var(--sf2);white-space:nowrap">'+esc(day)+'</td>'
@@ -21137,12 +21444,22 @@ function wpSheetLogo(s){
 }
 function wpSheetHTML(w,cls){
   const s=DB.get('settings')||{};
-  const m=wpMap(w.id,cls),ls=wpLessons(cls);
+  const m=wpMap(w.id,cls),ls=wpDue(w.id,cls);
   let body='';
   bdTtDayNames().forEach(function(day){
+    const col=WP_DAYCOLS[day]||'#334155';
+    const nt=wpNotice(w.id,cls,day);
+    if(nt){
+      body+='<tr><td class="day" style="background:'+col+'">'+esc(day.toUpperCase())+'</td>'
+       +'<td colspan="4" class="note" style="border-left:3px solid '+col+'">'
+       +'<b style="color:'+col+'">NOTICE</b>'
+       +(nt.text?'<div style="font-weight:bold;margin-top:2px">'+esc(nt.text).replace(/\n/g,'<br>')+'</div>':'')
+       +(nt.photo?'<div style="margin-top:3px"><img src="'+esc(nt.photo)+'" style="max-height:34mm;max-width:100%;border:1px solid #b9cbdc;border-radius:3px"></div>':'')
+       +'</td></tr>';
+      return;
+    }
     const dl=ls.filter(function(l){return l.day===day;});
     if(!dl.length)return;
-    const col=WP_DAYCOLS[day]||'#334155';
     dl.forEach(function(l,i){
       const r=m[wpIdOf(w.id,cls,l)]||{};
       const tint=i%2?'#ffffff':'#fbfdff';
@@ -21173,6 +21490,7 @@ function wpSheetHTML(w,cls){
    +'.wpsheet td.sub{width:66px;font-weight:bold;background:#f4f9ff}'
    +'.wpsheet td.tp{font-weight:600;color:#12263f}'
    +'.wpsheet .pt{font-size:7.5px;color:#5a6b80;font-weight:normal;margin-top:2px}'
+   +'.wpsheet td.note{background:#fffbeb}'
    +'.wpsheet .shr{background:#fde68a;color:#7c4a03;font-weight:bold;padding:0 3px;border-radius:3px;font-size:7px}'
    +'</style>'
    // the head: logo, school, and the title on a bright band
@@ -21297,6 +21615,10 @@ function wpTeacherNames(){
   const u=(typeof bdTtNamesUsed==='function')?bdTtNamesUsed():{};
   return Object.keys(u).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());});
 }
+// the names a teacher may choose from on the link
+function wpPickableNames(){
+  return wpTeacherNames().filter(function(n){return !wpIsExcludedTeacher(n);});
+}
 function wpIsTeacher(l,name){
   const k=String(name||'').trim().toLowerCase();
   if(!k)return false;
@@ -21309,7 +21631,7 @@ function wpTeacherClasses(name){
   return wpClasses().filter(function(c){return wpTeacherLessons(name,c).length>0;});
 }
 function wpTeacherStats(wk,name,cls){
-  const ls=wpTeacherLessons(name,cls),m=wpMap(wk,cls);
+  const ls=wpDue(wk,cls).filter(function(l){return wpIsTeacher(l,name);}),m=wpMap(wk,cls);
   let filled=0;
   ls.forEach(function(l){if(wpHasText(m[wpIdOf(wk,cls,l)]))filled++;});
   return {total:ls.length,filled:filled};
@@ -21325,7 +21647,9 @@ function wpSiblingSections(name,cls){
 function wpPLessons(){
   const st=wpPState();
   if(!st.cls)return [];
-  return st.mode==='teacher'&&st.teacher?wpTeacherLessons(st.teacher,st.cls):wpLessons(st.cls);
+  const w=wpPortalWeek();
+  const ls=wpDue(w&&w.id,st.cls);
+  return st.mode==='teacher'&&st.teacher?ls.filter(function(l){return wpIsTeacher(l,st.teacher);}):ls;
 }
 
 function renderWpPortal(){
@@ -21344,7 +21668,14 @@ function renderWpPortal(){
   if(!w){
     body='<div class="al aw" style="margin:0">No week has been opened for the weekly plan yet. Please ask the school.</div>';
   }else if(!st.mode){
-    body=pdpQ('How would you like to fill it in?','',
+    body=(wpPinsInUse()
+      ?pdpQ('Type your PIN','It takes you straight to your own classes.',
+        '<div style="display:flex;gap:7px;flex-wrap:wrap">'
+        +'<input id="wpp-pin" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" onkeydown="if(event.key===\'Enter\')wpPUnlock()" style="flex:1 1 130px;letter-spacing:10px;font-size:22px;text-align:center">'
+        +'<button type="button" class="btn bp" style="flex:0 0 auto;padding:12px 18px" onclick="wpPUnlock()">Open my classes →</button></div>'
+        +'<div id="wpp-pin-msg" style="font-size:11px;color:var(--dn);margin-top:5px"></div>',false)
+      :'')
+      +pdpQ(wpPinsInUse()?'Or find yourself in the list':'How would you like to fill it in?','',
       '<div style="display:flex;flex-wrap:wrap;gap:9px">'
       +'<button type="button" class="btn bp" style="flex:1 1 210px;justify-content:center;flex-direction:column;padding:18px 12px" onclick="wpPMode('+q+'teacher'+q+')">'
        +'<span style="font-size:22px">\u{1f9d1}\u{200d}\u{1f3eb}</span>'
@@ -21356,7 +21687,7 @@ function renderWpPortal(){
        +'<span style="font-size:11px;color:var(--tx3);margin-top:2px">See the whole week of one class</span></button>'
       +'</div>',true);
   }else if(st.mode==='teacher'&&!st.teacher){
-    const names=wpTeacherNames();
+    const names=wpPickableNames();
     body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
       +'<div style="font-size:13px">Filling in by name</div>'
       +'<button class="btn bg2 bsm" onclick="wpPReset()">← Back</button></div>'
@@ -21372,7 +21703,8 @@ function renderWpPortal(){
           :'<div class="al aw" style="margin:0">No teacher is named on the timetable yet.</div>'),true);
   }else if(!st.cls){
     const byName=st.mode==='teacher';
-    const classes=byName?wpTeacherClasses(st.teacher):wpClasses();
+    const classes=(byName?wpTeacherClasses(st.teacher):wpClasses())
+      .filter(function(c){return wpDue(w.id,c).length>0;});
     body=(byName?'<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
       +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong></div>'
       +'<button class="btn bg2 bsm" onclick="wpPBackName()">← Another name</button></div>'
@@ -21395,6 +21727,16 @@ function renderWpPortal(){
     const ls=wpPLessons();
     let rows='';
     bdTtDayNames().forEach(function(day){
+      const nt=wpNotice(w.id,cls,day);
+      if(nt){
+        rows+='<div style="font-size:12px;font-weight:700;color:var(--ac);margin:12px 0 6px">'+esc(day)+'</div>'
+         +'<div class="card" style="padding:12px;margin-bottom:8px;border-left:5px solid var(--wn);background:var(--wnbg)">'
+         +'<div style="font-size:11px;font-weight:700;color:var(--wn);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">📌 Notice — no plan is asked for this day</div>'
+         +(nt.text?'<div style="font-size:13px;white-space:pre-wrap">'+esc(nt.text)+'</div>':'')
+         +(nt.photo?'<img src="'+esc(nt.photo)+'" style="max-width:100%;border-radius:8px;margin-top:7px">':'')
+         +'</div>';
+        return;
+      }
       const dl=ls.filter(function(l){return l.day===day;});
       if(!dl.length)return;
       rows+='<div style="font-size:12px;font-weight:700;color:var(--ac);margin:12px 0 6px">'+esc(day)+'</div>';
@@ -21458,6 +21800,23 @@ function renderWpPortal(){
    +'</div></div>'+body+'</div>';
   document.body.appendChild(wrap);
 }
+// A teacher's PIN takes him past the lists to his own classes
+function wpPUnlock(){
+  const e=document.getElementById('wpp-pin');
+  const msg=document.getElementById('wpp-pin-msg');
+  const say=function(t){if(msg)msg.textContent=t;else toast(t,'danger');};
+  const p=e?String(e.value||'').trim():'';
+  if(!/^\d{4}$/.test(p)){say('A PIN is four digits.');return Promise.resolve(false);}
+  return wpPinHolder(p).then(function(name){
+    if(!name){say('That PIN is not right. Try again, or find your name in the list below.');return false;}
+    if(wpIsExcludedTeacher(name)){say('You are not asked for a weekly plan at the moment.');return false;}
+    const st=wpPState();
+    st.mode='teacher';st.teacher=name;st.cls='';
+    renderWpPortal();window.scrollTo(0,0);
+    toast('Welcome, '+name,'success');
+    return true;
+  });
+}
 function wpPMode(m){const st=wpPState();st.mode=m;st.teacher='';st.cls='';renderWpPortal();window.scrollTo(0,0);}
 function wpPTeacher(n){const st=wpPState();st.teacher=n;st.cls='';renderWpPortal();window.scrollTo(0,0);}
 function wpPPick(cls){wpPState().cls=cls;renderWpPortal();window.scrollTo(0,0);}
@@ -21477,8 +21836,8 @@ function wpPCopy(src){
   if(!w||!st.cls||!st.teacher)return;
   const og=wpOpen(w);
   if(!og.ok){toast(og.why,'danger');renderWpPortal();return;}
-  const from=wpTeacherLessons(st.teacher,src);
-  const to=wpTeacherLessons(st.teacher,st.cls);
+  const from=wpDue(w.id,src).filter(function(l){return wpIsTeacher(l,st.teacher);});
+  const to=wpDue(w.id,st.cls).filter(function(l){return wpIsTeacher(l,st.teacher);});
   const m=wpMap(w.id,src);
   const bySub={};
   from.forEach(function(l){
