@@ -20857,7 +20857,7 @@ function wpPinsM(){
   const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f511} Weekly plan PINs</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai" style="font-size:11px">A teacher with a PIN types it on the link and goes straight to his own classes. Every name on the timetable can be given one — type it, or press \u{1f3b2} to draw one at random. Tick whoever you are handing cards to, then print them or save them as a PDF; \u{1f4c4} on a row makes that one teacher\u2019s card on its own, ready to send him. A teacher without a PIN can still choose his name as before.</div>'
+  +'<div class="al ai" style="font-size:11px">A teacher with a PIN types it on the link and goes straight to his own classes. Every name on the timetable can be given one — type it, or press \u{1f3b2} to draw one at random. Tick whoever you are handing cards to, then print them or save them as a PDF; \u{1f4c4} on a row makes that one teacher\u2019s card on its own, ready to send him. The same PIN works on every week\u2019s link, so a card is handed out once and kept \u2014 it never changes from one week to the next.</div>'
   +'<div class="tw" style="max-height:48vh;overflow:auto"><table style="font-size:11px"><thead><tr>'
   +'<th style="width:30px"><input type="checkbox" checked onclick="wpPinTickAll(this.checked)" title="All or none" style="width:15px;height:15px"></th>'
   +'<th>Teacher</th><th>PIN</th><th>Set it</th></tr></thead><tbody>'
@@ -20913,13 +20913,16 @@ function wpPinCardCSS(){
    +'.pin{margin-top:2.2mm;margin-left:2mm;display:inline-block;background:linear-gradient(135deg,#0b3d6b,#2b6cb0);color:#fff;border-radius:2mm;'
      +'padding:2mm 4mm;font-size:7.4mm;letter-spacing:2.4mm;font-weight:bold;font-family:"Courier New",monospace}'
    +'.pl{font-size:2.4mm;color:#5a6b80;letter-spacing:.4mm;text-transform:uppercase;margin-top:1mm;padding-left:2mm;font-weight:bold}'
-   +'.qr{position:absolute;right:4.6mm;top:15mm;width:25mm;height:25mm;border:.4mm solid #0b3d6b;border-radius:1.5mm;padding:1mm;background:#fff}'
-   +'.qr img{width:100%;height:100%;display:block}'
-   +'.st{position:absolute;left:6.6mm;right:32mm;bottom:3.2mm;font-size:2.5mm;line-height:1.4;color:#42607e;font-weight:bold}'
-   +'.wn{position:absolute;right:4.6mm;bottom:3.4mm;width:25mm;font-size:2.2mm;color:#b45309;text-align:center;font-weight:bold}'
+   +'.ev{margin-top:1.8mm;margin-left:2mm;display:inline-block;background:#fffbeb;border:.4mm solid #f59e0b;border-radius:1.5mm;'
+     +'padding:1mm 2.6mm;font-size:2.6mm;color:#b45309;font-weight:bold}'
+   +'.ft{position:absolute;left:6.6mm;right:4.6mm;bottom:2.8mm}'
+   +'.lk{font-size:2.5mm;color:#0b3d6b;font-weight:bold;word-break:break-all;line-height:1.25;'
+     +'border-top:.3mm solid #b9cbdc;padding-top:1.2mm;margin-bottom:1mm}'
+   +'.st{font-size:2.4mm;line-height:1.3;color:#42607e;font-weight:bold}'
+   +'.wn{color:#b45309}'
    +'@media print{body{background:#fff}.bar{display:none}.sheet{margin:0;width:auto}}';
 }
-function wpPinCardHTML(r,s,qr){
+function wpPinCardHTML(r,s,link){
   const logo=(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:'))
     ?'<img src="'+s.logo+'" alt="">':'<span>'+esc(s.logo||'\u{1f3eb}')+'</span>';
   return '<div class="c">'
@@ -20929,23 +20932,21 @@ function wpPinCardHTML(r,s,qr){
    +'<div class="nm">'+esc(r.name||'')+'</div>'
    +'<div class="pin">'+esc(r.card||'••••')+'</div>'
    +'<div class="pl">Your four-digit PIN</div>'
-   +'<div class="qr"><img src="'+qr+'" alt=""></div>'
-   +'<div class="st">Scan the code or open the school’s weekly plan link, type your PIN, and your own classes open for you to fill in.</div>'
-   +'<div class="wn">Keep it to yourself</div>'
+   +'<div class="ev">The same PIN every week</div>'
+   +'<div class="ft"><div class="lk">'+esc(link)+'</div>'
+   +'<div class="st">Open this link, type your PIN, and your own classes open for you to fill in. '
+   +'<span class="wn">Keep it to yourself.</span></div></div>'
    +'</div>';
 }
 // Whole A4 sheets, eight cards to each
-function wpPinSheetsHTML(list,s,qr){
+function wpPinSheetsHTML(list,s,link){
   let html='';
   for(let i=0;i<list.length;i+=8){
     html+='<div class="sheet"><div class="grid">'
-     +list.slice(i,i+8).map(function(r){return wpPinCardHTML(r,s,qr);}).join('')
+     +list.slice(i,i+8).map(function(r){return wpPinCardHTML(r,s,link);}).join('')
      +'</div></div>';
   }
   return html;
-}
-function wpPinQr(){
-  return 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=0&data='+encodeURIComponent(wpUrl(''));
 }
 // Whoever is ticked in the PIN window, or everybody with a PIN
 function wpPinPicked(){
@@ -20967,7 +20968,7 @@ function wpPrintPins(){
   win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Weekly plan PIN cards — '+list.length+'</title>'
    +'<style>'+wpPinCardCSS()+'</style></head><body>'
    +'<div class="bar"><button onclick="window.print()">\u{1f5a8}\u{fe0f} Print '+list.length+' card(s)</button></div>'
-   +wpPinSheetsHTML(list,s,wpPinQr())+'</body></html>');
+   +wpPinSheetsHTML(list,s,wpUrl(''))+'</body></html>');
   win.document.close();
   logA('Printed '+list.length+' weekly plan PIN card(s)');
 }
@@ -20977,7 +20978,7 @@ async function wpPinsPdfFile(list){
   const s=DB.get('settings')||{};
   const holder=document.createElement('div');
   holder.style.cssText='position:fixed;left:-10000px;top:0;z-index:-1;background:#fff';
-  holder.innerHTML='<style>'+wpPinCardCSS()+'</style>'+wpPinSheetsHTML(list,s,wpPinQr());
+  holder.innerHTML='<style>'+wpPinCardCSS()+'</style>'+wpPinSheetsHTML(list,s,wpUrl(''));
   document.body.appendChild(holder);
   try{
     const sheets=[].slice.call(holder.querySelectorAll('.sheet'));
