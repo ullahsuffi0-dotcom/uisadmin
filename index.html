@@ -18138,6 +18138,236 @@ function exportRosterPDF(){
 // ═══════════════════════════════════════════════════════════
 // SUBSTITUTIONS — VP picks absent teacher → assigns substitute
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// THE SLIP A SUBSTITUTE IS SENT
+// A teacher asked to cover a lesson is given it in writing: a notice with
+// the day, the period, the class, the subject and whose lesson it is, as a
+// PDF that goes straight to him on WhatsApp. One slip for a single cover, or
+// one for every teacher covering something that day. Nothing is written by
+// any of it — the substitutions themselves are untouched.
+// ═══════════════════════════════════════════════════════════
+function sbsAll(){
+  const a=fbToArrayShape(DB.get('substitutions'));
+  return (Array.isArray(a)?a:[]).filter(function(s){return s&&s.id;});
+}
+function sbsOne(id){return sbsAll().filter(function(s){return s.id===id;})[0]||null;}
+function sbsSameName(a,b){
+  const x=normDutyName(a),y=normDutyName(b);
+  return !!x&&x===y;
+}
+// The substitutions one teacher is covering on a date
+function sbsForTeacher(name,date){
+  return sbsAll().filter(function(s){
+    return sbsSameName(s.substituteName,name)&&(!date||s.date===date);
+  }).sort(function(a,b){
+    return String(a.date||'').localeCompare(String(b.date||''))
+      ||(Number(a.periodNumber||0)-Number(b.periodNumber||0));
+  });
+}
+// Everybody covering something on a date
+function sbsTeachersOn(date){
+  const by={};
+  sbsAll().filter(function(s){return s.date===date&&s.substituteName;}).forEach(function(s){
+    const k=normDutyName(s.substituteName);
+    if(!by[k])by[k]={name:s.substituteName,list:[]};
+    by[k].list.push(s);
+  });
+  return Object.keys(by).sort(function(a,b){return by[a].name.localeCompare(by[b].name);})
+   .map(function(k){return by[k];});
+}
+// His number, from the staff list or his account
+function sbsPhoneOf(name){
+  const out=[];
+  const add=function(p,label){
+    const c=cleanPhone(p);
+    if(c&&!out.some(function(x){return cleanPhone(x.phone)===c;}))out.push({phone:p,label:label});
+  };
+  (DB.get('teachers')||[]).forEach(function(t){
+    if(t&&t.name&&sbsSameName(t.name,name))add(t.phone,t.name);
+  });
+  (DB.get('accounts')||[]).forEach(function(a){
+    if(!a)return;
+    const full=((a.firstName||'')+' '+(a.lastName||'')).trim();
+    if(full&&sbsSameName(full,name))add(a.phone,full);
+  });
+  if(!out.length){
+    // a name written differently on the timetable, matched word for word
+    (DB.get('teachers')||[]).forEach(function(t){
+      if(t&&t.name&&dutyStrictMatch(name,t.name))add(t.phone,t.name);
+    });
+  }
+  return out;
+}
+function sbsRowsHTML(list){
+  return list.map(function(s){
+    return '<tr>'
+     +'<td><b>'+esc(s.day||getDayOfWeek(s.date)||'')+'</b><div class="sm">'+esc(wpDateText(s.date))+'</div></td>'
+     +'<td class="pd"><b>'+esc(s.period||'—')+'</b>'+(s.time?'<div class="sm">'+esc(s.time)+'</div>':'')+'</td>'
+     +'<td><b>'+esc(s.class||'—')+'</b></td>'
+     +'<td>'+esc(s.subject||'—')+'</td>'
+     +'<td>'+esc(s.absentName||'—')+'</td>'
+     +'<td>'+esc(s.notes||'')+'</td></tr>';
+  }).join('');
+}
+// The notice itself
+function sbsSlipHTML(name,list){
+  const s=DB.get('settings')||{};
+  const logo=(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:'))
+    ?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">'
+    :'<div style="font-size:9mm;line-height:16mm;text-align:center">'+(s.logo||'\u{1f3eb}')+'</div>';
+  const first=list[0]||{};
+  const by=list.filter(function(x){return x.assignedByName;})[0];
+  return '<div class="sbslip" style="width:190mm;padding:8mm;background:#fff;color:#12263f;font-family:Arial,Helvetica,sans-serif;box-sizing:border-box;'
+   +'-webkit-print-color-adjust:exact;print-color-adjust:exact">'
+   +'<style>.sbslip *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}'
+   +'.sbslip table{width:100%;border-collapse:collapse;border:2.5px solid #0b3d6b;margin-top:4mm}'
+   +'.sbslip th,.sbslip td{border:1px solid #b9cbdc;padding:3mm 3mm;font-size:11px;text-align:left;vertical-align:top}'
+   +'.sbslip thead th{background:#0b3d6b;color:#fff;text-transform:uppercase;letter-spacing:.5px;font-size:10px}'
+   +'.sbslip td.pd{background:#f4f9ff}.sbslip .sm{font-size:9px;color:#5a6b80;font-weight:normal}'
+   +'</style>'
+   +'<div style="border:3px solid #0b3d6b;border-radius:10px;overflow:hidden">'
+   +'<div style="display:flex;align-items:center;gap:4mm;padding:4mm 5mm;background:#eef6ff">'
+   +'<div style="width:16mm;height:16mm;flex:0 0 16mm;border:2px solid #0b3d6b;border-radius:3mm;background:#fff;overflow:hidden">'+logo+'</div>'
+   +'<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:bold;color:#0b3d6b">'+esc(s.schoolName||'School')+'</div>'
+   +(s.schoolNameAr?'<div style="font-size:11px;font-weight:bold;color:#2b6cb0;direction:rtl">'+esc(s.schoolNameAr)+'</div>':'')
+   +'</div>'
+   +'<div style="background:linear-gradient(135deg,#0b3d6b,#2b6cb0);color:#fff;border-radius:8px;padding:3mm 6mm;text-align:center">'
+   +'<div style="font-size:15px;font-weight:bold;letter-spacing:1.2px">SUBSTITUTION</div>'
+   +'<div style="font-size:9px;letter-spacing:.6px">NOTICE TO THE TEACHER</div></div></div>'
+   +'<div style="padding:4mm 5mm;border-top:2px solid #0b3d6b">'
+   +'<div style="font-size:10px;color:#2b6cb0;font-weight:bold;letter-spacing:1px;text-transform:uppercase">Teacher</div>'
+   +'<div style="font-size:19px;font-weight:bold;color:#0b3d6b">'+esc(name)+'</div>'
+   +'<div style="font-size:11px;color:#42607e;font-weight:bold;margin-top:1mm">You are asked to cover the following '
+   +(list.length>1?('<b>'+list.length+' periods</b>'):'period')+'.</div></div></div>'
+   +'<table><thead><tr><th style="width:26mm">Day &amp; date</th><th style="width:24mm">Period</th><th style="width:20mm">Class</th>'
+   +'<th style="width:28mm">Subject</th><th style="width:34mm">Covering for</th><th>Notes</th></tr></thead>'
+   +'<tbody>'+sbsRowsHTML(list)+'</tbody></table>'
+   +'<div style="display:flex;justify-content:space-between;gap:8mm;margin-top:8mm;font-size:11px">'
+   +'<div style="flex:1"><div style="border-top:1px solid #0b3d6b;padding-top:2mm;font-weight:bold">Assigned by</div>'
+     +'<div style="color:#42607e">'+esc((by&&by.assignedByName)||'—')+'</div></div>'
+   +'<div style="flex:1"><div style="border-top:1px solid #0b3d6b;padding-top:2mm;font-weight:bold">Teacher’s signature</div>'
+     +'<div style="height:9mm"></div></div></div>'
+   +'<div style="margin-top:5mm;font-size:9px;color:#42607e;font-weight:bold">'
+   +esc(s.schoolName||'')+' · Substitution notice · printed '+esc(ymd(new Date()))+'</div>'
+   +'</div>';
+}
+function sbsSlipText(name,list){
+  const s=DB.get('settings')||{};
+  return (s.schoolName||'School')+'\nSubstitution notice — '+name+'\n\n'
+   +list.map(function(x){
+      return '• '+(x.day||getDayOfWeek(x.date)||'')+' '+wpDateText(x.date)
+        +' · '+(x.period||'')+(x.time?' ('+x.time+')':'')
+        +' · '+(x.class||'')+(x.subject?' · '+x.subject:'')
+        +(x.absentName?' · covering for '+x.absentName:'')
+        +(x.notes?'\n  '+x.notes:'');
+    }).join('\n')
+   +'\n\nPlease be at the class on time. Thank you.';
+}
+async function sbsSlipPdfFile(name,list){
+  await rbLoadPdfLibs();
+  const holder=document.createElement('div');
+  holder.style.cssText='position:fixed;left:-10000px;top:0;z-index:-1;background:#fff';
+  holder.innerHTML=sbsSlipHTML(name,list);
+  document.body.appendChild(holder);
+  try{
+    const canvas=await window.html2canvas(holder.firstChild,{scale:2,backgroundColor:'#ffffff',useCORS:true});
+    const pdf=new window.jspdf.jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+    const W=210,H=297,mg=8;
+    const wdt=W-2*mg,h=Math.min(canvas.height*wdt/canvas.width,H-2*mg);
+    pdf.addImage(canvas.toDataURL('image/jpeg',0.92),'JPEG',mg,mg,wdt,h);
+    const nm=('Substitution-'+name+'-'+((list[0]||{}).date||ymd(new Date()))).replace(/[^A-Za-z0-9-]+/g,'_')+'.pdf';
+    return new File([pdf.output('blob')],nm,{type:'application/pdf'});
+  }finally{holder.remove();}
+}
+// Send it to him
+async function sbsShare(name,list){
+  if(!list||!list.length){toast('Nothing to send','danger');return;}
+  toast('Making the notice…','info');
+  let file;
+  try{file=await sbsSlipPdfFile(name,list);}
+  catch(e){toast('Could not make the PDF: '+(e&&e.message||e),'danger');return;}
+  const text=sbsSlipText(name,list);
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'Substitution — '+name,text:text});
+      logA('Shared the substitution notice of '+name+' ('+list.length+' period(s))');
+      return;
+    }
+  }catch(e){if(e&&e.name==='AbortError')return;}
+  const url=URL.createObjectURL(file);
+  const a=document.createElement('a');a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},60000);
+  const phones=sbsPhoneOf(name);
+  const q=String.fromCharCode(39);
+  window.__sbsMsg=text+'\n\n(The notice is attached as a PDF.)';
+  openM('<div class="mh"><h3>\u{1f4ce} Notice saved — '+esc(name)+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2"><div class="al ag">✅ <strong>'+esc(file.name)+'</strong> has been saved to this computer.</div>'
+  +'<div class="al ai">Open his chat and attach the saved PDF with the 📎 button in WhatsApp — the message is already written for you. On a phone the PDF goes straight into WhatsApp instead.</div>'
+  +(phones.length?phones.map(function(p){
+      return '<button class="btn bg2" style="width:100%;justify-content:flex-start;margin-bottom:6px" onclick="window.open(buildWaUrl('+q+escJs(p.phone)+q+',window.__sbsMsg),'+q+'_blank'+q+')">\u{1f4f2} Open the chat with '+esc(p.label)+' — '+esc(p.phone)+'</button>';
+    }).join('')
+   :'<div class="al aw">No phone number is on record for '+esc(name)+' — add it on the Teachers page, or send the saved PDF yourself.</div>')
+  +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
+  logA('Prepared the substitution notice of '+name+' ('+list.length+' period(s))');
+}
+function sbsShareOne(id){
+  const s=sbsOne(id);
+  if(!s){toast('That substitution is no longer there','danger');return;}
+  sbsShare(s.substituteName,[s]);
+}
+function sbsShareDay(name,date){
+  const list=sbsForTeacher(name,date);
+  if(!list.length){toast('Nothing for '+name+' on that day','danger');return;}
+  sbsShare(name,list);
+}
+function sbsPrintSlip(name,date){
+  const list=date?sbsForTeacher(name,date):[];
+  if(!list.length){toast('Nothing to print','danger');return;}
+  const win=window.open('','_blank');
+  if(!win){toast('Allow pop-ups to print','danger');return;}
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Substitution — '+esc(name)+'</title>'
+   +'<style>@page{size:A4;margin:6mm}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style>'
+   +'</head><body>'+sbsSlipHTML(name,list)
+   +'<script>setTimeout(function(){window.print();},700);<\/script></body></html>');
+  win.document.close();
+  logA('Printed the substitution notice of '+name);
+}
+// Everybody covering something on one day
+function sbsSlipsM(date){
+  const all=sbsAll();
+  const dates=[];
+  all.forEach(function(s){if(s.date&&dates.indexOf(s.date)<0)dates.push(s.date);});
+  dates.sort().reverse();
+  if(!dates.length){toast('No substitution has been recorded yet','danger');return;}
+  const d=dates.indexOf(date)>=0?date:(dates.indexOf(window._sbsDate)>=0?window._sbsDate:dates[0]);
+  window._sbsDate=d;
+  const people=sbsTeachersOn(d);
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>\u{1f4c4} Notices for the substitutes</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai" style="font-size:11px">Each teacher covering a lesson that day gets his own notice — the period, the class, the subject and whose lesson it is — as a PDF to send him. Sending one changes nothing; the substitutions stay exactly as they are.</div>'
+  +'<div class="fg"><label>Day</label><select onchange="sbsSlipsM(this.value)">'
+  +dates.map(function(x){
+     const n=sbsTeachersOn(x).length;
+     return '<option value="'+esc(x)+'"'+(x===d?' selected':'')+'>'+esc(wpDateText(x))+' · '+esc(getDayOfWeek(x)||'')+' — '+n+' teacher(s)</option>';
+   }).join('')+'</select></div>'
+  +(people.length
+    ?'<div class="tw" style="max-height:48vh;overflow:auto"><table style="font-size:11px"><thead><tr><th>Teacher</th><th>Covering</th><th>Send it</th></tr></thead><tbody>'
+     +people.map(function(p){
+        return '<tr><td><strong>'+esc(p.name)+'</strong>'
+         +(sbsPhoneOf(p.name).length?'':' <span class="badge bgr" style="font-size:9px">no phone on record</span>')+'</td>'
+         +'<td style="font-size:10px;color:var(--tx3)">'+p.list.map(function(x){
+             return esc(x.period||'')+' '+esc(x.class||'')+(x.subject?' · '+esc(x.subject):'');
+           }).join('<br>')+'</td>'
+         +'<td style="display:flex;gap:4px;flex-wrap:wrap">'
+         +'<button class="btn bs bxs" onclick="sbsShareDay('+q+escJs(p.name)+q+','+q+escJs(d)+q+')">\u{1f4c4} PDF</button>'
+         +'<button class="btn bg2 bxs" onclick="sbsPrintSlip('+q+escJs(p.name)+q+','+q+escJs(d)+q+')">\u{1f5a8}\u{fe0f}</button>'
+         +'</td></tr>';
+      }).join('')+'</tbody></table></div>'
+    :'<div class="al aw">Nobody is covering a lesson on that day.</div>')
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
+}
 
 function rSubstitutions(){
   const canEdit=['vice_principal','superadmin','principal'].includes(CU.role);
@@ -18151,7 +18381,7 @@ function rSubstitutions(){
   const weekStartStr=weekStart.toISOString().split('T')[0];
   const weekCount=subs.filter(s=>s.date>=weekStartStr).length;
   
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🔄 Teacher Substitutions ('+subs.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bp bsm" onclick="addSubM()">+ Add Substitution</button>':'')+'<button class="btn bg2 bsm" onclick="subPrefM()">📋 Preference List</button><button class="btn bs bsm" onclick="exportSubsM()">📊 Export Substitutions (Excel)</button><button class="btn bg2 bsm" onclick="expSubScheduleDayPDF()">📄 Day Schedule PDF</button>'+(['vice_principal','superadmin','principal'].includes(CU.role)?'<button class="btn bs bsm" onclick="shareSubScheduleWA()">📲 Share via WhatsApp</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">When a teacher is absent, assign a substitute from available staff. The substitute teacher is automatically notified on their dashboard.</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🔄 Teacher Substitutions ('+subs.length+')</h3><div style="display:flex;gap:5px;flex-wrap:wrap">'+(canEdit?'<button class="btn bp bsm" onclick="addSubM()">+ Add Substitution</button>':'')+'<button class="btn bg2 bsm" onclick="subPrefM()">📋 Preference List</button><button class="btn bs bsm" onclick="exportSubsM()">📊 Export Substitutions (Excel)</button><button class="btn bg2 bsm" onclick="expSubScheduleDayPDF()">📄 Day Schedule PDF</button><button class="btn bs bsm" onclick="sbsSlipsM()">📄 Notice to Substitutes</button>'+(['vice_principal','superadmin','principal'].includes(CU.role)?'<button class="btn bs bsm" onclick="shareSubScheduleWA()">📲 Share via WhatsApp</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">When a teacher is absent, assign a substitute from available staff. The substitute teacher is automatically notified on their dashboard.</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Today</div><div class="sv">'+todayCount+'</div><div class="sb3">'+todayDate+'</div><div class="sic">📅</div></div><div class="stat go"><div class="sl2">This Week</div><div class="sv">'+weekCount+'</div><div class="sic">📊</div></div><div class="stat gn"><div class="sl2">Total Recorded</div><div class="sv">'+subs.length+'</div><div class="sic">🔄</div></div><div class="stat tl"><div class="sl2">Unique Teachers</div><div class="sv">'+(new Set(subs.map(s=>s.substituteName))).size+'</div><div class="sb3">substituting</div><div class="sic">👥</div></div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="sub-q" placeholder="🔍 Search by absent teacher, substitute, period…" oninput="fltSubs()" style="flex:1;min-width:200px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><input type="date" id="sub-date" onchange="fltSubs()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><button class="btn bg2 bsm" onclick="document.getElementById(\'sub-date\').value=\''+todayDate+'\';fltSubs()">Today</button><button class="btn bg2 bsm" onclick="document.getElementById(\'sub-date\').value=\'\';fltSubs()">All</button><button class="btn bg2 bsm" onclick="vSubsByTeacher()">📊 By Teacher</button></div></div>'
   +'<div id="subs-list">'+buildSubsTable(subs,canEdit)+'</div>';
@@ -18168,7 +18398,8 @@ function rSubstitutions(){
 
 function buildSubsTable(list,canEdit){
   if(!list.length)return'<div class="emp"><div class="ei">🔄</div><p>No substitutions recorded</p></div>';
-  return'<div class="card"><div class="tw"><table><thead><tr><th>Date</th><th>Day</th><th>Period / Time</th><th>Subject</th><th>Class</th><th>Absent Teacher</th><th>Substitute</th><th>Notes</th><th>Created</th>'+(canEdit?'<th></th>':'')+'</tr></thead><tbody>'+list.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.created||'').localeCompare(a.created||'')).map(s=>'<tr><td class="mono" style="font-size:11px">'+esc(s.date||'—')+'</td><td style="font-size:11px">'+esc(s.day||'')+'</td><td><strong style="font-size:12px">'+esc(s.period||'—')+'</strong>'+(s.time?'<br><span class="mono" style="font-size:10px;color:var(--tx3)">'+esc(s.time)+'</span>':'')+'</td><td>'+esc(s.subject||'—')+'</td><td>'+esc(s.class||'—')+'</td><td><span class="badge brd">❌ '+esc(s.absentName)+'</span></td><td><strong style="color:var(--gd)">✓ '+esc(s.substituteName)+'</strong></td><td style="font-size:11px;color:var(--tx2);max-width:180px">'+esc((s.notes||'').slice(0,80))+((s.notes||'').length>80?'…':'')+'</td><td style="font-size:10px;color:var(--tx3)">'+esc(s.assignedByName||'—')+'<br>'+(s.created||'').split('T')[0]+'</td>'+(canEdit?'<td><button class="btn bd3 bxs" onclick="delSub(\''+s.id+'\')">Del</button></td>':'')+'</tr>').join('')+'</tbody></table></div></div>';
+  return'<div class="card"><div class="tw"><table><thead><tr><th>Date</th><th>Day</th><th>Period / Time</th><th>Subject</th><th>Class</th><th>Absent Teacher</th><th>Substitute</th><th>Notes</th><th>Created</th><th></th></tr></thead><tbody>'+list.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.created||'').localeCompare(a.created||'')).map(s=>'<tr><td class="mono" style="font-size:11px">'+esc(s.date||'—')+'</td><td style="font-size:11px">'+esc(s.day||'')+'</td><td><strong style="font-size:12px">'+esc(s.period||'—')+'</strong>'+(s.time?'<br><span class="mono" style="font-size:10px;color:var(--tx3)">'+esc(s.time)+'</span>':'')+'</td><td>'+esc(s.subject||'—')+'</td><td>'+esc(s.class||'—')+'</td><td><span class="badge brd">❌ '+esc(s.absentName)+'</span></td><td><strong style="color:var(--gd)">✓ '+esc(s.substituteName)+'</strong></td><td style="font-size:11px;color:var(--tx2);max-width:180px">'+esc((s.notes||'').slice(0,80))+((s.notes||'').length>80?'…':'')+'</td><td style="font-size:10px;color:var(--tx3)">'+esc(s.assignedByName||'—')+'<br>'+(s.created||'').split('T')[0]+'</td>'+'<td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn bs bxs" onclick="sbsShareOne(\''+s.id+'\')" title="Send this teacher his notice as a PDF">\u{1f4c4}</button>'
++(canEdit?'<button class="btn bd3 bxs" onclick="delSub(\''+s.id+'\')">Del</button>':'')+'</td></tr>').join('')+'</tbody></table></div></div>';
 }
 
 
