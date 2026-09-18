@@ -21736,11 +21736,14 @@ function wpPortalWeek(){
   return (id?wpWeek(id):null)||wpWeeks()[0]||null;
 }
 function wpPState(){
-  if(!window._wpp)window._wpp={mode:'',teacher:'',cls:''};
+  if(!window._wpp)window._wpp={mode:'',teacher:'',cls:'',unlocked:false};
   if(window._wpp.mode===undefined)window._wpp.mode='';
   if(window._wpp.teacher===undefined)window._wpp.teacher='';
+  if(window._wpp.unlocked===undefined)window._wpp.unlocked=false;
   return window._wpp;
 }
+// Nothing is filled in until somebody has said who he is with his PIN
+function wpPOpen(){return !!wpPState().unlocked&&!!wpPState().teacher;}
 // ── A teacher and the lessons that are his ───────────────
 // The names are those written on the timetable, so a teacher finds himself
 // spelt the way his lessons are.
@@ -21800,24 +21803,28 @@ function renderWpPortal(){
   let body='';
   if(!w){
     body='<div class="al aw" style="margin:0">No week has been opened for the weekly plan yet. Please ask the school.</div>';
+  }else if(!wpPOpen()){
+    body=pdpQ('Your 4-digit PIN','Whichever way you fill the plan in, it starts here — the PIN says who you are.',
+      (wpPinsInUse()
+        ?'<div style="display:flex;gap:7px;flex-wrap:wrap">'
+         +'<input id="wpp-pin" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" onkeydown="if(event.key===\'Enter\')wpPUnlock()" style="flex:1 1 130px;letter-spacing:10px;font-size:22px;text-align:center">'
+         +'<button type="button" class="btn bp" style="flex:0 0 auto;padding:12px 18px" onclick="wpPUnlock()">Open the plan →</button></div>'
+         +'<div id="wpp-pin-msg" style="font-size:11px;color:var(--dn);margin-top:5px"></div>'
+        :'<div class="al aw" style="margin:0">No PIN has been given out yet. Please ask the school office for yours \u2014 they are set in Weekly Plan \u2192 \u{1f511} Teacher PINs.</div>'),true);
   }else if(!st.mode){
-    body=(wpPinsInUse()
-      ?pdpQ('Type your PIN','It takes you straight to your own classes.',
-        '<div style="display:flex;gap:7px;flex-wrap:wrap">'
-        +'<input id="wpp-pin" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" onkeydown="if(event.key===\'Enter\')wpPUnlock()" style="flex:1 1 130px;letter-spacing:10px;font-size:22px;text-align:center">'
-        +'<button type="button" class="btn bp" style="flex:0 0 auto;padding:12px 18px" onclick="wpPUnlock()">Open my classes →</button></div>'
-        +'<div id="wpp-pin-msg" style="font-size:11px;color:var(--dn);margin-top:5px"></div>',false)
-      :'')
-      +pdpQ(wpPinsInUse()?'Or find yourself in the list':'How would you like to fill it in?','',
+    body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<div style="font-size:13px">\u{2713} Opened by <strong>'+esc(st.teacher)+'</strong></div>'
+      +'<button class="btn bg2 bsm" onclick="wpPReset()">Not you?</button></div>'
+      +pdpQ('What would you like to fill in?','',
       '<div style="display:flex;flex-wrap:wrap;gap:9px">'
       +'<button type="button" class="btn bp" style="flex:1 1 210px;justify-content:center;flex-direction:column;padding:18px 12px" onclick="wpPMode('+q+'teacher'+q+')">'
        +'<span style="font-size:22px">\u{1f9d1}\u{200d}\u{1f3eb}</span>'
-       +'<span style="font-size:14px;font-weight:700;margin-top:4px">Pick my name</span>'
-       +'<span style="font-size:11px;opacity:.85;margin-top:2px">See only the classes and periods that are mine</span></button>'
+       +'<span style="font-size:14px;font-weight:700;margin-top:4px">My own periods</span>'
+       +'<span style="font-size:11px;opacity:.85;margin-top:2px">Only the classes and periods that are mine</span></button>'
       +'<button type="button" class="btn bg2" style="flex:1 1 210px;justify-content:center;flex-direction:column;padding:18px 12px" onclick="wpPMode('+q+'class'+q+')">'
        +'<span style="font-size:22px">\u{1f3eb}</span>'
-       +'<span style="font-size:14px;font-weight:700;margin-top:4px">Pick a class</span>'
-       +'<span style="font-size:11px;color:var(--tx3);margin-top:2px">See the whole week of one class</span></button>'
+       +'<span style="font-size:14px;font-weight:700;margin-top:4px">A whole class</span>'
+       +'<span style="font-size:11px;color:var(--tx3);margin-top:2px">Every period of one class\u2019s week</span></button>'
       +'</div>',true);
   }else if(st.mode==='teacher'&&!st.teacher){
     const names=wpPickableNames();
@@ -21906,8 +21913,8 @@ function renderWpPortal(){
         }).join('')+'</div></div>'
       :'';
     body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
-      +'<div style="font-size:13px">'+(byName?'\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong> · ':'')
-        +'<strong>'+esc(cls)+'</strong> · '+esc(wpWeekLabel(w))+'</div>'
+      +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong> · '
+        +'<strong>'+esc(cls)+'</strong> · '+esc(wpWeekLabel(w))+(byName?'':' <span class="badge bbl" style="font-size:9px">whole class</span>')+'</div>'
       +'<button class="btn bg2 bsm" onclick="wpPBack()">← Another class</button></div>'
       +(og.ok?'<div class="al ai" style="font-size:11px">'
                +(byName?'These are your periods in '+esc(cls)+'. ':'Fill in the periods that are yours. ')
@@ -21944,18 +21951,18 @@ function wpPUnlock(){
     if(!name){say('That PIN is not right. Try again, or find your name in the list below.');return false;}
     if(wpIsExcludedTeacher(name)){say('You are not asked for a weekly plan at the moment.');return false;}
     const st=wpPState();
-    st.mode='teacher';st.teacher=name;st.cls='';
+    st.unlocked=true;st.teacher=name;st.mode='teacher';st.cls='';
     renderWpPortal();window.scrollTo(0,0);
     toast('Welcome, '+name,'success');
     return true;
   });
 }
-function wpPMode(m){const st=wpPState();st.mode=m;st.teacher='';st.cls='';renderWpPortal();window.scrollTo(0,0);}
+function wpPMode(m){const st=wpPState();st.mode=m;st.cls='';renderWpPortal();window.scrollTo(0,0);}
 function wpPTeacher(n){const st=wpPState();st.teacher=n;st.cls='';renderWpPortal();window.scrollTo(0,0);}
 function wpPPick(cls){wpPState().cls=cls;renderWpPortal();window.scrollTo(0,0);}
 function wpPBack(){wpPState().cls='';renderWpPortal();window.scrollTo(0,0);}
-function wpPBackName(){const st=wpPState();st.teacher='';st.cls='';renderWpPortal();window.scrollTo(0,0);}
-function wpPReset(){window._wpp={mode:'',teacher:'',cls:''};renderWpPortal();window.scrollTo(0,0);}
+function wpPBackName(){const st=wpPState();st.mode='';st.cls='';renderWpPortal();window.scrollTo(0,0);}
+function wpPReset(){window._wpp={mode:'',teacher:'',cls:'',unlocked:false};renderWpPortal();window.scrollTo(0,0);}
 
 // ── The same lessons in another section ──────────────────
 // A teacher who takes, say, both 4-A and 4-B writes the plan once and brings
@@ -21967,6 +21974,7 @@ function wpPCopy(src){
   const w=wpPortalWeek();
   const st=wpPState();
   if(!w||!st.cls||!st.teacher)return;
+  if(!wpPOpen()){toast('Type your PIN first','danger');renderWpPortal();return;}
   const og=wpOpen(w);
   if(!og.ok){toast(og.why,'danger');renderWpPortal();return;}
   const from=wpDue(w.id,src).filter(function(l){return wpIsTeacher(l,st.teacher);});
@@ -22011,6 +22019,7 @@ function wpPSave(){
   if(!w||!cls)return;
   // asked again at the moment of saving, so a week closed or locked in the
   // meantime cannot be written to
+  if(!wpPOpen()){toast('Type your PIN first','danger');renderWpPortal();return;}
   const og=wpOpen(w);
   if(!og.ok){toast(og.why,'danger');renderWpPortal();return;}
   const cur=wpAll().slice();
