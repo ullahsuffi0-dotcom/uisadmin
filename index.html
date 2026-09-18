@@ -21195,9 +21195,49 @@ function wpPortalWeek(){
   return (id?wpWeek(id):null)||wpWeeks()[0]||null;
 }
 function wpPState(){
-  if(!window._wpp)window._wpp={cls:''};
+  if(!window._wpp)window._wpp={mode:'',teacher:'',cls:''};
+  if(window._wpp.mode===undefined)window._wpp.mode='';
+  if(window._wpp.teacher===undefined)window._wpp.teacher='';
   return window._wpp;
 }
+// ── A teacher and the lessons that are his ───────────────
+// The names are those written on the timetable, so a teacher finds himself
+// spelt the way his lessons are.
+function wpTeacherNames(){
+  const u=(typeof bdTtNamesUsed==='function')?bdTtNamesUsed():{};
+  return Object.keys(u).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());});
+}
+function wpIsTeacher(l,name){
+  const k=String(name||'').trim().toLowerCase();
+  if(!k)return false;
+  return String((l&&l.teacher)||'').split(' / ').some(function(x){return x.trim().toLowerCase()===k;});
+}
+function wpTeacherLessons(name,cls){
+  return wpLessons(cls).filter(function(l){return wpIsTeacher(l,name);});
+}
+function wpTeacherClasses(name){
+  return wpClasses().filter(function(c){return wpTeacherLessons(name,c).length>0;});
+}
+function wpTeacherStats(wk,name,cls){
+  const ls=wpTeacherLessons(name,cls),m=wpMap(wk,cls);
+  let filled=0;
+  ls.forEach(function(l){if(wpHasText(m[wpId(wk,cls,l.day,l.period)]))filled++;});
+  return {total:ls.length,filled:filled};
+}
+// The other sections of the same grade this teacher also takes
+function wpSiblingSections(name,cls){
+  const g=String(cls||'').split('-')[0];
+  return wpTeacherClasses(name).filter(function(c){
+    return c!==cls&&String(c).split('-')[0]===g;
+  });
+}
+// The lessons the open form is showing: his own, or the whole class
+function wpPLessons(){
+  const st=wpPState();
+  if(!st.cls)return [];
+  return st.mode==='teacher'&&st.teacher?wpTeacherLessons(st.teacher,st.cls):wpLessons(st.cls);
+}
+
 function renderWpPortal(){
   const s=DB.get('settings')||{};
   const w=wpPortalWeek();
@@ -21213,22 +21253,56 @@ function renderWpPortal(){
   let body='';
   if(!w){
     body='<div class="al aw" style="margin:0">No week has been opened for the weekly plan yet. Please ask the school.</div>';
+  }else if(!st.mode){
+    body=pdpQ('How would you like to fill it in?','',
+      '<div style="display:flex;flex-wrap:wrap;gap:9px">'
+      +'<button type="button" class="btn bp" style="flex:1 1 210px;justify-content:center;flex-direction:column;padding:18px 12px" onclick="wpPMode('+q+'teacher'+q+')">'
+       +'<span style="font-size:22px">\u{1f9d1}\u{200d}\u{1f3eb}</span>'
+       +'<span style="font-size:14px;font-weight:700;margin-top:4px">Pick my name</span>'
+       +'<span style="font-size:11px;opacity:.85;margin-top:2px">See only the classes and periods that are mine</span></button>'
+      +'<button type="button" class="btn bg2" style="flex:1 1 210px;justify-content:center;flex-direction:column;padding:18px 12px" onclick="wpPMode('+q+'class'+q+')">'
+       +'<span style="font-size:22px">\u{1f3eb}</span>'
+       +'<span style="font-size:14px;font-weight:700;margin-top:4px">Pick a class</span>'
+       +'<span style="font-size:11px;color:var(--tx3);margin-top:2px">See the whole week of one class</span></button>'
+      +'</div>',true);
+  }else if(st.mode==='teacher'&&!st.teacher){
+    const names=wpTeacherNames();
+    body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<div style="font-size:13px">Filling in by name</div>'
+      +'<button class="btn bg2 bsm" onclick="wpPReset()">← Back</button></div>'
+      +pdpQ('Choose your name','As it is written on the timetable.',
+        (names.length
+          ?'<div style="display:flex;flex-wrap:wrap;gap:7px">'
+           +names.map(function(n){
+              const cs=wpTeacherClasses(n).length;
+              return '<button type="button" class="btn bg2" style="flex:1 1 150px;justify-content:center;flex-direction:column;padding:10px 8px" onclick="wpPTeacher('+q+escJs(n)+q+')">'
+               +'<span style="font-size:13px;font-weight:700">'+esc(n)+'</span>'
+               +'<span style="font-size:10px;color:var(--tx3)">'+cs+' class(es)</span></button>';
+            }).join('')+'</div>'
+          :'<div class="al aw" style="margin:0">No teacher is named on the timetable yet.</div>'),true);
   }else if(!st.cls){
-    const classes=wpClasses();
-    body=pdpQ('Choose your class','Then fill in the periods that are yours on the timetable.',
+    const byName=st.mode==='teacher';
+    const classes=byName?wpTeacherClasses(st.teacher):wpClasses();
+    body=(byName?'<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong></div>'
+      +'<button class="btn bg2 bsm" onclick="wpPBackName()">← Another name</button></div>'
+      :'<div class="card" style="margin-bottom:12px;display:flex;justify-content:flex-end"><button class="btn bg2 bsm" onclick="wpPReset()">← Back</button></div>')
+      +pdpQ(byName?'Choose the class':'Choose your class',
+        byName?'Only the classes you teach are shown.':'Then fill in the periods that are yours on the timetable.',
       (classes.length
         ?'<div style="display:flex;flex-wrap:wrap;gap:7px">'
          +classes.map(function(c){
-            const cs=wpClassStats(w.id,c);
+            const cs=byName?wpTeacherStats(w.id,st.teacher,c):wpClassStats(w.id,c);
             return '<button type="button" class="btn bg2" style="flex:1 1 92px;justify-content:center;flex-direction:column;padding:11px 8px" onclick="wpPPick('+q+escJs(c)+q+')">'
              +'<span style="font-size:15px;font-weight:700">'+esc(c)+'</span>'
              +'<span style="font-size:10px;color:var(--tx3)">'+cs.filled+'/'+cs.total+' planned</span></button>';
           }).join('')+'</div>'
-        :'<div class="al aw" style="margin:0">There is no class timetable to plan against yet.</div>'),true);
+        :'<div class="al aw" style="margin:0">'+(byName?'No lesson on the timetable is under this name.':'There is no class timetable to plan against yet.')+'</div>'),true);
   }else{
     const cls=st.cls;
+    const byName=st.mode==='teacher'&&!!st.teacher;
     const m=wpMap(w.id,cls);
-    const ls=wpLessons(cls);
+    const ls=wpPLessons();
     let rows='';
     bdTtDayNames().forEach(function(day){
       const dl=ls.filter(function(l){return l.day===day;});
@@ -21254,13 +21328,30 @@ function renderWpPortal(){
          +'</div>';
       });
     });
+    // The same lessons taught to another section of the same grade
+    const sibs=byName?wpSiblingSections(st.teacher,cls):[];
+    const copy=(byName&&og.ok&&sibs.length)
+      ?'<div class="card" style="padding:11px;margin-bottom:10px">'
+       +'<div style="font-size:12px;font-weight:600;margin-bottom:4px">\u{1f4cb} You take the same grade in another section</div>'
+       +'<div style="font-size:11px;color:var(--tx3);margin-bottom:7px">Copy what you wrote there into this one, subject by subject. Anything already typed here is left as it is — check it and press Save.</div>'
+       +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+       +sibs.map(function(c){
+          const cs=wpTeacherStats(w.id,st.teacher,c);
+          return '<button type="button" class="btn bs bsm" onclick="wpPCopy('+q+escJs(c)+q+')">Copy from '+esc(c)+' ('+cs.filled+'/'+cs.total+')</button>';
+        }).join('')+'</div></div>'
+      :'';
     body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
-      +'<div style="font-size:13px"><strong>'+esc(cls)+'</strong> · '+esc(wpWeekLabel(w))+'</div>'
+      +'<div style="font-size:13px">'+(byName?'\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong> · ':'')
+        +'<strong>'+esc(cls)+'</strong> · '+esc(wpWeekLabel(w))+'</div>'
       +'<button class="btn bg2 bsm" onclick="wpPBack()">← Another class</button></div>'
-      +(og.ok?'<div class="al ai" style="font-size:11px">Fill in the periods that are yours. '+(w.deadline?'This week closes on <strong>'+esc(wpDeadlineText(w))+'</strong>. ':'')+'Press Save at the bottom — you can come back and add more until it closes.</div>'
+      +(og.ok?'<div class="al ai" style="font-size:11px">'
+               +(byName?'These are your periods in '+esc(cls)+'. ':'Fill in the periods that are yours. ')
+               +(w.deadline?'This week closes on <strong>'+esc(wpDeadlineText(w))+'</strong>. ':'')
+               +'Press Save at the bottom — you can come back and add more until it closes.</div>'
                :'<div class="al aw" style="font-size:11px">'+esc(og.why)+' You can read what is there but nothing more can be filled in.</div>')
-      +(rows||'<div class="al aw">This class has no lessons on the timetable.</div>')
-      +(og.ok?'<button class="btn bp" id="wpp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:10px" onclick="wpPSave()">Save the plan of '+esc(cls)+' →</button>':'');
+      +copy
+      +(rows||'<div class="al aw">'+(byName?'You have no lesson in this class on the timetable.':'This class has no lessons on the timetable.')+'</div>')
+      +(og.ok&&ls.length?'<button class="btn bp" id="wpp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:10px" onclick="wpPSave()">Save '+(byName?'my lessons in '+esc(cls):'the plan of '+esc(cls))+' →</button>':'');
   }
   wrap.innerHTML='<style>#wpp select,#wpp input,#wpp textarea{width:100%;box-sizing:border-box;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;font-family:inherit}#wpp .card{border-radius:10px}#wpp label{display:block;font-size:10px;color:var(--tx3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px}</style>'
    +'<div style="max-width:720px;margin:0 auto">'
@@ -21277,11 +21368,64 @@ function renderWpPortal(){
    +'</div></div>'+body+'</div>';
   document.body.appendChild(wrap);
 }
+function wpPMode(m){const st=wpPState();st.mode=m;st.teacher='';st.cls='';renderWpPortal();window.scrollTo(0,0);}
+function wpPTeacher(n){const st=wpPState();st.teacher=n;st.cls='';renderWpPortal();window.scrollTo(0,0);}
 function wpPPick(cls){wpPState().cls=cls;renderWpPortal();window.scrollTo(0,0);}
 function wpPBack(){wpPState().cls='';renderWpPortal();window.scrollTo(0,0);}
+function wpPBackName(){const st=wpPState();st.teacher='';st.cls='';renderWpPortal();window.scrollTo(0,0);}
+function wpPReset(){window._wpp={mode:'',teacher:'',cls:''};renderWpPortal();window.scrollTo(0,0);}
+
+// ── The same lessons in another section ──────────────────
+// A teacher who takes, say, both 4-A and 4-B writes the plan once and brings
+// it across. Lessons are matched subject by subject in the order they fall in
+// the week, since the two sections meet at different times. Nothing is saved
+// by this — the boxes are filled in for him to look over first, and a box he
+// has already written in is left alone.
+function wpPCopy(src){
+  const w=wpPortalWeek();
+  const st=wpPState();
+  if(!w||!st.cls||!st.teacher)return;
+  const og=wpOpen(w);
+  if(!og.ok){toast(og.why,'danger');renderWpPortal();return;}
+  const from=wpTeacherLessons(st.teacher,src);
+  const to=wpTeacherLessons(st.teacher,st.cls);
+  const m=wpMap(w.id,src);
+  const bySub={};
+  from.forEach(function(l){
+    const r=m[wpId(w.id,src,l.day,l.period)];
+    if(!wpHasText(r))return;
+    const k=String(l.subject||'').toLowerCase();
+    (bySub[k]=bySub[k]||[]).push(r);
+  });
+  const used={};
+  let copied=0,kept=0;
+  to.forEach(function(l){
+    const k=String(l.subject||'').toLowerCase();
+    const list=bySub[k]||[];
+    used[k]=used[k]||0;
+    const r=list[used[k]]||list[list.length-1];
+    if(!r)return;
+    used[k]++;
+    const key=l.day.slice(0,3)+l.period;
+    let any=false,left=false;
+    [['t','topic'],['h','homework'],['r','resources']].forEach(function(p){
+      const e=document.getElementById('wpf-'+p[0]+'-'+key);
+      if(!e)return;
+      const v=String(r[p[1]]||'');
+      if(!v)return;
+      if(String(e.value||'').trim()){left=true;return;}
+      e.value=v;any=true;
+    });
+    if(any)copied++;else if(left)kept++;
+  });
+  if(!copied&&!kept){toast('There is nothing filled in for you in '+src+' yet','info');return;}
+  toast(copied+' lesson(s) copied from '+src+(kept?' · '+kept+' already had something and were left':'')+' — check them and press Save','success');
+}
+
 function wpPSave(){
   const w=wpPortalWeek();
-  const cls=wpPState().cls;
+  const st=wpPState();
+  const cls=st.cls;
   if(!w||!cls)return;
   // asked again at the moment of saving, so a week closed or locked in the
   // meantime cannot be written to
@@ -21289,27 +21433,30 @@ function wpPSave(){
   if(!og.ok){toast(og.why,'danger');renderWpPortal();return;}
   const cur=wpAll().slice();
   const now=new Date().toISOString();
+  const SEP=String.fromCharCode(1);
   let n=0;
-  wpLessons(cls).forEach(function(l){
+  // only the lessons on screen, so filling in by name never touches another
+  // teacher's lesson in the same class
+  wpPLessons().forEach(function(l){
     const k=l.day.slice(0,3)+l.period;
     const g=function(p){const e=document.getElementById('wpf-'+p+'-'+k);return e?String(e.value||'').trim():'';};
     const topic=g('t'),hw=g('h'),res=g('r');
     const id=wpId(w.id,cls,l.day,l.period);
     const old=cur.filter(function(x){return x.id===id;})[0];
-    const was=old?[(old.topic||''),(old.homework||''),(old.resources||'')].join(' '):'';
-    const now2=[topic,hw,res].join(' ');
-    if(was===now2)return;
+    const was=old?[(old.topic||''),(old.homework||''),(old.resources||'')].join(SEP):'';
+    const val=[topic,hw,res].join(SEP);
+    if(was===val)return;
     if(!topic&&!hw&&!res&&!old)return;
     const rec={id:id,wk:w.id,cls:cls,day:l.day,period:l.period,subject:l.subject,
       teacher:l.teacher,topic:topic,homework:hw,resources:res,
-      byName:l.teacher||'',at:now};
+      byName:st.teacher||l.teacher||'',at:now};
     const i=cur.findIndex(function(x){return x.id===id;});
     if(i>=0)cur[i]=Object.assign({},cur[i],rec);else cur.push(rec);
     n++;
   });
   if(!n){toast('Nothing new was written in','info');return;}
   DB.set('weekly_plans',cur);
-  logA('Weekly plan filled in for '+cls+' — '+n+' lesson(s), '+(w.label||w.id));
+  logA('Weekly plan filled in for '+cls+(st.teacher?' by '+st.teacher:'')+' — '+n+' lesson(s), '+(w.label||w.id));
   toast(n+' lesson(s) saved for '+cls,'success');
   renderWpPortal();
 }
