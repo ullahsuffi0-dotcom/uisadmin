@@ -7360,6 +7360,246 @@ function excApplyAbsent(){
   toast(r.days?('Added '+r.students+' student(s) across '+r.days+' day(s)'):'Everyone excused is already on the absent list','success');
   rExcused();
 }
+// ═══════════════════════════════════════════════════════════
+// ATTENDANCE FROM A SCANNED CODE
+// One code for the school. Whoever takes the register scans it, picks the
+// class, taps the boys who are not there, and presses submit; the screen then
+// tells him how many the class has, how many are present and how many absent.
+// It writes into the same day's attendance as the office does — only the
+// students of that class are touched, so two classes taken at once on two
+// phones do not tread on each other. A boy already marked late cannot be
+// marked absent, as on the attendance page itself.
+// ═══════════════════════════════════════════════════════════
+function aqUrl(){
+  let u=window.location.origin+window.location.pathname+'?att=1';
+  if(CURRENT_SCHOOL_ID)u+='&sch='+encodeURIComponent(CURRENT_SCHOOL_ID);
+  return u;
+}
+function aqToday(){return new Date().toISOString().split('T')[0];}
+function aqClassOf(s){return grSec(s&&s.grade,s&&s.section);}
+function aqClasses(){
+  const by={};
+  (DB.get('students')||[]).forEach(function(s){
+    const c=aqClassOf(s);
+    if(!c||c==='-'||c==='undefined-undefined')return;
+    by[c]=(by[c]||0)+1;
+  });
+  return Object.keys(by).sort(function(a,b){
+    const ga=parseInt(String(a).split('-')[0])||0,gb=parseInt(String(b).split('-')[0])||0;
+    return ga-gb||String(a).localeCompare(String(b));
+  }).map(function(c){return {cls:c,n:by[c]};});
+}
+function aqStudents(cls){
+  return (DB.get('students')||[]).filter(function(s){return aqClassOf(s)===cls;})
+   .sort(function(a,b){return (Number(a.sn)||0)-(Number(b.sn)||0)||fN(a).localeCompare(fN(b));});
+}
+// The day's record, as the office keeps it
+function aqDay(date){
+  const all=DB.get('attendance')||[];
+  return all.find(function(a){return a&&a.date===date;})||null;
+}
+function aqAbsentSet(date){
+  const r=aqDay(date);
+  return new Set((r&&r.absentIds)||[]);
+}
+function aqLateSet(date){
+  const r=aqDay(date);
+  return new Set((r&&r.lateIds)||[]);
+}
+function aqDone(date,cls){
+  const r=aqDay(date);
+  return (r&&r.classDone&&r.classDone[cls])||null;
+}
+
+function aqState(){
+  if(!window._aq)window._aq={cls:'',absent:{},done:null};
+  if(!window._aq.absent)window._aq.absent={};
+  return window._aq;
+}
+function checkAttMode(){
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('att')==='1'){renderAttPortal();return true;}
+  return false;
+}
+function renderAttPortal(){
+  const s=DB.get('settings')||{};
+  const st=aqState();
+  const date=aqToday();
+  const lp=document.getElementById('lp');if(lp)lp.classList.add('hidden');
+  const ap=document.getElementById('app');if(ap)ap.classList.add('hidden');
+  const old=document.getElementById('aqp');if(old)old.remove();
+  const q=String.fromCharCode(39);
+  const wrap=document.createElement('div');
+  wrap.id='aqp';
+  wrap.style.cssText='min-height:100vh;background:var(--bg);padding:18px 14px 40px';
+  let body='';
+  if(st.done){
+    // what was just submitted
+    const d=st.done;
+    body='<div class="card" style="padding:18px;margin-bottom:12px;text-align:center;border-top:6px solid var(--su)">'
+     +'<div style="font-size:34px">✅</div>'
+     +'<div style="font-size:17px;font-weight:700;margin-top:4px">'+esc(d.cls)+' — attendance taken</div>'
+     +'<div style="font-size:12px;color:var(--tx3);margin-top:2px">'+esc(wpDateText(d.date))+' · '+esc(getDayOfWeek(d.date)||'')+'</div>'
+     +'<div class="cg g3" style="margin-top:14px">'
+     +'<div class="stat bl"><div class="sl2">Total</div><div class="sv">'+d.total+'</div><div class="sb3">on the roll</div><div class="sic">\u{1f468}\u{200d}\u{1f393}</div></div>'
+     +'<div class="stat gn"><div class="sl2">Present</div><div class="sv">'+d.present+'</div><div class="sb3">'+(d.total?Math.round(d.present/d.total*100):0)+'%</div><div class="sic">✅</div></div>'
+     +'<div class="stat rd"><div class="sl2">Absent</div><div class="sv">'+d.absent+'</div><div class="sb3">'+(d.total?Math.round(d.absent/d.total*100):0)+'%</div><div class="sic">❌</div></div>'
+     +'</div>'
+     +(d.names&&d.names.length
+       ?'<div style="margin-top:12px;text-align:left"><div style="font-size:11px;font-weight:700;color:var(--dn);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Absent</div>'
+        +d.names.map(function(n){return '<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--bd)">'+esc(n)+'</div>';}).join('')+'</div>'
+       :'<div class="al ag" style="margin-top:12px">Everybody is present.</div>')
+     +'</div>'
+     +'<div style="display:flex;gap:7px;flex-wrap:wrap">'
+     +'<button class="btn bp" style="flex:1 1 150px;justify-content:center;padding:13px" onclick="aqPick('+q+escJs(d.cls)+q+')">Change this class</button>'
+     +'<button class="btn bg2" style="flex:1 1 150px;justify-content:center;padding:13px" onclick="aqBack()">Another class →</button></div>';
+  }else if(!st.cls){
+    const classes=aqClasses();
+    body=pdpQ('Choose the class','Then tap whoever is not there. Everybody else is counted present.',
+      (classes.length
+        ?'<div style="display:flex;flex-wrap:wrap;gap:7px">'
+         +classes.map(function(c){
+            const d=aqDone(date,c.cls);
+            return '<button type="button" class="btn '+(d?'bs':'bg2')+'" style="flex:1 1 96px;justify-content:center;flex-direction:column;padding:11px 8px" onclick="aqPick('+q+escJs(c.cls)+q+')">'
+             +'<span style="font-size:15px;font-weight:700">'+esc(c.cls)+'</span>'
+             +'<span style="font-size:10px;opacity:.85">'+(d?'✓ '+d.absent+' absent':c.n+' students')+'</span></button>';
+          }).join('')+'</div>'
+        :'<div class="al aw" style="margin:0">There are no students on the roll yet.</div>'),true);
+  }else{
+    const cls=st.cls;
+    const list=aqStudents(cls);
+    const late=aqLateSet(date);
+    const n=Object.keys(st.absent).filter(function(k){return st.absent[k];}).length;
+    body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+     +'<div style="font-size:13px"><strong>'+esc(cls)+'</strong> · '+esc(wpDateText(date))+'</div>'
+     +'<button class="btn bg2 bsm" onclick="aqBack()">← Another class</button></div>'
+     +'<div class="al ai" style="font-size:11px">Tap a boy to mark him <strong>absent</strong>; tap again to put him back. Everybody you do not tap is counted present.</div>'
+     +'<div class="card" style="padding:0;overflow:hidden">'
+     +list.map(function(x){
+        const on=!!st.absent[x.id];
+        const isLate=late.has(x.id);
+        const exc=(typeof isExcusedOn==='function')&&isExcusedOn(x.id,date);
+        return '<div id="aq-'+esc(x.id)+'" onclick="aqTog('+q+escJs(x.id)+q+')" style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-bottom:1px solid var(--bd);cursor:pointer;'
+         +(on?'background:var(--dnbg)':'')+'">'
+         +'<div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;'
+           +(on?'background:var(--dn);color:#fff':'background:var(--sf2);color:var(--tx3);border:1px solid var(--bd)')+'">'+(on?'✕':'✓')+'</div>'
+         +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;'+(on?'color:var(--dn)':'')+'">'+esc(fN(x))+'</div>'
+         +'<div style="font-size:10px;color:var(--tx3)">SN '+esc(x.sn||'—')
+           +(isLate?' · <span style="color:var(--wn);font-weight:700">marked late</span>':'')
+           +(exc?' · <span style="color:var(--su);font-weight:700">excused today</span>':'')+'</div></div>'
+         +'<div style="font-size:11px;font-weight:700;'+(on?'color:var(--dn)':'color:var(--su)')+'">'+(on?'ABSENT':'present')+'</div>'
+         +'</div>';
+      }).join('')
+     +'</div>'
+     +'<div class="card" style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+     +'<div style="font-size:12px"><strong id="aq-n">'+n+'</strong> marked absent of '+list.length+'</div>'
+     +'<button class="btn bg2 bsm" onclick="aqClear()">Put everybody back</button></div>'
+     +'<button class="btn bp" id="aq-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:10px" onclick="aqSubmit()">Submit '+esc(cls)+' →</button>';
+  }
+  wrap.innerHTML='<style>#aqp select,#aqp input{width:100%;box-sizing:border-box;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px;font-family:inherit}#aqp .card{border-radius:10px}</style>'
+   +'<div style="max-width:620px;margin:0 auto">'
+   +'<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;border-top:9px solid var(--ac)"><div style="padding:20px">'
+   +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
+   +'<div style="width:46px;height:46px;background:linear-gradient(135deg,var(--ac),var(--pu));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex-shrink:0">'
+   +(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'\u{1f3eb}'))+'</div>'
+   +'<div style="min-width:0"><div style="font-size:13px;color:var(--tx2)">'+esc(s.schoolName||'School')+'</div>'
+   +'<div style="font-size:11px;color:var(--tx3)">'+esc(s.schoolNameAr||'')+'</div></div></div>'
+   +'<h1 style="font-size:22px;font-weight:700;color:var(--tx);margin-bottom:6px">Daily Attendance</h1>'
+   +'<p style="font-size:13px;color:var(--tx2);line-height:1.6">'+esc(getDayOfWeek(date)||'')+' '+esc(wpDateText(date))+' · tap whoever is absent, then submit.</p>'
+   +'</div></div>'+body+'</div>';
+  document.body.appendChild(wrap);
+}
+function aqPick(cls){
+  const st=aqState();
+  st.cls=cls;st.done=null;st.absent={};
+  // whatever the office already has for this class comes up ticked
+  const cur=aqAbsentSet(aqToday());
+  aqStudents(cls).forEach(function(x){if(cur.has(x.id))st.absent[x.id]=true;});
+  renderAttPortal();window.scrollTo(0,0);
+}
+function aqBack(){const st=aqState();st.cls='';st.done=null;st.absent={};renderAttPortal();window.scrollTo(0,0);}
+function aqClear(){const st=aqState();st.absent={};renderAttPortal();window.scrollTo(0,0);}
+function aqTog(sid){
+  const st=aqState();
+  const date=aqToday();
+  if(!st.absent[sid]&&aqLateSet(date).has(sid)){
+    toast(cannotAbsentMsg(sid,date),'danger');return;
+  }
+  st.absent[sid]=!st.absent[sid];
+  renderAttPortal();
+}
+// Only this class's students are written; everybody else's marks stay as they are
+function aqSubmit(){
+  const st=aqState();
+  const cls=st.cls;
+  const date=aqToday();
+  if(!cls)return;
+  const list=aqStudents(cls);
+  if(!list.length){toast('That class has nobody on the roll','danger');return;}
+  const mine=list.map(function(x){return x.id;});
+  const late=aqLateSet(date);
+  const absent=mine.filter(function(id){return st.absent[id]&&!late.has(id);});
+  const all=DB.get('attendance')||[];
+  let i=all.findIndex(function(a){return a&&a.date===date;});
+  if(i<0){all.push({date:date,absentIds:[],lateIds:[],lateTimes:{},marked:false,markedBy:'',markedAt:''});i=all.length-1;}
+  const rec=all[i];
+  const keep=(rec.absentIds||[]).filter(function(id){return mine.indexOf(id)<0;});
+  rec.absentIds=keep.concat(absent);
+  rec.classDone=Object.assign({},rec.classDone||{});
+  rec.classDone[cls]={total:list.length,absent:absent.length,present:list.length-absent.length,
+    by:'QR code',at:new Date().toISOString()};
+  DB.set('attendance',all);
+  const names=list.filter(function(x){return absent.indexOf(x.id)>=0;}).map(fN);
+  st.done={cls:cls,date:date,total:list.length,absent:absent.length,present:list.length-absent.length,names:names};
+  logA('Attendance taken from the QR code for '+cls+' — '+absent.length+' absent of '+list.length);
+  toast(cls+': '+(list.length-absent.length)+' present, '+absent.length+' absent','success');
+  renderAttPortal();window.scrollTo(0,0);
+}
+
+// ── The poster ───────────────────────────────────────────
+function aqQrM(){
+  const url=aqUrl();
+  const qr='https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data='+encodeURIComponent(url);
+  const qrLg='https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=20&data='+encodeURIComponent(url);
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>\u{1f4f1} Attendance QR</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">One code for the whole school. Whoever takes the register scans it, picks the class, taps the boys who are not there and submits — the screen then shows the class total, how many are present and how many absent. It writes into today’s attendance here, class by class, so two people can take two classes at the same time.</div>'
+  +'<div style="text-align:center;padding:10px"><img src="'+qr+'" alt="Attendance QR" style="width:230px;height:230px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
+  +'<div style="background:var(--sf2);padding:9px;border-radius:var(--rs);font-family:'+q+'JetBrains Mono'+q+',monospace;font-size:10px;color:var(--ac);word-break:break-all;border:1px solid var(--bd);margin-bottom:10px">'+esc(url)+'</div>'
+  +'<button class="btn bg2 bsm" onclick="navigator.clipboard.writeText('+q+escJs(url)+q+').then(function(){toast('+q+'Link copied'+q+','+q+'success'+q+');})">\u{1f4cb} Copy Link</button>'
+  +'<a href="'+esc(qrLg)+'" download="attendance_qr.png" class="btn bg2 bsm" style="text-decoration:none;margin-left:6px">⬇️ Download QR</a>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bp" onclick="aqPrintPoster()">\u{1f5a8}\u{fe0f} Print Poster</button></div>',true);
+}
+function aqPrintPoster(){
+  const s=DB.get('settings')||{};
+  const url=aqUrl();
+  const qr='https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=10&data='+encodeURIComponent(url);
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to print the poster','danger');return;}
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Attendance QR</title>'
+  +'<style>@page{size:A4;margin:14mm}body{font-family:Arial,sans-serif;text-align:center;color:#12263f;margin:0}'
+  +'h1{font-size:26px;margin:0 0 4px;color:#0b3d6b}h2{font-size:15px;color:#42607e;margin:0 0 18px;font-weight:normal}'
+  +'.qr{border:4px solid #0b3d6b;border-radius:14px;padding:10px;display:inline-block;background:#fff}'
+  +'.qr img{width:104mm;height:104mm;display:block}'
+  +'.st{display:flex;justify-content:center;gap:10mm;margin-top:16px;flex-wrap:wrap}'
+  +'.s{width:42mm;font-size:11px;color:#42607e}.n{width:11mm;height:11mm;border-radius:50%;background:#0b3d6b;color:#fff;'
+  +'font-weight:bold;font-size:15px;line-height:11mm;margin:0 auto 4px}'
+  +'.u{margin-top:16px;font-size:10px;color:#5a6b80;word-break:break-all}</style></head><body>'
+  +'<h1>'+esc(s.schoolName||'School')+'</h1><h2>Daily attendance — scan to take the register</h2>'
+  +'<div class="qr"><img src="'+qr+'" alt=""></div>'
+  +'<div class="st">'
+  +'<div class="s"><div class="n">1</div>Scan with the camera</div>'
+  +'<div class="s"><div class="n">2</div>Choose the class</div>'
+  +'<div class="s"><div class="n">3</div>Tap whoever is absent</div>'
+  +'<div class="s"><div class="n">4</div>Submit — the totals appear</div>'
+  +'</div><div class="u">'+esc(url)+'</div>'
+  +'<script>setTimeout(function(){window.print();},700);<\/script></body></html>');
+  w.document.close();
+  logA('Printed the attendance QR poster');
+}
 
 function rAttendance(){
   clearExcusedCache();
@@ -7385,7 +7625,7 @@ function rAttendance(){
   const alreadyNotified=[...absentSet].filter(id=>isNotified('absent',id,sel)).length;
   const toNotify=[...absentSet].filter(id=>!isExcusedOn(id,sel)&&!isNotified('absent',id,sel)).length;
   
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📅 '+T('daily_attendance')+'</h3><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label style="font-size:11px;color:var(--tx3)">Date:</label><input type="date" id="att-date" value="'+sel+'" max="'+today+'" onchange="window._attDate=this.value;rAttendance()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'+(canM?'<button class="btn bs bsm" onclick="expAttClassSummaryPDF()" title="Absent students per class for this date">📄 Class Summary</button><button class="btn bg2 bsm" onclick="expAttClassSummaryCSV()" title="Same summary as a spreadsheet">📊 CSV</button><button class="btn bg2 bsm" onclick="msgTplM()">⚙️ Message Template</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canM?'Mark students absent below. All others will be automatically marked as present. Then click "📱 Send WhatsApp" to notify parents of absent students.':'View attendance records.')+'</div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📅 '+T('daily_attendance')+'</h3><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label style="font-size:11px;color:var(--tx3)">Date:</label><input type="date" id="att-date" value="'+sel+'" max="'+today+'" onchange="window._attDate=this.value;rAttendance()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'+(canM?'<button class="btn bg2 bsm" onclick="aqQrM()" title="Take the register from a scanned code">📱 Attendance QR</button><button class="btn bs bsm" onclick="expAttClassSummaryPDF()" title="Absent students per class for this date">📄 Class Summary</button><button class="btn bg2 bsm" onclick="expAttClassSummaryCSV()" title="Same summary as a spreadsheet">📊 CSV</button><button class="btn bg2 bsm" onclick="msgTplM()">⚙️ Message Template</button>':'')+'</div></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">'+(canM?'Mark students absent below. All others will be automatically marked as present. Then click "📱 Send WhatsApp" to notify parents of absent students.':'View attendance records.')+'</div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Students</div><div class="sv">'+students.length+'</div><div class="sic">👨‍🎓</div></div><div class="stat gn"><div class="sl2">Present</div><div class="sv">'+presentCount+'</div><div class="sb3">'+(students.length?Math.round(presentCount/students.length*100):0)+'%</div><div class="sic">✅</div></div><div class="stat rd"><div class="sl2">Absent</div><div class="sv">'+absentCount+'</div><div class="sb3">'+(excusedCount?excusedCount+' excused · '+toNotify+' to notify':(students.length?Math.round(absentCount/students.length*100):0)+'%')+'</div><div class="sic">❌</div></div><div class="stat go"><div class="sl2">Late</div><div class="sv">'+lateCount+'</div><div class="sb3">'+(lateToNotify!==lateCount?(lateCount-lateToNotify)+' excused':'arrived late')+'</div><div class="sic">⏰</div></div><div class="stat go"><div class="sl2">Status</div><div style="font-size:14px;font-weight:700;margin-top:8px">'+(dayRec.marked?'<span style="color:var(--su)">✓ Submitted</span>':'<span style="color:var(--gd)">⏳ Draft</span>')+'</div>'+(dayRec.markedAt?'<div class="sb3">'+new Date(dayRec.markedAt).toLocaleString()+'</div>':'')+'<div class="sic">📋</div></div></div>'
   +(canM&&absentCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--ac2),var(--pubg));border-color:var(--ac3)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--ac);margin-bottom:3px">📱 Notify Parents via WhatsApp</div><div style="font-size:11px;color:var(--tx2)">Click below to open WhatsApp chats for each absent student\'s father and mother. You can review the message before sending.'+(excusedCount?'<br><strong style="color:var(--su)">'+excusedCount+' excused student(s) will be skipped.</strong>':'')+(alreadyNotified?'<br><strong style="color:var(--su)">'+alreadyNotified+' already notified — they are not in the list.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendWaAll(\'both\')">📱 Both Parents ('+(toNotify*2)+')</button></div></div></div>':'')
   +buildNotifiedCard('absent',sel,canM)
@@ -13605,6 +13845,7 @@ function qExp(type,fmt){document.getElementById('exptype').value=type;doExp(fmt)
     else if(p.get('late')==='1'){window.__earlyPortal='late';}
     else if(p.get('ev')==='1'){window.__earlyPortal='ev';}
     else if(p.get('wp')==='1'){window.__earlyPortal='wp';window._wpPortalWeek=p.get('w')||'';}
+    else if(p.get('att')==='1'){window.__earlyPortal='att';}
     // Portal links carry the school so they work on a device that has never
     // signed in — otherwise there is no school context and no data.
     const sch=p.get('sch');
@@ -13641,6 +13882,8 @@ window.__doSeedAndStart=async function(){
     checkEvMode();
   }else if(window.__earlyPortal==='wp'&&typeof checkWpMode==='function'){
     checkWpMode();
+  }else if(window.__earlyPortal==='att'&&typeof checkAttMode==='function'){
+    checkAttMode();
   }else if(window.__earlyPortal==='excuse'&&typeof checkExcuseMode==='function'){
     checkExcuseMode();
   }else if(typeof checkExcuseMode==='function'&&checkExcuseMode()){
