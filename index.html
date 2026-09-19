@@ -12023,6 +12023,7 @@ function buildSessionCards(sessions,abs,canC){
     +'<div style="display:flex;gap:10px;font-size:11px;color:var(--tx3);margin-bottom:6px">'+statusBadge+' <span>📵 '+sAbs.length+' absent</span> <span>👥 '+stuCount+' students</span> <span>📚 '+subjCount+' subjects</span></div>'
     +'<div style="font-size:10px;color:var(--tx3)">Created '+esc(s.created||'')+' by '+esc(s.createdBy||'')+'</div></div>'
     +'<div style="display:flex;gap:4px" onclick="event.stopPropagation()">'
+    +'<button class="btn bs bxs" title="Absentees QR — the teachers mark who did not sit their paper" onclick="eaSessQr(\''+s.id+'\')">📱</button>'
     +(canC?'<button class="btn bg2 bxs" onclick="editExamSessionM(\''+s.id+'\')">✏️</button><button class="btn bd3 bxs" onclick="delExamSession(\''+s.id+'\')">Del</button>':'')
     +'</div></div></div>';
   }).join('');
@@ -12102,7 +12103,7 @@ function renderSessionAbsents(sess){
   const uniqueStudents=new Set(abs.map(a=>a.studentId||a.studentName)).size;
   const uniqueSubjects=new Set(abs.map(a=>a.subject)).size;
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;align-items:center;gap:8px"><button class="btn bg2 bxs" onclick="exitExamSession()" title="Back to sessions">←</button><h3>📑 '+esc(sess.name)+' <span class="badge '+(sess.status==='active'?'bgn':'bgr')+'">'+esc(sess.status)+'</span></h3></div><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="expAbsSessionC(\''+esc(sess.name).replace(/'/g,"\\'")+'\')" >📊 CSV</button><button class="btn bg2 bsm" onclick="expAbsSessionP(\''+esc(sess.name).replace(/'/g,"\\'")+'\')" >📄 PDF</button>'+(canC&&sess.status==='active'?'<button class="btn bp bsm" onclick="addAbsM(\''+esc(sess.name).replace(/'/g,"\\'")+'\')">+ Add Absent</button>':'')+'</div></div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;align-items:center;gap:8px"><button class="btn bg2 bxs" onclick="exitExamSession()" title="Back to sessions">←</button><h3>📑 '+esc(sess.name)+' <span class="badge '+(sess.status==='active'?'bgn':'bgr')+'">'+esc(sess.status)+'</span></h3></div><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="expAbsSessionC(\''+esc(sess.name).replace(/'/g,"\\'")+'\')" >📊 CSV</button><button class="btn bg2 bsm" onclick="expAbsSessionP(\''+esc(sess.name).replace(/'/g,"\\'")+'\')" >📄 PDF</button><button class="btn bs bsm" onclick="eaSessQr(\''+sess.id+'\')">📱 Absentees QR</button>'+(canC&&sess.status==='active'?'<button class="btn bp bsm" onclick="addAbsM(\''+esc(sess.name).replace(/'/g,"\\'")+'\')">+ Add Absent</button>':'')+'</div></div></div>'
   +'<div class="cg g3" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Absences</div><div class="sv">'+abs.length+'</div><div class="sic">📵</div></div><div class="stat go"><div class="sl2">Students</div><div class="sv">'+uniqueStudents+'</div><div class="sic">👥</div></div><div class="stat gn"><div class="sl2">Subjects</div><div class="sv">'+uniqueSubjects+'</div><div class="sic">📚</div></div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap"><button id="abv-list" class="btn bp bsm" onclick="absView(\'list\')">📋 List View</button><button id="abv-stu" class="btn bg2 bsm" onclick="absView(\'student\')">👨‍🎓 Group by Student</button><button id="abv-sub" class="btn bg2 bsm" onclick="absView(\'subject\')">📚 Group by Subject</button></div></div>'
   +'<div id="absview"></div>';
@@ -14276,7 +14277,7 @@ function qExp(type,fmt){document.getElementById('exptype').value=type;doExp(fmt)
     else if(p.get('sc')==='1'){window.__earlyPortal='sc';}
     else if(p.get('ex')==='1'){window.__earlyPortal='ex';window._xsPortalExam=p.get('e')||'';}
     else if(p.get('wa')==='1'){window.__earlyPortal='wa';window._waPortalWeek=p.get('w')||'';}
-    else if(p.get('ea')==='1'){window.__earlyPortal='ea';window._eaExam=p.get('e')||'';}
+    else if(p.get('ea')==='1'){window.__earlyPortal='ea';window._eaExam=p.get('e')||'';window._eaSess=p.get('s')||'';}
     // Portal links carry the school so they work on a device that has never
     // signed in — otherwise there is no school context and no data.
     const sch=p.get('sch');
@@ -23203,17 +23204,35 @@ function xsMissingPrint(grade){
 }
 // ═══════════════════════════════════════════════════════════
 // WHO WAS ABSENT FROM AN EXAM, FROM A SCANNED CODE
-// Each exam carries its own code. A teacher scans it, types the PIN he
-// already uses, and is shown only the subjects and sections he teaches on
-// that exam. Choosing one gives him the roll of that section, where he taps
-// whoever did not sit the paper; they go straight into the Exam Absent List
-// under the exam's name, with the subject and the date it was sat.
+// Every exam carries its own code — the ones opened in Exam Portion &
+// Schedule, and the sessions of the Exam Absent List itself. A teacher scans
+// it, types the PIN he already uses, and is shown only the subjects and
+// sections he teaches. Choosing one gives him the roll of that section,
+// where he taps whoever did not sit the paper; they go straight into the
+// Exam Absent List under that exam's name.
 // ═══════════════════════════════════════════════════════════
-function eaUrl(examId){
+function eaUrl(examId,sess){
   let u=window.location.origin+window.location.pathname+'?ea=1';
   if(examId)u+='&e='+encodeURIComponent(examId);
+  else if(sess)u+='&s='+encodeURIComponent(sess);
   if(CURRENT_SCHOOL_ID)u+='&sch='+encodeURIComponent(CURRENT_SCHOOL_ID);
   return u;
+}
+// A session of the absent list and an exam of the schedule are the same thing
+// when they carry the same name, and then the papers and their dates are known
+function eaExamByName(name){
+  const k=String(name||'').trim().toLowerCase();
+  if(!k)return null;
+  return xsAll().filter(function(x){return String(x.name||'').trim().toLowerCase()===k;})[0]||null;
+}
+// What this link is for: an exam of the schedule, or a session by name alone
+function eaTarget(){
+  const id=window._eaExam;
+  if(id){const x=xsOne(id);if(x)return {x:x,name:x.name||''};}
+  const s=window._eaSess;
+  if(s)return {x:eaExamByName(s),name:s};
+  const x0=xsAll()[0];
+  return x0?{x:x0,name:x0.name||''}:null;
 }
 // The sections of a grade where this teacher takes that subject
 function eaSectionsOf(grade,subject,teacher){
@@ -23228,25 +23247,45 @@ function eaSectionsOf(grade,subject,teacher){
   });
   return out;
 }
+function eaSortPapers(a,b){
+  return String(a.cls).localeCompare(String(b.cls),undefined,{numeric:true})
+    ||String(a.date||'').localeCompare(String(b.date||''))
+    ||String(a.subject).localeCompare(String(b.subject));
+}
+// A session with no schedule behind it: every subject he takes, class by
+// class, straight from the timetable, with the day left to the one he marks
+function eaFreePapers(teacher){
+  const off=(typeof wpIsOffTimetable==='function')&&wpIsOffTimetable(teacher);
+  const k=(typeof wpNameKey==='function')?wpNameKey(teacher):String(teacher||'').toLowerCase();
+  const out=[];
+  ((typeof bdTtClassNames==='function')?bdTtClassNames():[]).forEach(function(cls){
+    const seen={};
+    ((typeof wpLessons==='function')?wpLessons(cls):[]).forEach(function(l){
+      const sub=String(l.subject||'').trim();
+      if(!sub)return;
+      if(!off&&((typeof wpNameKey==='function')?wpNameKey(l.teacher):String(l.teacher||'').toLowerCase())!==k)return;
+      if(seen[sub])return;
+      seen[sub]=1;
+      out.push({grade:String(cls).split('-')[0],cls:cls,subject:sub,date:''});
+    });
+  });
+  return out.sort(eaSortPapers);
+}
 // Every paper this teacher is to mark the absentees of: one card per section
-function eaPapers(examId,teacher){
-  const x=xsOne(examId);
-  if(!x||!teacher)return [];
+function eaPapers(t,teacher){
+  if(!t||!teacher)return [];
+  if(!t.x)return eaFreePapers(teacher);
   const off=(typeof wpIsOffTimetable==='function')&&wpIsOffTimetable(teacher);
   const out=[];
-  xsClassesOn(x.id).forEach(function(g){
-    xsRows(x.id,g).forEach(function(r){
+  xsClassesOn(t.x.id).forEach(function(g){
+    xsRows(t.x.id,g).forEach(function(r){
       const secs=off?(typeof xsClassesOf==='function'?xsClassesOf(g):[]):eaSectionsOf(g,r.subject,teacher);
       secs.forEach(function(cls){
         out.push({grade:g,cls:cls,subject:r.subject,date:r.date||'',rowId:r.id});
       });
     });
   });
-  return out.sort(function(a,b){
-    return String(a.date||'').localeCompare(String(b.date||''))
-      ||String(a.cls).localeCompare(String(b.cls))
-      ||String(a.subject).localeCompare(String(b.subject));
-  });
+  return out.sort(eaSortPapers);
 }
 function eaStudents(cls){
   return (DB.get('students')||[]).filter(function(s){
@@ -23277,13 +23316,11 @@ function checkEaMode(){
   if(params.get('ea')==='1'){
     const e=params.get('e');
     if(e)window._eaExam=e;
+    const s=params.get('s');
+    if(s)window._eaSess=s;
     renderEaPortal();return true;
   }
   return false;
-}
-function eaExam(){
-  const id=window._eaExam;
-  return (id?xsOne(id):null)||xsAll()[0]||null;
 }
 function eaState(){
   if(!window._ea)window._ea={teacher:'',unlocked:false,paper:null,absent:{},done:null};
@@ -23311,12 +23348,12 @@ function eaUnlock(){
 function eaReset(){window._ea={teacher:'',unlocked:false,paper:null,absent:{},done:null};clearPortalActor();renderEaPortal();window.scrollTo(0,0);}
 function eaPick(i){
   const st=eaState();
-  const list=eaPapers((eaExam()||{}).id,st.teacher);
+  const t=eaTarget();
+  const list=eaPapers(t,st.teacher);
   const p=list[i];
-  if(!p)return;
+  if(!p||!t)return;
   st.paper=p;st.done=null;st.absent={};
-  const x=eaExam();
-  eaAlready(x.name,p.subject,p.cls).forEach(function(a){if(a.studentId)st.absent[a.studentId]=true;});
+  eaAlready(t.name,p.subject,p.cls).forEach(function(a){if(a.studentId)st.absent[a.studentId]=true;});
   renderEaPortal();window.scrollTo(0,0);
 }
 function eaBack(){const st=eaState();st.paper=null;st.absent={};st.done=null;renderEaPortal();window.scrollTo(0,0);}
@@ -23327,7 +23364,7 @@ function eaTog(sid){
 }
 function renderEaPortal(){
   const s=DB.get('settings')||{};
-  const x=eaExam();
+  const t=eaTarget();
   const st=eaState();
   const lp=document.getElementById('lp');if(lp)lp.classList.add('hidden');
   const ap=document.getElementById('app');if(ap)ap.classList.add('hidden');
@@ -23337,7 +23374,7 @@ function renderEaPortal(){
   wrap.id='eap';
   wrap.style.cssText='min-height:100vh;background:var(--bg);padding:18px 14px 40px';
   let body='';
-  if(!x){
+  if(!t){
     body='<div class="al aw" style="margin:0">No exam has been opened yet. Please ask the school.</div>';
   }else if(!eaOpen()){
     body=pdpQ('Your 4-digit PIN','The same one you use for the weekly plan.',
@@ -23352,7 +23389,7 @@ function renderEaPortal(){
     body='<div class="card" style="padding:18px;margin-bottom:12px;text-align:center;border-top:6px solid var(--su)">'
      +'<div style="font-size:34px">✅</div>'
      +'<div style="font-size:17px;font-weight:700;margin-top:4px">'+esc(d.cls)+' · '+esc(d.subject)+'</div>'
-     +'<div style="font-size:12px;color:var(--tx3);margin-top:2px">'+esc(x.name||'')+(d.date?' · '+esc(wpDateText(d.date)):'')+'</div>'
+     +'<div style="font-size:12px;color:var(--tx3);margin-top:2px">'+esc(t.name||'')+(d.date?' · '+esc(wpDateText(d.date)):'')+'</div>'
      +'<div class="cg g3" style="margin-top:14px">'
      +'<div class="stat bl"><div class="sl2">On the roll</div><div class="sv">'+d.total+'</div><div class="sic">\u{1f468}\u{200d}\u{1f393}</div></div>'
      +'<div class="stat gn"><div class="sl2">Sat the paper</div><div class="sv">'+(d.total-d.absent)+'</div><div class="sic">✅</div></div>'
@@ -23366,20 +23403,24 @@ function renderEaPortal(){
      +'<button class="btn bp" style="flex:1 1 150px;justify-content:center;padding:13px" onclick="eaPick('+d.i+')">Change this one</button>'
      +'<button class="btn bg2" style="flex:1 1 150px;justify-content:center;padding:13px" onclick="eaBack()">Another paper →</button></div>';
   }else if(!st.paper){
-    const list=eaPapers(x.id,st.teacher);
+    const list=eaPapers(t,st.teacher);
+    let cards='',lastCls='';
+    list.forEach(function(p,i){
+      const n=eaAlready(t.name,p.subject,p.cls).length;
+      if(p.cls!==lastCls){
+        lastCls=p.cls;
+        cards+='<div style="font-size:12px;font-weight:700;color:var(--ac);margin:9px 0 3px;text-transform:uppercase;letter-spacing:.5px">Class '+esc(p.cls)+'</div>';
+      }
+      cards+='<button type="button" class="btn bg2" style="justify-content:space-between;padding:12px 13px;text-align:left;width:100%;margin-bottom:5px" onclick="eaPick('+i+')">'
+       +'<span><strong style="font-size:15px">'+esc(p.subject)+'</strong>'
+       +'<div style="font-size:10px;color:var(--tx3)">'+(p.date?esc(wpDateText(p.date))+' · '+esc(getDayOfWeek(p.date)||''):'the day it is sat')+'</div></span>'
+       +'<span style="font-size:11px;'+(n?'color:var(--dn);font-weight:700':'color:var(--tx3)')+'">'+(n?n+' absent':'not marked')+'</span></button>';
+    });
     body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
      +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong></div>'
      +'<button class="btn bg2 bsm" onclick="eaReset()">Not you?</button></div>'
      +pdpQ('Choose the paper','Only the subjects and sections you teach are shown. Then tap whoever did not sit it.',
-       (list.length
-         ?'<div style="display:flex;flex-direction:column;gap:7px">'
-          +list.map(function(p,i){
-             const n=eaAlready(x.name,p.subject,p.cls).length;
-             return '<button type="button" class="btn bg2" style="justify-content:space-between;padding:12px 13px;text-align:left" onclick="eaPick('+i+')">'
-              +'<span><strong style="font-size:15px">'+esc(p.cls)+'</strong> <span style="font-size:12px">· '+esc(p.subject)+'</span>'
-              +'<div style="font-size:10px;color:var(--tx3)">'+(p.date?esc(wpDateText(p.date))+' · '+esc(getDayOfWeek(p.date)||''):'date to be set')+'</div></span>'
-              +'<span style="font-size:11px;'+(n?'color:var(--dn);font-weight:700':'color:var(--tx3)')+'">'+(n?n+' absent':'not marked')+'</span></button>';
-           }).join('')+'</div>'
+       (list.length?'<div>'+cards+'</div>'
          :'<div class="al aw" style="margin:0">No paper on this exam is one you teach.</div>'),true);
   }else{
     const p=st.paper;
@@ -23417,31 +23458,31 @@ function renderEaPortal(){
    +'<div style="min-width:0"><div style="font-size:13px;color:var(--tx2)">'+esc(s.schoolName||'School')+'</div>'
    +'<div style="font-size:11px;color:var(--tx3)">'+esc(s.schoolNameAr||'')+'</div></div></div>'
    +'<h1 style="font-size:22px;font-weight:700;color:var(--tx);margin-bottom:6px">Exam absentees</h1>'
-   +'<p style="font-size:13px;color:var(--tx2);line-height:1.6">'+(x?esc(x.name||'')+(x.year?' · '+esc(x.year):''):'')+'</p>'
+   +'<p style="font-size:13px;color:var(--tx2);line-height:1.6">'+(t?esc(t.name||'')+(t.x&&t.x.year?' · '+esc(t.x.year):''):'')+'</p>'
    +'</div></div>'+body+'</div>';
   document.body.appendChild(wrap);
 }
 // Only this paper's records are rewritten, so another teacher's stand
 function eaSubmit(){
-  const x=eaExam();
+  const t=eaTarget();
   const st=eaState();
   const p=st.paper;
-  if(!x||!p)return;
+  if(!t||!p)return;
   if(!eaOpen()){toast('Type your PIN first','danger');renderEaPortal();return;}
   const list=eaStudents(p.cls);
   const mine=list.map(function(s){return s.id;});
   const absent=mine.filter(function(id){return st.absent[id];});
-  eaEnsureSession(x.name);
+  eaEnsureSession(t.name);
   const all=DB.get('exam_absents')||[];
   const keep=all.filter(function(a){
     if(!a)return false;
-    const samePaper=a.examSession===x.name&&a.subject===p.subject
+    const samePaper=a.examSession===t.name&&a.subject===p.subject
       &&(typeof grSec==='function')&&grSec(a.grade,a.section)===p.cls;
     return !samePaper;
   });
   const had={};
   all.forEach(function(a){
-    if(a&&a.examSession===x.name&&a.subject===p.subject&&a.studentId)had[a.studentId]=a;
+    if(a&&a.examSession===t.name&&a.subject===p.subject&&a.studentId)had[a.studentId]=a;
   });
   const now=new Date().toISOString();
   const by=st.teacher;
@@ -23452,32 +23493,48 @@ function eaSubmit(){
       id:(old&&old.id)||nid('abs'),studentId:id,studentName:fN(stu),
       grade:stu.grade,section:stu.section,subject:p.subject,
       absentDate:p.date||new Date().toISOString().split('T')[0],
-      examSession:x.name,remarks:(old&&old.remarks)||'',
+      examSession:t.name,remarks:(old&&old.remarks)||'',
       addedBy:by,created:(old&&old.created)||now}));
   });
   DB.set('exam_absents',keep);
   const names=list.filter(function(s){return absent.indexOf(s.id)>=0;}).map(fN);
-  const idx=eaPapers(x.id,st.teacher).findIndex(function(z){return z.cls===p.cls&&z.subject===p.subject;});
+  const idx=eaPapers(t,st.teacher).findIndex(function(z){return z.cls===p.cls&&z.subject===p.subject;});
   st.done={cls:p.cls,subject:p.subject,date:p.date,total:list.length,absent:absent.length,names:names,i:idx<0?0:idx};
-  logA('Exam absentees for '+p.cls+' · '+p.subject+' ('+x.name+') — '+absent.length+' of '+list.length);
+  logA('Exam absentees for '+p.cls+' · '+p.subject+' ('+t.name+') — '+absent.length+' of '+list.length);
   toast(absent.length+' absent of '+list.length+' sent','success');
   renderEaPortal();window.scrollTo(0,0);
 }
-// ── The code, from the exam ───────────────────────────────
-function eaQrM(){
-  const x=xsCur();if(!x){toast('Open an exam first','danger');return;}
-  const url=eaUrl(x.id);
+// ── The code, from the exam or from the session ───────────
+function eaQrFor(name,examId){
+  if(!name){toast('That exam has no name','danger');return;}
+  const x=examId?xsOne(examId):eaExamByName(name);
+  const url=eaUrl(x?x.id:'',x?'':name);
   const qr='https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data='+encodeURIComponent(url);
+  const qrLg='https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=20&data='+encodeURIComponent(url);
   const q=String.fromCharCode(39);
-  openM('<div class="mh"><h3>\u{1f4f1} '+esc(x.name||'')+' — absentees code</h3><button class="mc" onclick="closeM()">×</button></div>'
+  openM('<div class="mh"><h3>\u{1f4f1} '+esc(name)+' — absentees code</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">Share this with the teachers invigilating. Each scans it, types the same four-digit PIN he uses for the weekly plan, and sees only the subjects and sections he teaches on this exam. He picks one, taps whoever did not sit the paper, and they go straight onto the Exam Absent List under <strong>'+esc(x.name||'')+'</strong>.</div>'
+  +'<div class="al ai">Share this with the teachers invigilating. Each scans it, types the same four-digit PIN he uses for the weekly plan, and sees only the subjects and sections he teaches. He picks one, taps whoever did not sit the paper, and they go straight onto this list under <strong>'+esc(name)+'</strong>.</div>'
+  +(x?'<div class="al ag">The subjects and the days they are sat come from the schedule of this exam.</div>'
+     :'<div class="al aw">This exam has no portion &amp; schedule behind it, so every subject a teacher takes is offered and the day is taken as the day he marks it. Opening it in <strong>Exam Portion &amp; Schedule</strong> under the same name gives it its subjects and dates.</div>')
   +'<div style="text-align:center;padding:8px"><img src="'+qr+'" alt="" style="width:210px;height:210px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
   +'<div class="fg"><label>The link</label><input value="'+esc(url)+'" readonly onclick="this.select()"></div>'
+  +'<a href="'+esc(qrLg)+'" download="absentees_qr.png" class="btn bg2 bsm" style="text-decoration:none">⬇️ Download the code</a>'
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
   +'<button class="btn bg2 bsm" onclick="navigator.clipboard.writeText('+q+escJs(url)+q+').then(function(){toast('+q+'Link copied'+q+','+q+'success'+q+');})">\u{1f4cb} Copy</button>'
-  +'<button class="btn bs" onclick="window.open('+q+'https://wa.me/?text='+q+'+encodeURIComponent('+q+escJs((x.name||'')+' — please mark whoever did not sit your paper: '+url)+q+'),'+q+'_blank'+q+')">\u{1f4f2} WhatsApp</button></div>',true);
+  +'<button class="btn bs" onclick="window.open('+q+'https://wa.me/?text='+q+'+encodeURIComponent('+q+escJs(name+' — please mark whoever did not sit your paper: '+url)+q+'),'+q+'_blank'+q+')">\u{1f4f2} WhatsApp</button></div>',true);
+}
+// from Exam Portion & Schedule
+function eaQrM(){
+  const x=xsCur();if(!x){toast('Open an exam first','danger');return;}
+  eaQrFor(x.name||'',x.id);
+}
+// from the Exam Absent List
+function eaSessQr(sessId){
+  const s=(DB.get('exam_sessions')||[]).filter(function(z){return z&&z.id===sessId;})[0];
+  if(!s){toast('That session is not there','danger');return;}
+  eaQrFor(s.name||'','');
 }
 // ── The code the teachers scan ───────────────────────────
 function xsUrl(examId){
