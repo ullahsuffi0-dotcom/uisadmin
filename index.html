@@ -21738,7 +21738,8 @@ function wpClearPin(name){
 }
 async function wpGiveAllPins(){
   if(!wpCanManage()){toast('You may not set the PINs','danger');return;}
-  const without=wpTeacherNames().filter(function(n){return !wpPinOf(n)&&!wpIsExcludedTeacher(n);});
+  const without=wpPinPeople().map(function(p){return p.name;})
+    .filter(function(n){return !wpPinOf(n)&&!wpIsExcludedTeacher(n);});
   if(!without.length){toast('Everybody already has a PIN','info');return;}
   if(!confirm('Give a PIN to '+without.length+' teacher(s) who have none?\n\nAnybody who already has one keeps it.'))return;
   const taken=wpPinCards().slice();
@@ -21763,11 +21764,12 @@ async function wpPinHolder(pin){
 
 function wpPinsM(){
   if(!wpCanManage()){toast('Only the principal, vice principals and academic supervisors can set the PINs','danger');return;}
-  const names=wpTeacherNames();
+  const people=wpPinPeople();
+  const names=people.map(function(p){return p.name;});
   const q=String.fromCharCode(39);
-  openM('<div class="mh"><h3>\u{1f511} Weekly plan PINs</h3><button class="mc" onclick="closeM()">×</button></div>'
+  openM('<div class="mh"><h3>\u{1f511} PINs for the links</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai" style="font-size:11px">A teacher with a PIN types it on the link and goes straight to his own classes. Every name on the timetable can be given one — type it, or press \u{1f3b2} to draw one at random. Tick whoever you are handing cards to, then print them or save them as a PDF; \u{1f4c4} on a row makes that one teacher\u2019s card on its own, ready to send him. The same PIN works on every week\u2019s link, so a card is handed out once and kept \u2014 it never changes from one week to the next.</div>'
+  +'<div class="al ai" style="font-size:11px">One PIN opens all three links — the weekly plan, the exam portion and the weekly activities. Every name on the timetable can be given one, and so can every member of staff, for the office to fill something in when it is needed. Type it, or press \u{1f3b2} to draw one at random. Tick whoever you are handing cards to, then print them or save them as a PDF; \u{1f4c4} on a row makes that one teacher\u2019s card on its own, ready to send him. The same PIN works on every week\u2019s link, so a card is handed out once and kept \u2014 it never changes from one week to the next.</div>'
   +'<div class="tw" style="max-height:48vh;overflow:auto"><table style="font-size:11px"><thead><tr>'
   +'<th style="width:30px"><input type="checkbox" checked onclick="wpPinTickAll(this.checked)" title="All or none" style="width:15px;height:15px"></th>'
   +'<th>Teacher</th><th>PIN</th><th>Set it</th></tr></thead><tbody>'
@@ -21776,6 +21778,7 @@ function wpPinsM(){
     return '<tr'+(wpIsExcludedTeacher(n)?' style="opacity:.5"':'')+'>'
      +'<td style="text-align:center">'+(r?'<input type="checkbox" class="wp-pin-tick" value="'+esc(r.id)+'" checked style="width:15px;height:15px">':'')+'</td>'
      +'<td><strong>'+esc(n)+'</strong>'
+     +(people[i]&&people[i].kind==='staff'?' <span class="badge bpu" style="font-size:9px">staff · '+esc(rL(people[i].role))+'</span>':'')
      +(wpIsExcludedTeacher(n)?' <span class="badge bgr" style="font-size:9px">not asked</span>':'')+'</td>'
      +'<td>'+(r?'<span class="badge bgn mono">'+esc(r.card||'••••')+'</span>':'<span style="color:var(--tx3)">—</span>')+'</td>'
      +'<td style="display:flex;gap:4px;flex-wrap:wrap"><input id="wp-pin-'+i+'" inputmode="numeric" maxlength="4" placeholder="••••" style="width:60px;padding:4px 6px;background:var(--sf);border:1px solid var(--bd);border-radius:4px;color:var(--tx);font-size:11px;text-align:center;letter-spacing:3px">'
@@ -23275,11 +23278,14 @@ function xsPMine(){
   const x=xsPortalExam();
   const st=xsPState();
   if(!x||!st.teacher)return [];
+  // A member of staff who takes no lesson — the office, a supervisor — is
+  // given every subject on the exam, since none of them is "his" by timetable.
+  const off=(typeof wpIsOffTimetable==='function')&&wpIsOffTimetable(st.teacher);
   const out=[];
   xsClassesOn(x.id).forEach(function(g){
-    const mine=xsTeacherSubjects(g,st.teacher);
+    const mine=off?null:xsTeacherSubjects(g,st.teacher);
     xsRows(x.id,g).forEach(function(r){
-      if(mine.indexOf(r.subject)>=0)out.push(r);
+      if(off||mine.indexOf(r.subject)>=0)out.push(r);
     });
   });
   return out;
@@ -23343,10 +23349,13 @@ function renderXsPortal(){
     body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
      +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong></div>'
      +'<button class="btn bg2 bsm" onclick="xsPReset()">Not you?</button></div>'
-     +(og.ok?'<div class="al ai" style="font-size:11px">Write the portion for each of your subjects — the units, the lessons and the pages the boys are to revise. '
+     +(og.ok?'<div class="al ai" style="font-size:11px">'
+        +((typeof wpIsOffTimetable==='function'&&wpIsOffTimetable(st.teacher))
+          ?'Every subject on this exam is here for you to write, since you take no lesson on the timetable. '
+          :'Write the portion for each of your subjects — the units, the lessons and the pages the boys are to revise. ')
         +(x.deadline?'This closes on <strong>'+esc(xsDeadlineText(x))+'</strong>. ':'')+'Press Save at the bottom; you can come back and add more until it closes.</div>'
        :'<div class="al aw" style="font-size:11px">'+esc(og.why)+' You can read what is there but nothing more can be written.</div>')
-     +(mine.length?rows:'<div class="al aw">No subject on this exam is one you teach.</div>')
+     +(mine.length?rows:'<div class="al aw">There is no subject on this exam yet.</div>')
      +(mine.length&&og.ok&&mine.every(function(r){return xsHasTopics(m[r.id]);})
        ?'<div class="al ag" style="font-size:11px">✓ Every subject of yours on this exam has its portion written.</div>':'')
      +(og.ok&&mine.length?'<button class="btn bp" id="xsp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:6px" onclick="xsPSave()">Save my portion →</button>':'');
@@ -24533,6 +24542,40 @@ function wpTeacherNames(){
   const u=(typeof bdTtNamesUsed==='function')?bdTtNamesUsed():{};
   return Object.keys(u).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());});
 }
+// A PIN is not only for the teachers on the timetable: an admin assistant, a
+// supervisor or a vice principal may need to fill a plan, a portion or the
+// week's activities from the same links, so every member of staff can be
+// given one too. They are held under the name, as the timetable ones are.
+function wpStaffPeople(){
+  const out=[];
+  (DB.get('accounts')||[]).forEach(function(a){
+    if(!a||a.active===false)return;
+    const n=((a.firstName||'')+' '+(a.lastName||'')).trim();
+    if(!n)return;
+    out.push({name:n,kind:'staff',role:a.role||''});
+  });
+  return out;
+}
+function wpPinPeople(){
+  const seen={},out=[];
+  wpTeacherNames().forEach(function(n){
+    const k=wpNameKey(n);
+    if(seen[k])return;
+    seen[k]=1;out.push({name:n,kind:'timetable',role:''});
+  });
+  wpStaffPeople().forEach(function(p){
+    const k=wpNameKey(p.name);
+    if(seen[k])return;
+    seen[k]=1;out.push(p);
+  });
+  return out.sort(function(a,b){return a.name.toLowerCase().localeCompare(b.name.toLowerCase());});
+}
+// Somebody with a PIN who takes no lesson on the timetable — an office member
+// of staff rather than a class teacher.
+function wpIsOffTimetable(name){
+  const k=wpNameKey(name);
+  return !wpTeacherNames().some(function(n){return wpNameKey(n)===k;});
+}
 // the names a teacher may choose from on the link
 function wpPickableNames(){
   return wpTeacherNames().filter(function(n){return !wpIsExcludedTeacher(n);});
@@ -24599,10 +24642,11 @@ function renderWpPortal(){
       +'<button class="btn bg2 bsm" onclick="wpPReset()">Not you?</button></div>'
       +pdpQ('What would you like to fill in?','',
       '<div style="display:flex;flex-wrap:wrap;gap:9px">'
-      +'<button type="button" class="btn bp" style="flex:1 1 210px;justify-content:center;flex-direction:column;padding:18px 12px" onclick="wpPMode('+q+'teacher'+q+')">'
+      +(wpIsOffTimetable(st.teacher)?''
+        :'<button type="button" class="btn bp" style="flex:1 1 210px;justify-content:center;flex-direction:column;padding:18px 12px" onclick="wpPMode('+q+'teacher'+q+')">'
        +'<span style="font-size:22px">\u{1f9d1}\u{200d}\u{1f3eb}</span>'
        +'<span style="font-size:14px;font-weight:700;margin-top:4px">My own periods</span>'
-       +'<span style="font-size:11px;opacity:.85;margin-top:2px">Only the classes and periods that are mine</span></button>'
+       +'<span style="font-size:11px;opacity:.85;margin-top:2px">Only the classes and periods that are mine</span></button>')
       +'<button type="button" class="btn bg2" style="flex:1 1 210px;justify-content:center;flex-direction:column;padding:18px 12px" onclick="wpPMode('+q+'class'+q+')">'
        +'<span style="font-size:22px">\u{1f3eb}</span>'
        +'<span style="font-size:14px;font-weight:700;margin-top:4px">A whole class</span>'
@@ -24733,7 +24777,9 @@ function wpPUnlock(){
     if(!name){say('That PIN is not right. Try again, or find your name in the list below.');return false;}
     if(wpIsExcludedTeacher(name)){say('You are not asked for a weekly plan at the moment.');return false;}
     const st=wpPState();
-    st.unlocked=true;st.teacher=name;st.mode='teacher';st.cls='';
+    st.unlocked=true;st.teacher=name;st.cls='';
+    // somebody with no lessons of his own starts on the classes instead
+    st.mode=wpIsOffTimetable(name)?'class':'teacher';
     portalActor(name,'Teacher · PIN',true);
     logA('Opened the weekly plan with his PIN');
     renderWpPortal();window.scrollTo(0,0);
