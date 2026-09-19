@@ -23468,6 +23468,18 @@ function waPut(rec){
   if(i>=0)arr[i]=Object.assign({},arr[i],rec);else arr.push(rec);
   DB.set('weekly_activities',arr);
 }
+// The places already written down, offered when the next one is added
+function waPlacesUsed(){
+  const seen={},out=[];
+  waAll().forEach(function(r){
+    const p=String((r&&r.place)||'').trim();
+    if(!p)return;
+    const k=p.toLowerCase();
+    if(seen[k])return;
+    seen[k]=1;out.push(p);
+  });
+  return out.sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());});
+}
 function waStats(wkId){
   const w=waWeek(wkId);
   const rows=waFor(wkId);
@@ -23522,7 +23534,7 @@ function waSheetHTML(wkId){
       body+='<tr style="background:'+c.l+'">'
        +'<td class="dt" style="color:'+c.d+';border-left:4px solid '+c.d+'"><b>'+esc(wpDateText(d.date).replace(/\//g,'.'))+'</b></td>'
        +'<td class="dy" style="color:'+c.d+'"><b>'+esc(String(d.day).toUpperCase())+'</b></td>'
-       +'<td class="ac" colspan="3" style="color:#94a3b8"><i>No activity</i></td></tr>';
+       +'<td class="ac" colspan="4" style="color:#94a3b8"><i>No activity</i></td></tr>';
       return;
     }
     list.forEach(function(r,i){
@@ -23531,6 +23543,7 @@ function waSheetHTML(wkId){
               +'<td class="dy" rowspan="'+n+'" style="color:'+c.d+'"><b>'+esc(String(d.day).toUpperCase())+'</b></td>':'')
        +'<td class="ac"><b>'+esc(r.activity||'')+'</b>'
          +(r.note?'<div class="nt">'+esc(r.note)+'</div>':'')+'</td>'
+       +'<td class="pl"><b>'+esc(r.place||'—')+'</b></td>'
        +'<td class="tc"><b>'+esc(r.teacher||'—')+'</b></td>'
        +'<td class="tm"><b>'+esc(waTimeText(r.time)||'—')+'</b></td></tr>';
     });
@@ -23545,6 +23558,7 @@ function waSheetHTML(wkId){
    +'.washeet td.dt{white-space:nowrap;text-align:center;font-size:11px}'
    +'.washeet td.dy{white-space:nowrap;text-align:center;font-size:10px;letter-spacing:.8px}'
    +'.washeet td.ac{color:#1d4ed8;font-size:11px}'
+   +'.washeet td.pl{color:#b45309;white-space:nowrap;font-size:10.5px}'
    +'.washeet td.tc{color:#7c3aed;white-space:nowrap;font-size:10.5px}'
    +'.washeet td.tm{color:#047857;white-space:nowrap;text-align:center;font-size:10.5px}'
    +'.washeet .nt{font-size:8.5px;color:#64748b;font-weight:normal;margin-top:.6mm}'
@@ -23562,9 +23576,10 @@ function waSheetHTML(wkId){
    +'<div style="font-size:12px;font-weight:bold;letter-spacing:1.2px;margin-top:.8mm">'+esc(w.label||'')
      +' · '+esc(wpDateText(w.from))+(w.to?' – '+esc(wpDateText(w.to)):'')+'</div></div>'
    +'</div>'
-   +'<table><thead><tr><th style="width:24mm">Date</th><th style="width:24mm">Day</th>'
-   +'<th>Activity</th><th style="width:42mm">Teacher responsible</th><th style="width:26mm">Time</th></tr></thead>'
-   +'<tbody>'+(body||'<tr><td colspan="5" style="text-align:center;padding:6mm">This week has no days on it.</td></tr>')+'</tbody></table>'
+   +'<table><thead><tr><th style="width:22mm">Date</th><th style="width:21mm">Day</th>'
+   +'<th>Activity</th><th style="width:30mm">Place</th><th style="width:34mm">Teacher responsible</th>'
+   +'<th style="width:22mm">Time</th></tr></thead>'
+   +'<tbody>'+(body||'<tr><td colspan="6" style="text-align:center;padding:6mm">This week has no days on it.</td></tr>')+'</tbody></table>'
    +(w.note?'<div style="border:2px solid #f59e0b;border-left:7px solid #f59e0b;border-radius:2mm;background:#fffbeb;'
      +'padding:3mm 4mm;margin-top:4mm;font-size:10.5px;font-weight:bold;color:#7c4a03">'+esc(w.note).replace(/\n/g,'<br>')+'</div>':'')
    +'<div style="display:flex;justify-content:space-between;margin-top:5mm;font-size:8.5px;color:#475569;font-weight:bold">'
@@ -23622,7 +23637,7 @@ async function waShare(wkId){
       const list=waFor(id,d.date);
       if(!list.length)return '• '+d.day+' '+wpDateText(d.date)+' — no activity';
       return '• '+d.day+' '+wpDateText(d.date)+'\n'+list.map(function(r){
-        return '   – '+(r.activity||'')+(r.teacher?' · '+r.teacher:'')+(r.time?' · '+waTimeText(r.time):'');
+        return '   – '+(r.activity||'')+(r.place?' · '+r.place:'')+(r.teacher?' · '+r.teacher:'')+(r.time?' · '+waTimeText(r.time):'');
       }).join('\n');
     }).join('\n');
   try{
@@ -23693,12 +23708,13 @@ function waDaysCardsHTML(w,canM,q){
      +(canM?'<button class="btn bp bsm" onclick="waRowM('+q+escJs(w.id)+q+','+q+escJs(d.date)+q+')">+ Add an activity</button>':'')
      +'</div>'
      +(list.length
-       ?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Activity</th><th style="width:170px">Teacher responsible</th><th style="width:100px">Time</th>'
+       ?'<div class="tw"><table style="font-size:11px"><thead><tr><th>Activity</th><th style="width:150px">Place</th><th style="width:160px">Teacher responsible</th><th style="width:100px">Time</th>'
         +(canM?'<th style="width:90px"></th>':'')+'</tr></thead><tbody>'
         +list.map(function(r){
            return '<tr><td><strong style="color:'+c.d+'">'+esc(r.activity||'')+'</strong>'
             +(r.note?'<div style="font-size:10px;color:var(--tx3)">'+esc(r.note)+'</div>':'')
             +(r.byName&&r.byName!==r.teacher?'<div style="font-size:9px;color:var(--tx3)">added by '+esc(r.byName)+'</div>':'')+'</td>'
+            +'<td><strong style="color:var(--wn)">'+esc(r.place||'—')+'</strong></td>'
             +'<td><strong>'+esc(r.teacher||'—')+'</strong></td>'
             +'<td><strong>'+esc(waTimeText(r.time)||'—')+'</strong></td>'
             +(canM?'<td style="display:flex;gap:4px"><button class="btn bg2 bxs" onclick="waRowM('+q+escJs(w.id)+q+','+q+escJs(d.date)+q+','+q+escJs(r.id)+q+')">\u{270f}\u{fe0f}</button>'
@@ -23791,6 +23807,8 @@ function waRowM(wkId,date,rowId){
   openM('<div class="mh"><h3>\u{1f3af} '+(r?'Change the activity':'An activity')+' — '+esc(getDayOfWeek(date)||'')+' '+esc(wpDateText(date))+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
   +'<div class="fg"><label>Activity</label><input id="wa-ac" value="'+esc(r?r.activity||'':'')+'" placeholder="e.g. Morning assembly — Reading Week opening"></div>'
+  +'<div class="fg"><label>Place of the activity</label><input id="wa-pl" list="wa-pll" value="'+esc(r?r.place||'':'')+'" placeholder="e.g. Main hall, Playground, Library" autocomplete="off">'
+  +'<datalist id="wa-pll">'+waPlacesUsed().map(function(p){return '<option value="'+esc(p)+'">';}).join('')+'</datalist></div>'
   +'<div class="fr f2"><div class="fg"><label>Teacher responsible</label>'
   +'<input id="wa-tc" list="wa-tl" value="'+esc(r?r.teacher||'':'')+'" placeholder="Name" autocomplete="off">'
   +'<datalist id="wa-tl">'+names.map(function(n){return '<option value="'+esc(n)+'">';}).join('')+'</datalist></div>'
@@ -23809,7 +23827,7 @@ function waRowSave(wkId,date,rowId){
   const act=v('wa-ac');
   if(!act){toast('Write what the activity is','danger');return;}
   const rec={id:rowId||nid('wa'),wk:wkId,date:date,day:getDayOfWeek(date)||'',
-    activity:act,teacher:v('wa-tc'),time:v('wa-tm'),note:v('wa-nt'),deleted:false,
+    activity:act,place:v('wa-pl'),teacher:v('wa-tc'),time:v('wa-tm'),note:v('wa-nt'),deleted:false,
     by:CU.id,byName:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),at:new Date().toISOString()};
   waPut(rec);
   logA((rowId?'Changed':'Added')+' an activity on '+date+' — '+act);
@@ -23954,12 +23972,15 @@ function renderWaPortal(){
               return '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--bd)">'
                +'<div style="flex:1;min-width:140px"><strong>'+esc(r.activity||'')+'</strong>'
                  +(r.note?'<div style="font-size:10px;color:var(--tx3)">'+esc(r.note)+'</div>':'')+'</div>'
-               +'<div style="font-size:11px;color:var(--tx3)">'+esc(r.teacher||'')+(r.time?' · '+esc(waTimeText(r.time)):'')+'</div></div>';
+               +'<div style="font-size:11px;color:var(--tx3)">'+(r.place?esc(r.place)+' · ':'')+esc(r.teacher||'')+(r.time?' · '+esc(waTimeText(r.time)):'')+'</div></div>';
             }).join('')
            :'<div style="font-size:11px;color:var(--tx3)">Nothing on this day yet.</div>')
          +(og.ok&&st.day===d.date
            ?'<div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:8px">'
             +'<input id="wap-ac" placeholder="What is the activity?" style="margin-bottom:6px">'
+            +'<div class="fg" style="margin-bottom:6px"><label>Place of the activity</label>'
+            +'<input id="wap-pl" list="wap-pll" placeholder="e.g. Main hall, Playground" autocomplete="off">'
+            +'<datalist id="wap-pll">'+waPlacesUsed().map(function(p){return '<option value="'+esc(p)+'">';}).join('')+'</datalist></div>'
             +'<div class="fr f2"><div class="fg" style="margin-bottom:0"><label>Teacher responsible</label>'
             +'<input id="wap-tc" value="'+esc(st.teacher)+'" placeholder="Name"></div>'
             +'<div class="fg" style="margin-bottom:0"><label>Time</label><input type="time" id="wap-tm"></div></div>'
@@ -23997,7 +24018,7 @@ function waPSave(date){
   const act=v('wap-ac');
   if(!act){say('Please say what the activity is.');return;}
   waPut({id:nid('wa'),wk:w.id,date:date,day:getDayOfWeek(date)||'',
-    activity:act,teacher:v('wap-tc')||st.teacher,time:v('wap-tm'),note:'',deleted:false,
+    activity:act,place:v('wap-pl'),teacher:v('wap-tc')||st.teacher,time:v('wap-tm'),note:'',deleted:false,
     byName:st.teacher,at:new Date().toISOString()});
   logA('Added an activity on '+date+' — '+act);
   st.day='';
