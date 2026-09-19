@@ -22592,6 +22592,20 @@ function xsTeacherSubjects(grade,name){
     return s.teachers.some(function(t){return ((typeof wpNameKey==='function')?wpNameKey(t):String(t).toLowerCase())===k;});
   }).map(function(s){return s.subject;});
 }
+// The same subject is often taught by a different teacher in each section of
+// a class. They all sit one exam, so the portion is one: whoever writes it
+// writes it for all of them, and the others are shown it as done rather than
+// asked for it again.
+function xsSameName(a,b){
+  const k=function(n){return (typeof wpNameKey==='function')?wpNameKey(n):String(n||'').trim().toLowerCase();};
+  return !!a&&k(a)===k(b);
+}
+function xsOthersOf(grade,subject,me){
+  return xsTeachersOf(grade,subject).filter(function(t){return !xsSameName(t,me);});
+}
+function xsWrittenByOther(rec,me){
+  return !!(xsHasTopics(rec)&&rec.byName&&!xsSameName(rec.byName,me));
+}
 function xsOpen(x){
   if(!x)return {ok:false,why:'This exam is not set up yet.'};
   if(x.locked)return {ok:false,why:'This exam is locked. Nothing more can be written.'};
@@ -22874,9 +22888,11 @@ function xsRenderOneClass(x,g,canM,q){
       return '<tr><td class="mono" style="font-size:11px">'+esc(r.date?wpDateText(r.date):'—')+'</td>'
        +'<td style="font-size:11px">'+esc(xsDayName(r.date))+'</td>'
        +'<td><strong>'+esc(r.subject)+'</strong></td>'
-       +'<td style="font-size:10px;color:var(--tx3)">'+esc(xsTeachersOf(g,r.subject).join(', ')||'—')+'</td>'
+       +'<td style="font-size:10px;color:var(--tx3)">'+esc(xsTeachersOf(g,r.subject).join(', ')||'—')
+         +(xsTeachersOf(g,r.subject).length>1?'<div class="badge bbl" style="font-size:8px;margin-top:2px">shared — one writes for all</div>':'')+'</td>'
        +'<td style="font-size:11px;max-width:300px">'+(done?esc(String(t.topics).slice(0,160)).replace(/\n/g,'<br>')+(String(t.topics).length>160?'…':''):'<span style="color:var(--tx3)">—</span>')+'</td>'
-       +'<td>'+(done?'<span class="badge bgn">✓ written</span>'+(t.byName?'<div style="font-size:9px;color:var(--tx3)">'+esc(t.byName)+'</div>':'')
+       +'<td>'+(done?'<span class="badge bgn">✓ written</span>'+(t.byName?'<div style="font-size:9px;color:var(--tx3)">'+esc(t.byName)
+                      +(xsTeachersOf(g,r.subject).length>1?' — counts for all of them':'')+'</div>':'')
                     :'<span class="badge bgo">waiting</span>')+'</td></tr>';
     }).join('')+'</tbody></table></div>'
    +(rows.length?'':'<div class="emp"><div class="ei">\u{1f4da}</div><p>No subject is on this class yet.'+(canM?' Use 📚 Subjects &amp; dates.':'')+'</p></div>')
@@ -23095,7 +23111,7 @@ function xsMissingM(grade){
   openM('<div class="mh"><h3>\u{1f464} Not written yet — '+esc(x.name||'')+(g?' · Class '+esc(g):'')+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
   +(list.length
-    ?'<div class="al aw">'+list.length+' teacher(s) have still to write their portion.</div>'
+    ?'<div class="al aw">'+list.length+' teacher(s) have still to write their portion. A subject taught by more than one of them needs writing only once — whoever writes it, it counts for all of them and they all come off this list.</div>'
      +'<div class="tw" style="max-height:52vh;overflow:auto"><table style="font-size:11px"><thead><tr><th>Teacher</th><th>Class &amp; subject</th></tr></thead><tbody>'
      +list.map(function(r){
         return '<tr><td><strong>'+esc(r.teacher)+'</strong></td><td>'+esc(r.subjects.join(', '))+'</td></tr>';
@@ -23192,7 +23208,14 @@ function xsPUnlock(){
     return true;
   });
 }
-function xsPReset(){window._xsp={teacher:'',unlocked:false};renderXsPortal();window.scrollTo(0,0);}
+// A portion a colleague has already written is shown as done; this opens it
+// for changing when he asks for it.
+function xsPEdit(id){
+  if(!window._xsEdit)window._xsEdit={};
+  window._xsEdit[id]=true;
+  renderXsPortal();
+}
+function xsPReset(){window._xsEdit={};window._xsp={teacher:'',unlocked:false};renderXsPortal();window.scrollTo(0,0);}
 // The subjects on this exam that he himself teaches, class by class
 function xsPMine(){
   const x=xsPortalExam();
@@ -23242,15 +23265,24 @@ function renderXsPortal(){
       }
       const t=m[r.id]||{};
       const col=XS_DAYCOL[xsDayName(r.date)]||'var(--ac)';
-      rows+='<div class="card" style="padding:12px;margin-bottom:9px;border-left:5px solid '+col+'">'
+      const others=xsOthersOf(r.grade,r.subject,st.teacher);
+      const byOther=xsWrittenByOther(t,st.teacher);
+      const editing=!!(window._xsEdit&&window._xsEdit[r.id]);
+      rows+='<div class="card" style="padding:12px;margin-bottom:9px;border-left:5px solid '+(byOther?'var(--su)':col)+'">'
        +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:7px">'
        +'<div><strong style="font-size:15px">'+esc(r.subject)+'</strong>'
-         +' <span style="font-size:11px;color:var(--tx3)">· Class '+esc(r.grade)+'</span></div>'
+         +' <span style="font-size:11px;color:var(--tx3)">· Class '+esc(r.grade)+'</span>'
+         +(others.length?' <span class="badge bbl" style="font-size:9px">shared with '+esc(others.join(', '))+'</span>':'')+'</div>'
        +'<div style="font-size:11px;color:var(--tx3)">'+esc(r.date?wpDateText(r.date):'date to be set')
          +(r.date?' · '+esc(xsDayName(r.date)):'')+'</div></div>'
-       +(og.ok
-         ?'<textarea id="xsf-'+esc(r.id)+'" placeholder="The portion — units, lessons, pages" style="min-height:104px">'+esc(t.topics||'')+'</textarea>'
-         :'<div style="font-size:12px;white-space:pre-wrap">'+(esc(t.topics||'')||'<span style="color:var(--tx3)">— not written yet —</span>')+'</div>')
+       +(byOther&&!editing
+         ?'<div class="al ag" style="margin:0 0 7px;font-size:11px">✓ <strong>'+esc(t.byName)+'</strong> has written this portion already — every section of class '+esc(r.grade)+' sits the same exam, so it counts for you too. There is nothing for you to do here.</div>'
+          +'<div style="font-size:12px;white-space:pre-wrap;background:var(--sf2);padding:10px;border-radius:var(--rs)">'+esc(t.topics||'')+'</div>'
+          +(og.ok?'<button type="button" class="btn bg2 bxs" style="margin-top:7px" onclick="xsPEdit('+String.fromCharCode(39)+escJs(r.id)+String.fromCharCode(39)+')">\u{270f}\u{fe0f} Change it anyway</button>':'')
+         :(og.ok
+           ?(others.length&&!xsHasTopics(t)?'<div style="font-size:11px;color:var(--tx3);margin-bottom:5px">Whoever writes it first writes it for all of you.</div>':'')
+            +'<textarea id="xsf-'+esc(r.id)+'" placeholder="The portion — units, lessons, pages" style="min-height:104px">'+esc(t.topics||'')+'</textarea>'
+           :'<div style="font-size:12px;white-space:pre-wrap">'+(esc(t.topics||'')||'<span style="color:var(--tx3)">— not written yet —</span>')+'</div>'))
        +(t.at?'<div style="font-size:10px;color:var(--tx3);margin-top:5px">✓ written '+esc(String(t.at).replace('T',' ').slice(0,16))+(t.byName?' — '+esc(t.byName):'')+'</div>':'')
        +'</div>';
     });
@@ -23261,6 +23293,8 @@ function renderXsPortal(){
         +(x.deadline?'This closes on <strong>'+esc(xsDeadlineText(x))+'</strong>. ':'')+'Press Save at the bottom; you can come back and add more until it closes.</div>'
        :'<div class="al aw" style="font-size:11px">'+esc(og.why)+' You can read what is there but nothing more can be written.</div>')
      +(mine.length?rows:'<div class="al aw">No subject on this exam is one you teach.</div>')
+     +(mine.length&&og.ok&&mine.every(function(r){return xsHasTopics(m[r.id]);})
+       ?'<div class="al ag" style="font-size:11px">✓ Every subject of yours on this exam has its portion written.</div>':'')
      +(og.ok&&mine.length?'<button class="btn bp" id="xsp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:6px" onclick="xsPSave()">Save my portion →</button>':'');
   }
   wrap.innerHTML='<style>#xsp input,#xsp textarea{width:100%;box-sizing:border-box;padding:10px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:14px;font-family:inherit}#xsp .card{border-radius:10px}</style>'
