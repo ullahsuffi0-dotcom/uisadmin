@@ -14276,6 +14276,7 @@ function qExp(type,fmt){document.getElementById('exptype').value=type;doExp(fmt)
     else if(p.get('sc')==='1'){window.__earlyPortal='sc';}
     else if(p.get('ex')==='1'){window.__earlyPortal='ex';window._xsPortalExam=p.get('e')||'';}
     else if(p.get('wa')==='1'){window.__earlyPortal='wa';window._waPortalWeek=p.get('w')||'';}
+    else if(p.get('ea')==='1'){window.__earlyPortal='ea';window._eaExam=p.get('e')||'';}
     // Portal links carry the school so they work on a device that has never
     // signed in — otherwise there is no school context and no data.
     const sch=p.get('sch');
@@ -14320,6 +14321,8 @@ window.__doSeedAndStart=async function(){
     checkXsMode();
   }else if(window.__earlyPortal==='wa'&&typeof checkWaMode==='function'){
     checkWaMode();
+  }else if(window.__earlyPortal==='ea'&&typeof checkEaMode==='function'){
+    checkEaMode();
   }else if(window.__earlyPortal==='excuse'&&typeof checkExcuseMode==='function'){
     checkExcuseMode();
   }else if(typeof checkExcuseMode==='function'&&checkExcuseMode()){
@@ -22885,6 +22888,7 @@ function xsRenderClasses(x,canM,q){
    +'<div style="display:flex;gap:5px;flex-wrap:wrap">'
    +(canM?'<button class="btn bp bsm" onclick="xsAddClassM()">+ Add a class</button>':'')
    +(canM?'<button class="btn bg2 bsm" onclick="xsExamM('+q+escJs(x.id)+q+')">\u{270f}\u{fe0f} Exam &amp; deadline</button>':'')
+   +'<button class="btn bs bsm" onclick="eaQrM()">\u{1f4f1} Absentees QR</button>'
    +'<button class="btn bs bsm" onclick="xsQrM()">\u{1f4f1} Teacher QR</button>'
    +'<button class="btn bg2 bsm" onclick="xsMissingM()">\u{1f464} Who has not filled</button>'
    +(canM?'<button class="btn '+(x.locked?'bs':'bd3')+' bsm" onclick="xsLockToggle()">'+(x.locked?'\u{1f513} Unlock':'\u{1f512} Lock')+'</button>':'')
@@ -23196,6 +23200,284 @@ function xsMissingPrint(grade){
   +'</tbody></table><script>setTimeout(function(){window.print();},700);<\/script></body></html>');
   w.document.close();
   logA('Printed the list of teachers who had not written the portion of '+x.name);
+}
+// ═══════════════════════════════════════════════════════════
+// WHO WAS ABSENT FROM AN EXAM, FROM A SCANNED CODE
+// Each exam carries its own code. A teacher scans it, types the PIN he
+// already uses, and is shown only the subjects and sections he teaches on
+// that exam. Choosing one gives him the roll of that section, where he taps
+// whoever did not sit the paper; they go straight into the Exam Absent List
+// under the exam's name, with the subject and the date it was sat.
+// ═══════════════════════════════════════════════════════════
+function eaUrl(examId){
+  let u=window.location.origin+window.location.pathname+'?ea=1';
+  if(examId)u+='&e='+encodeURIComponent(examId);
+  if(CURRENT_SCHOOL_ID)u+='&sch='+encodeURIComponent(CURRENT_SCHOOL_ID);
+  return u;
+}
+// The sections of a grade where this teacher takes that subject
+function eaSectionsOf(grade,subject,teacher){
+  const k=(typeof wpNameKey==='function')?wpNameKey(teacher):String(teacher||'').toLowerCase();
+  const out=[];
+  (typeof xsClassesOf==='function'?xsClassesOf(grade):[]).forEach(function(cls){
+    const mine=((typeof wpLessons==='function')?wpLessons(cls):[]).some(function(l){
+      return String(l.subject||'')===String(subject)
+        &&((typeof wpNameKey==='function')?wpNameKey(l.teacher):String(l.teacher||'').toLowerCase())===k;
+    });
+    if(mine)out.push(cls);
+  });
+  return out;
+}
+// Every paper this teacher is to mark the absentees of: one card per section
+function eaPapers(examId,teacher){
+  const x=xsOne(examId);
+  if(!x||!teacher)return [];
+  const off=(typeof wpIsOffTimetable==='function')&&wpIsOffTimetable(teacher);
+  const out=[];
+  xsClassesOn(x.id).forEach(function(g){
+    xsRows(x.id,g).forEach(function(r){
+      const secs=off?(typeof xsClassesOf==='function'?xsClassesOf(g):[]):eaSectionsOf(g,r.subject,teacher);
+      secs.forEach(function(cls){
+        out.push({grade:g,cls:cls,subject:r.subject,date:r.date||'',rowId:r.id});
+      });
+    });
+  });
+  return out.sort(function(a,b){
+    return String(a.date||'').localeCompare(String(b.date||''))
+      ||String(a.cls).localeCompare(String(b.cls))
+      ||String(a.subject).localeCompare(String(b.subject));
+  });
+}
+function eaStudents(cls){
+  return (DB.get('students')||[]).filter(function(s){
+    return s&&(typeof grSec==='function')&&grSec(s.grade,s.section)===cls;
+  }).sort(function(a,b){return (Number(a.sn)||0)-(Number(b.sn)||0)||fN(a).localeCompare(fN(b));});
+}
+// What is already down for this paper, so a second visit shows it ticked
+function eaAlready(examName,subject,cls){
+  return (DB.get('exam_absents')||[]).filter(function(a){
+    return a&&a.examSession===examName&&a.subject===subject
+      &&(typeof grSec==='function')&&grSec(a.grade,a.section)===cls;
+  });
+}
+// The exam's name is the session the absences are filed under; it is put on
+// the list of sessions the first time, so the tab groups them as it always has
+function eaEnsureSession(name){
+  if(!name)return;
+  const list=DB.get('exam_sessions')||[];
+  if(list.some(function(s){return s&&s.name===name;}))return;
+  list.push({id:nid('es'),name:name,status:'active',
+    createdBy:(window.__portalWho&&window.__portalWho.user)||((CU&&((CU.firstName||'')+' '+(CU.lastName||'')).trim())||'Exam QR'),
+    created:new Date().toISOString().split('T')[0]});
+  DB.set('exam_sessions',list);
+}
+
+function checkEaMode(){
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('ea')==='1'){
+    const e=params.get('e');
+    if(e)window._eaExam=e;
+    renderEaPortal();return true;
+  }
+  return false;
+}
+function eaExam(){
+  const id=window._eaExam;
+  return (id?xsOne(id):null)||xsAll()[0]||null;
+}
+function eaState(){
+  if(!window._ea)window._ea={teacher:'',unlocked:false,paper:null,absent:{},done:null};
+  if(!window._ea.absent)window._ea.absent={};
+  return window._ea;
+}
+function eaOpen(){return !!eaState().unlocked&&!!eaState().teacher;}
+function eaUnlock(){
+  const e=document.getElementById('eap-pin');
+  const msg=document.getElementById('eap-pin-msg');
+  const say=function(t){if(msg)msg.textContent=t;else toast(t,'danger');};
+  const p=e?String(e.value||'').trim():'';
+  if(!/^\d{4}$/.test(p)){say('A PIN is four digits.');return Promise.resolve(false);}
+  return wpPinHolder(p).then(function(name){
+    if(!name){say('That PIN is not right. It is the same one you use for the weekly plan.');return false;}
+    const st=eaState();
+    st.unlocked=true;st.teacher=name;st.paper=null;st.absent={};st.done=null;
+    portalActor(name,'Teacher · PIN',true);
+    logA('Opened the exam absentees with his PIN');
+    renderEaPortal();window.scrollTo(0,0);
+    toast('Welcome, '+name,'success');
+    return true;
+  });
+}
+function eaReset(){window._ea={teacher:'',unlocked:false,paper:null,absent:{},done:null};clearPortalActor();renderEaPortal();window.scrollTo(0,0);}
+function eaPick(i){
+  const st=eaState();
+  const list=eaPapers((eaExam()||{}).id,st.teacher);
+  const p=list[i];
+  if(!p)return;
+  st.paper=p;st.done=null;st.absent={};
+  const x=eaExam();
+  eaAlready(x.name,p.subject,p.cls).forEach(function(a){if(a.studentId)st.absent[a.studentId]=true;});
+  renderEaPortal();window.scrollTo(0,0);
+}
+function eaBack(){const st=eaState();st.paper=null;st.absent={};st.done=null;renderEaPortal();window.scrollTo(0,0);}
+function eaTog(sid){
+  const st=eaState();
+  st.absent[sid]=!st.absent[sid];
+  renderEaPortal();
+}
+function renderEaPortal(){
+  const s=DB.get('settings')||{};
+  const x=eaExam();
+  const st=eaState();
+  const lp=document.getElementById('lp');if(lp)lp.classList.add('hidden');
+  const ap=document.getElementById('app');if(ap)ap.classList.add('hidden');
+  const old=document.getElementById('eap');if(old)old.remove();
+  const q=String.fromCharCode(39);
+  const wrap=document.createElement('div');
+  wrap.id='eap';
+  wrap.style.cssText='min-height:100vh;background:var(--bg);padding:18px 14px 40px';
+  let body='';
+  if(!x){
+    body='<div class="al aw" style="margin:0">No exam has been opened yet. Please ask the school.</div>';
+  }else if(!eaOpen()){
+    body=pdpQ('Your 4-digit PIN','The same one you use for the weekly plan.',
+      (wpPinsInUse()
+        ?'<div style="display:flex;gap:7px;flex-wrap:wrap">'
+         +'<input id="eap-pin" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" onkeydown="if(event.key===\'Enter\')eaUnlock()" style="flex:1 1 130px;letter-spacing:10px;font-size:22px;text-align:center">'
+         +'<button type="button" class="btn bp" style="flex:0 0 auto;padding:12px 18px" onclick="eaUnlock()">Open my papers →</button></div>'
+         +'<div id="eap-pin-msg" style="font-size:11px;color:var(--dn);margin-top:5px"></div>'
+        :'<div class="al aw" style="margin:0">No PIN has been given out yet. Please ask the school office for yours.</div>'),true);
+  }else if(st.done){
+    const d=st.done;
+    body='<div class="card" style="padding:18px;margin-bottom:12px;text-align:center;border-top:6px solid var(--su)">'
+     +'<div style="font-size:34px">✅</div>'
+     +'<div style="font-size:17px;font-weight:700;margin-top:4px">'+esc(d.cls)+' · '+esc(d.subject)+'</div>'
+     +'<div style="font-size:12px;color:var(--tx3);margin-top:2px">'+esc(x.name||'')+(d.date?' · '+esc(wpDateText(d.date)):'')+'</div>'
+     +'<div class="cg g3" style="margin-top:14px">'
+     +'<div class="stat bl"><div class="sl2">On the roll</div><div class="sv">'+d.total+'</div><div class="sic">\u{1f468}\u{200d}\u{1f393}</div></div>'
+     +'<div class="stat gn"><div class="sl2">Sat the paper</div><div class="sv">'+(d.total-d.absent)+'</div><div class="sic">✅</div></div>'
+     +'<div class="stat rd"><div class="sl2">Absent</div><div class="sv">'+d.absent+'</div><div class="sic">❌</div></div></div>'
+     +(d.names.length
+       ?'<div style="margin-top:12px;text-align:left"><div style="font-size:11px;font-weight:700;color:var(--dn);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Put on the absent list</div>'
+        +d.names.map(function(n){return '<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--bd)">'+esc(n)+'</div>';}).join('')+'</div>'
+       :'<div class="al ag" style="margin-top:12px">Everybody sat the paper.</div>')
+     +'</div>'
+     +'<div style="display:flex;gap:7px;flex-wrap:wrap">'
+     +'<button class="btn bp" style="flex:1 1 150px;justify-content:center;padding:13px" onclick="eaPick('+d.i+')">Change this one</button>'
+     +'<button class="btn bg2" style="flex:1 1 150px;justify-content:center;padding:13px" onclick="eaBack()">Another paper →</button></div>';
+  }else if(!st.paper){
+    const list=eaPapers(x.id,st.teacher);
+    body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+     +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong></div>'
+     +'<button class="btn bg2 bsm" onclick="eaReset()">Not you?</button></div>'
+     +pdpQ('Choose the paper','Only the subjects and sections you teach are shown. Then tap whoever did not sit it.',
+       (list.length
+         ?'<div style="display:flex;flex-direction:column;gap:7px">'
+          +list.map(function(p,i){
+             const n=eaAlready(x.name,p.subject,p.cls).length;
+             return '<button type="button" class="btn bg2" style="justify-content:space-between;padding:12px 13px;text-align:left" onclick="eaPick('+i+')">'
+              +'<span><strong style="font-size:15px">'+esc(p.cls)+'</strong> <span style="font-size:12px">· '+esc(p.subject)+'</span>'
+              +'<div style="font-size:10px;color:var(--tx3)">'+(p.date?esc(wpDateText(p.date))+' · '+esc(getDayOfWeek(p.date)||''):'date to be set')+'</div></span>'
+              +'<span style="font-size:11px;'+(n?'color:var(--dn);font-weight:700':'color:var(--tx3)')+'">'+(n?n+' absent':'not marked')+'</span></button>';
+           }).join('')+'</div>'
+         :'<div class="al aw" style="margin:0">No paper on this exam is one you teach.</div>'),true);
+  }else{
+    const p=st.paper;
+    const list=eaStudents(p.cls);
+    const n=Object.keys(st.absent).filter(function(k){return st.absent[k];}).length;
+    body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+     +'<div style="font-size:13px"><strong>'+esc(p.cls)+'</strong> · '+esc(p.subject)
+       +(p.date?' · '+esc(wpDateText(p.date)):'')+'</div>'
+     +'<button class="btn bg2 bsm" onclick="eaBack()">← Another paper</button></div>'
+     +'<div class="al ai" style="font-size:11px">Tap whoever did <strong>not</strong> sit the paper; tap again to put him back. Everybody you do not tap counts as having sat it.</div>'
+     +'<div class="card" style="padding:0;overflow:hidden">'
+     +(list.length
+       ?list.map(function(stu){
+          const on=!!st.absent[stu.id];
+          return '<div onclick="eaTog('+q+escJs(stu.id)+q+')" style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-bottom:1px solid var(--bd);cursor:pointer;'
+           +(on?'background:var(--dnbg)':'')+'">'
+           +'<div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;'
+             +(on?'background:var(--dn);color:#fff':'background:var(--sf2);color:var(--tx3);border:1px solid var(--bd)')+'">'+(on?'✕':'✓')+'</div>'
+           +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;'+(on?'color:var(--dn)':'')+'">'+esc(fN(stu))+'</div>'
+           +'<div style="font-size:10px;color:var(--tx3)">SN '+esc(stu.sn||'—')+'</div></div>'
+           +'<div style="font-size:11px;font-weight:700;'+(on?'color:var(--dn)':'color:var(--su)')+'">'+(on?'ABSENT':'sat it')+'</div></div>';
+        }).join('')
+       :'<div style="padding:14px;font-size:12px;color:var(--tx3)">There is nobody on the roll of '+esc(p.cls)+'.</div>')
+     +'</div>'
+     +'<div class="card" style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+     +'<div style="font-size:12px"><strong id="ea-n">'+n+'</strong> marked absent of '+list.length+'</div></div>'
+     +(list.length?'<button class="btn bp" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:10px" onclick="eaSubmit()">Send the absentees →</button>':'');
+  }
+  wrap.innerHTML='<style>#eap input{width:100%;box-sizing:border-box;padding:10px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:14px;font-family:inherit}#eap .card{border-radius:10px}</style>'
+   +'<div style="max-width:640px;margin:0 auto">'
+   +'<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;border-top:9px solid var(--ac)"><div style="padding:20px">'
+   +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
+   +'<div style="width:46px;height:46px;background:linear-gradient(135deg,var(--ac),var(--pu));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex-shrink:0">'
+   +(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:')?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">':(s.logo||'\u{1f3eb}'))+'</div>'
+   +'<div style="min-width:0"><div style="font-size:13px;color:var(--tx2)">'+esc(s.schoolName||'School')+'</div>'
+   +'<div style="font-size:11px;color:var(--tx3)">'+esc(s.schoolNameAr||'')+'</div></div></div>'
+   +'<h1 style="font-size:22px;font-weight:700;color:var(--tx);margin-bottom:6px">Exam absentees</h1>'
+   +'<p style="font-size:13px;color:var(--tx2);line-height:1.6">'+(x?esc(x.name||'')+(x.year?' · '+esc(x.year):''):'')+'</p>'
+   +'</div></div>'+body+'</div>';
+  document.body.appendChild(wrap);
+}
+// Only this paper's records are rewritten, so another teacher's stand
+function eaSubmit(){
+  const x=eaExam();
+  const st=eaState();
+  const p=st.paper;
+  if(!x||!p)return;
+  if(!eaOpen()){toast('Type your PIN first','danger');renderEaPortal();return;}
+  const list=eaStudents(p.cls);
+  const mine=list.map(function(s){return s.id;});
+  const absent=mine.filter(function(id){return st.absent[id];});
+  eaEnsureSession(x.name);
+  const all=DB.get('exam_absents')||[];
+  const keep=all.filter(function(a){
+    if(!a)return false;
+    const samePaper=a.examSession===x.name&&a.subject===p.subject
+      &&(typeof grSec==='function')&&grSec(a.grade,a.section)===p.cls;
+    return !samePaper;
+  });
+  const had={};
+  all.forEach(function(a){
+    if(a&&a.examSession===x.name&&a.subject===p.subject&&a.studentId)had[a.studentId]=a;
+  });
+  const now=new Date().toISOString();
+  const by=st.teacher;
+  absent.forEach(function(id){
+    const stu=list.filter(function(s){return s.id===id;})[0];
+    const old=had[id];
+    keep.push(Object.assign({},old||{},{
+      id:(old&&old.id)||nid('abs'),studentId:id,studentName:fN(stu),
+      grade:stu.grade,section:stu.section,subject:p.subject,
+      absentDate:p.date||new Date().toISOString().split('T')[0],
+      examSession:x.name,remarks:(old&&old.remarks)||'',
+      addedBy:by,created:(old&&old.created)||now}));
+  });
+  DB.set('exam_absents',keep);
+  const names=list.filter(function(s){return absent.indexOf(s.id)>=0;}).map(fN);
+  const idx=eaPapers(x.id,st.teacher).findIndex(function(z){return z.cls===p.cls&&z.subject===p.subject;});
+  st.done={cls:p.cls,subject:p.subject,date:p.date,total:list.length,absent:absent.length,names:names,i:idx<0?0:idx};
+  logA('Exam absentees for '+p.cls+' · '+p.subject+' ('+x.name+') — '+absent.length+' of '+list.length);
+  toast(absent.length+' absent of '+list.length+' sent','success');
+  renderEaPortal();window.scrollTo(0,0);
+}
+// ── The code, from the exam ───────────────────────────────
+function eaQrM(){
+  const x=xsCur();if(!x){toast('Open an exam first','danger');return;}
+  const url=eaUrl(x.id);
+  const qr='https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data='+encodeURIComponent(url);
+  const q=String.fromCharCode(39);
+  openM('<div class="mh"><h3>\u{1f4f1} '+esc(x.name||'')+' — absentees code</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Share this with the teachers invigilating. Each scans it, types the same four-digit PIN he uses for the weekly plan, and sees only the subjects and sections he teaches on this exam. He picks one, taps whoever did not sit the paper, and they go straight onto the Exam Absent List under <strong>'+esc(x.name||'')+'</strong>.</div>'
+  +'<div style="text-align:center;padding:8px"><img src="'+qr+'" alt="" style="width:210px;height:210px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
+  +'<div class="fg"><label>The link</label><input value="'+esc(url)+'" readonly onclick="this.select()"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bg2 bsm" onclick="navigator.clipboard.writeText('+q+escJs(url)+q+').then(function(){toast('+q+'Link copied'+q+','+q+'success'+q+');})">\u{1f4cb} Copy</button>'
+  +'<button class="btn bs" onclick="window.open('+q+'https://wa.me/?text='+q+'+encodeURIComponent('+q+escJs((x.name||'')+' — please mark whoever did not sit your paper: '+url)+q+'),'+q+'_blank'+q+')">\u{1f4f2} WhatsApp</button></div>',true);
 }
 // ── The code the teachers scan ───────────────────────────
 function xsUrl(examId){
