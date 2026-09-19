@@ -24134,17 +24134,16 @@ function waRowM(wkId,date,rowId){
   if(!waCanManage()){toast('You may not add an activity','danger');return;}
   const w=waWeek(wkId);if(!w)return;
   const r=rowId?waAll().filter(function(x){return x.id===rowId;})[0]:null;
-  const names=(typeof wpTeacherNames==='function')?wpTeacherNames():[];
+  const names=waPeopleNames();
+  waPickInit('wa-tc',r?r.teacher||'':'');
   const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f3af} '+(r?'Change the activity':'An activity')+' — '+esc(getDayOfWeek(date)||'')+' '+esc(wpDateText(date))+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
   +'<div class="fg"><label>Activity</label><input id="wa-ac" value="'+esc(r?r.activity||'':'')+'" placeholder="e.g. Morning assembly — Reading Week opening"></div>'
   +'<div class="fg"><label>Place of the activity</label><input id="wa-pl" list="wa-pll" value="'+esc(r?r.place||'':'')+'" placeholder="e.g. Main hall, Playground, Library" autocomplete="off">'
   +'<datalist id="wa-pll">'+waPlacesUsed().map(function(p){return '<option value="'+esc(p)+'">';}).join('')+'</datalist></div>'
-  +'<div class="fr f2"><div class="fg"><label>Teacher responsible</label>'
-  +'<input id="wa-tc" list="wa-tl" value="'+esc(r?r.teacher||'':'')+'" placeholder="Name" autocomplete="off">'
-  +'<datalist id="wa-tl">'+names.map(function(n){return '<option value="'+esc(n)+'">';}).join('')+'</datalist></div>'
-  +'<div class="fg"><label>Time</label><input type="time" id="wa-tm" value="'+esc(r?r.time||'':'')+'"></div></div>'
+  +'<div class="fg"><label>Teachers responsible</label>'+waPickHTML('wa-tc',names)+'</div>'
+  +'<div class="fg"><label>Time</label><input type="time" id="wa-tm" value="'+esc(r?r.time||'':'')+'"></div>'
   +'<div class="fg"><label>Note (shown small under the activity)</label><input id="wa-nt" value="'+esc(r?r.note||'':'')+'" placeholder="Anything worth adding"></div>'
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
@@ -24159,7 +24158,7 @@ function waRowSave(wkId,date,rowId){
   const act=v('wa-ac');
   if(!act){toast('Write what the activity is','danger');return;}
   const rec={id:rowId||nid('wa'),wk:wkId,date:date,day:getDayOfWeek(date)||'',
-    activity:act,place:v('wa-pl'),teacher:v('wa-tc'),time:v('wa-tm'),note:v('wa-nt'),deleted:false,
+    activity:act,place:v('wa-pl'),teacher:waPickText('wa-tc'),time:v('wa-tm'),note:v('wa-nt'),deleted:false,
     by:CU.id,byName:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),at:new Date().toISOString()};
   waPut(rec);
   logA((rowId?'Changed':'Added')+' an activity on '+date+' — '+act);
@@ -24313,14 +24312,9 @@ function renderWaPortal(){
             +'<div class="fg" style="margin-bottom:6px"><label>Place of the activity</label>'
             +'<input id="wap-pl" list="wap-pll" placeholder="e.g. Main hall, Playground" autocomplete="off">'
             +'<datalist id="wap-pll">'+waPlacesUsed().map(function(p){return '<option value="'+esc(p)+'">';}).join('')+'</datalist></div>'
-            +'<div class="fr f2"><div class="fg" style="margin-bottom:0"><label>Teacher responsible</label>'
-            +'<select id="wap-tc" onchange="waPWho(this.value)">'
-            +waPeopleNames().map(function(n){
-                return '<option value="'+esc(n)+'"'+(wpNameKey(n)===wpNameKey(st.teacher)?' selected':'')+'>'+esc(n)+'</option>';
-              }).join('')
-            +'<option value="__other">\u2014 somebody else \u2014</option></select>'
-            +'<input id="wap-tc2" placeholder="His name" style="margin-top:5px;display:none"></div>'
-            +'<div class="fg" style="margin-bottom:0"><label>Time</label><input type="time" id="wap-tm"></div></div>'
+            +'<div class="fg" style="margin-bottom:6px"><label>Teachers responsible</label>'
+            +waPickHTML('wap-tc',waPeopleNames())+'</div>'
+            +'<div class="fg" style="margin-bottom:0"><label>Time</label><input type="time" id="wap-tm"></div>'
             +'<div id="wap-msg" style="font-size:11px;color:var(--dn);margin-top:5px"></div>'
             +'<div style="display:flex;gap:6px;margin-top:7px">'
             +'<button class="btn bp" style="flex:1;justify-content:center" onclick="waPSave('+q+escJs(d.date)+q+')">Save it</button>'
@@ -24329,7 +24323,7 @@ function renderWaPortal(){
          +'</div>';
       }).join('');
   }
-  wrap.innerHTML='<style>#wap input,#wap textarea{width:100%;box-sizing:border-box;padding:10px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:14px;font-family:inherit}#wap .card{border-radius:10px}#wap label{display:block;font-size:10px;color:var(--tx3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px}</style>'
+  wrap.innerHTML='<style>#wap input,#wap textarea,#wap select{width:100%;box-sizing:border-box;padding:10px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:14px;font-family:inherit}#wap .card{border-radius:10px}#wap label{display:block;font-size:10px;color:var(--tx3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px}</style>'
    +'<div style="max-width:660px;margin:0 auto">'
    +'<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;border-top:9px solid var(--ac)"><div style="padding:20px">'
    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
@@ -24349,15 +24343,94 @@ function waPeopleNames(){
   if(typeof wpPinPeople==='function')return wpPinPeople().map(function(p){return p.name;});
   return (typeof wpTeacherNames==='function')?wpTeacherNames():[];
 }
-// "somebody else" opens a box for a name that is not on the list
-function waPWho(v){
-  const box=document.getElementById('wap-tc2');
-  if(!box)return;
-  const other=v==='__other';
-  box.style.display=other?'block':'none';
-  if(other)box.focus();
+// ── More than one teacher on an activity ─────────────────
+// The names are kept as they always were, one line of them, so everything
+// written before still reads the same and the sheet needs no change. The
+// chosen names are shown as chips, and a name may be taken off again.
+function waNamesOf(s){
+  return String(s||'').split(/\s*[,،]\s*|\s+\/\s+/).map(function(x){return x.trim();}).filter(Boolean);
 }
-function waPAdd(date){waPState().day=date||'';renderWaPortal();}
+function waNamesText(list){
+  const seen={},out=[];
+  (list||[]).forEach(function(n){
+    const k=String(n||'').trim().toLowerCase();
+    if(!k||seen[k])return;
+    seen[k]=1;out.push(String(n).trim());
+  });
+  return out.join(', ');
+}
+function waPickAll(){if(!window.__waPick)window.__waPick={};return window.__waPick;}
+function waPicked(id){return waPickAll()[id]||[];}
+function waPickInit(id,val){waPickAll()[id]=waNamesOf(val);}
+function waPickText(id){return waNamesText(waPicked(id));}
+function waPickChipsHTML(id){
+  const list=waPicked(id);
+  const q=String.fromCharCode(39);
+  if(!list.length)return '<span style="font-size:11px;color:var(--tx3)">Nobody chosen yet — pick one below.</span>';
+  return list.map(function(n,i){
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:var(--pubg);color:var(--pu);border-radius:20px;padding:4px 10px;font-size:12px;font-weight:700;margin:0 5px 5px 0">'
+     +esc(n)+'<span onclick="waPickDel('+q+escJs(id)+q+','+i+')" title="Take him off" style="cursor:pointer;font-size:14px;line-height:1">×</span></span>';
+  }).join('');
+}
+function waPickPaint(id){
+  const e=document.getElementById(id+'-chips');
+  if(e)e.innerHTML=waPickChipsHTML(id);
+}
+function waPickHTML(id,names){
+  const q=String.fromCharCode(39);
+  return '<div id="'+id+'-chips" style="margin-bottom:5px">'+waPickChipsHTML(id)+'</div>'
+   +'<select id="'+id+'" onchange="waPickAdd('+q+escJs(id)+q+',this.value)">'
+   +'<option value="">+ add a teacher…</option>'
+   +names.map(function(n){return '<option value="'+esc(n)+'">'+esc(n)+'</option>';}).join('')
+   +'<option value="__other">— somebody else —</option></select>'
+   +'<div id="'+id+'2-wrap" style="display:none;margin-top:5px">'
+   +'<div style="display:flex;gap:6px">'
+   +'<input id="'+id+'2" placeholder="His name" style="flex:1" onkeydown="if(event.key===\'Enter\'){event.preventDefault();waPickOther('+q+escJs(id)+q+');}">'
+   +'<button type="button" class="btn bg2 bsm" style="flex:0 0 auto" onclick="waPickOther('+q+escJs(id)+q+')">Add</button></div></div>';
+}
+function waPickAdd(id,v){
+  const sel=document.getElementById(id);
+  const wrap=document.getElementById(id+'2-wrap');
+  const box=document.getElementById(id+'2');
+  if(v==='__other'){
+    if(wrap)wrap.style.display='block';
+    if(box)box.focus();
+    if(sel)sel.value='';
+    return;
+  }
+  if(wrap)wrap.style.display='none';
+  if(sel)sel.value='';
+  if(!v)return;
+  const list=waPicked(id).slice();
+  const k=String(v).trim().toLowerCase();
+  if(!list.some(function(n){return String(n).trim().toLowerCase()===k;}))list.push(String(v).trim());
+  waPickAll()[id]=list;
+  waPickPaint(id);
+}
+function waPickOther(id){
+  const box=document.getElementById(id+'2');
+  const v=box?String(box.value||'').trim():'';
+  if(!v)return;
+  if(box)box.value='';
+  const wrap=document.getElementById(id+'2-wrap');
+  if(wrap)wrap.style.display='none';
+  waPickAdd(id,v);
+}
+function waPickDel(id,i){
+  const list=waPicked(id).slice();
+  if(i<0||i>=list.length)return;
+  list.splice(i,1);
+  waPickAll()[id]=list;
+  waPickPaint(id);
+}
+// the old name for the same thing, kept so nothing that calls it breaks
+function waPWho(v){waPickAdd('wap-tc',v);}
+function waPAdd(date){
+  const st=waPState();
+  st.day=date||'';
+  if(date)waPickInit('wap-tc',st.teacher);else waPickInit('wap-tc','');
+  renderWaPortal();
+}
 function waPSave(date){
   const w=waPortalWeek();
   const st=waPState();
@@ -24368,14 +24441,12 @@ function waPSave(date){
   const say=function(t){const e=document.getElementById('wap-msg');if(e)e.textContent=t;else toast(t,'danger');};
   const act=v('wap-ac');
   if(!act){say('Please say what the activity is.');return;}
-  let who=v('wap-tc');
-  if(who==='__other')who=v('wap-tc2');
-  if(!who)who=st.teacher;
+  const who=waPickText('wap-tc')||st.teacher;
   waPut({id:nid('wa'),wk:w.id,date:date,day:getDayOfWeek(date)||'',
     activity:act,place:v('wap-pl'),teacher:who,time:v('wap-tm'),note:'',deleted:false,
     byName:st.teacher,at:new Date().toISOString()});
   logA('Added an activity on '+date+' — '+act);
-  st.day='';
+  st.day='';waPickInit('wap-tc','');
   toast('Added','success');
   renderWaPortal();
 }
