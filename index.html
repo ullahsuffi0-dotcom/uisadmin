@@ -23966,7 +23966,7 @@ function renderWaPortal(){
         return '<div class="card" style="padding:12px;margin-bottom:9px;border-left:5px solid '+c.d+'">'
          +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px">'
          +'<div style="font-size:14px;font-weight:700;color:'+c.d+'">'+esc(d.day)+' <span style="font-size:11px;color:var(--tx3)">'+esc(wpDateText(d.date))+'</span></div>'
-         +(og.ok?'<button class="btn bs bsm" onclick="waPAdd('+q+escJs(d.date)+q+')">+ Add mine</button>':'')+'</div>'
+         +(og.ok?'<button class="btn bs bsm" onclick="waPAdd('+q+escJs(d.date)+q+')">+ Add an activity</button>':'')+'</div>'
          +(list.length
            ?list.map(function(r){
               return '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--bd)">'
@@ -23982,7 +23982,12 @@ function renderWaPortal(){
             +'<input id="wap-pl" list="wap-pll" placeholder="e.g. Main hall, Playground" autocomplete="off">'
             +'<datalist id="wap-pll">'+waPlacesUsed().map(function(p){return '<option value="'+esc(p)+'">';}).join('')+'</datalist></div>'
             +'<div class="fr f2"><div class="fg" style="margin-bottom:0"><label>Teacher responsible</label>'
-            +'<input id="wap-tc" value="'+esc(st.teacher)+'" placeholder="Name"></div>'
+            +'<select id="wap-tc" onchange="waPWho(this.value)">'
+            +waPeopleNames().map(function(n){
+                return '<option value="'+esc(n)+'"'+(wpNameKey(n)===wpNameKey(st.teacher)?' selected':'')+'>'+esc(n)+'</option>';
+              }).join('')
+            +'<option value="__other">\u2014 somebody else \u2014</option></select>'
+            +'<input id="wap-tc2" placeholder="His name" style="margin-top:5px;display:none"></div>'
             +'<div class="fg" style="margin-bottom:0"><label>Time</label><input type="time" id="wap-tm"></div></div>'
             +'<div id="wap-msg" style="font-size:11px;color:var(--dn);margin-top:5px"></div>'
             +'<div style="display:flex;gap:6px;margin-top:7px">'
@@ -24006,6 +24011,20 @@ function renderWaPortal(){
    +'</div></div>'+body+'</div>';
   document.body.appendChild(wrap);
 }
+// Everybody who might be put down as responsible: the names on the timetable
+// and the members of staff, the same list the PINs are given from.
+function waPeopleNames(){
+  if(typeof wpPinPeople==='function')return wpPinPeople().map(function(p){return p.name;});
+  return (typeof wpTeacherNames==='function')?wpTeacherNames():[];
+}
+// "somebody else" opens a box for a name that is not on the list
+function waPWho(v){
+  const box=document.getElementById('wap-tc2');
+  if(!box)return;
+  const other=v==='__other';
+  box.style.display=other?'block':'none';
+  if(other)box.focus();
+}
 function waPAdd(date){waPState().day=date||'';renderWaPortal();}
 function waPSave(date){
   const w=waPortalWeek();
@@ -24017,8 +24036,11 @@ function waPSave(date){
   const say=function(t){const e=document.getElementById('wap-msg');if(e)e.textContent=t;else toast(t,'danger');};
   const act=v('wap-ac');
   if(!act){say('Please say what the activity is.');return;}
+  let who=v('wap-tc');
+  if(who==='__other')who=v('wap-tc2');
+  if(!who)who=st.teacher;
   waPut({id:nid('wa'),wk:w.id,date:date,day:getDayOfWeek(date)||'',
-    activity:act,place:v('wap-pl'),teacher:v('wap-tc')||st.teacher,time:v('wap-tm'),note:'',deleted:false,
+    activity:act,place:v('wap-pl'),teacher:who,time:v('wap-tm'),note:'',deleted:false,
     byName:st.teacher,at:new Date().toISOString()});
   logA('Added an activity on '+date+' — '+act);
   st.day='';
