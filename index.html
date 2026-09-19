@@ -1256,6 +1256,7 @@ async function doLogin(){
   CU=user;SAIMP=false;SAR=null;
   // Persist login session
   localStorage.setItem('sms7_session',JSON.stringify({userId:user.id,school:schoolVal}));
+  try{logA('Signed in');}catch(e){}
   launch();
 }
 function doLogout(){
@@ -1724,7 +1725,43 @@ function toast(msg,type='info'){const el=document.createElement('div');el.classN
 function openM(html,lg=false){document.getElementById('mr').innerHTML='<div class="mb" onclick="if(event.target===this)closeM()"><div class="mo'+(lg?' ml':'')+'">'+html+'</div></div>';}
 function closeM(){document.getElementById('mr').innerHTML='';}
 function nid(p){return p+Date.now()+Math.random().toString(36).slice(2,5);}
-function logA(action){if(!CU)return;const l=DB.get('activity_log')||[];l.unshift({user:(CU.firstName||'')+' '+(CU.lastName||''),role:rL(CU.role),roleKey:CU.role,action,time:new Date().toISOString()});if(l.length>300)l.pop();DB.set('activity_log',l);}
+// Somebody working from a scanned link is not signed in, so the feed used to
+// miss everything they did. A portal says who is there — a teacher who typed
+// his PIN, a parent who gave his name — and it is written down the same way,
+// marked as having come through a link rather than an account.
+function portalActor(user,role,viaPin){
+  window.__portalWho=user?{user:String(user),role:String(role||'Link'),roleKey:'portal',viaPin:!!viaPin}:null;
+}
+function clearPortalActor(){window.__portalWho=null;}
+function logActor(){
+  if(CU)return {user:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),role:rL(CU.role),roleKey:CU.role,viaPin:false};
+  const p=window.__portalWho;
+  return p?{user:p.user,role:p.role,roleKey:p.roleKey||'portal',viaPin:!!p.viaPin}:null;
+}
+function logA(action){
+  const who=logActor();
+  if(!who)return;
+  const l=DB.get('activity_log')||[];
+  l.unshift({user:who.user,role:who.role,roleKey:who.roleKey,viaPin:who.viaPin||false,
+    action:action,time:new Date().toISOString()});
+  if(l.length>300)l.pop();
+  DB.set('activity_log',l);
+}
+// One entry in somebody else's name, without pretending to be them
+function logAs(user,role,action,viaPin){
+  const l=DB.get('activity_log')||[];
+  l.unshift({user:String(user||'Someone'),role:String(role||'Link'),roleKey:'portal',viaPin:!!viaPin,
+    action:action,time:new Date().toISOString()});
+  if(l.length>300)l.pop();
+  DB.set('activity_log',l);
+}
+// A line that came through a link is marked, so the feed does not read as
+// though somebody signed in to do it.
+function logMark(l){
+  if(!l||l.roleKey!=='portal')return '';
+  return ' <span class="badge '+(l.viaPin?'bgn':'bbl')+'" style="font-size:8px">'
+   +(l.viaPin?'🔑 PIN':'🔗 link')+'</span>';
+}
 function fN(s){return((s.firstName||'')+' '+(s.lastName||'')).trim();}
 function gS(id){return(DB.get('students')||[]).find(s=>s.id===id);}
 function gA(id){return(DB.get('accounts')||[]).find(a=>a.id===id);}
@@ -1968,9 +2005,9 @@ function rDash(){
   if(isP){stats='<div class="cg g4" style="margin-bottom:14px"><div class="stat bl"><div class="sl2">'+T('total_students')+'</div><div class="sv">'+students.length+'</div><div class="sic">👨‍🎓</div></div><div class="stat go"><div class="sl2">'+T('open_complaints')+'</div><div class="sv">'+complaints.filter(c=>c.status==='Open').length+'</div><div class="sic">📋</div></div><div class="stat gn"><div class="sl2">'+T('active_tasks')+'</div><div class="sv">'+tasks.filter(t=>t.status!=='Completed').length+'</div><div class="sic">✅</div></div><div class="stat rd"><div class="sl2">'+T('infractions')+'</div><div class="sv">'+infractions.length+'</div><div class="sic">⚠️</div></div></div>';}
   else{stats='<div class="cg g3" style="margin-bottom:14px"><div class="stat bl"><div class="sl2">'+T('tasks')+'</div><div class="sv">'+myT.length+'</div><div class="sb3">'+myT.filter(t=>t.status!=='Completed').length+' '+T('pending')+'</div><div class="sic">✅</div></div><div class="stat gn"><div class="sl2">'+T('completed')+'</div><div class="sv">'+myT.filter(t=>t.status==='Completed').length+'</div><div class="sic">🏆</div></div><div class="stat go"><div class="sl2">'+T('activities')+'</div><div class="sv">'+activities.filter(a=>a.status==='Upcoming').length+'</div><div class="sic">🏃</div></div></div>';}
   const tl=isP?tasks:myT;const isSA=CU.role==='superadmin';
-  document.getElementById('pc').innerHTML=vpClassBanner+stats+'<div class="cg g2"><div class="card"><div class="sh2"><h3>✅ '+T('tasks')+'</h3><button class="btn bg2 bsm" onclick="navigate(\'tasks\')">'+T('view')+' All</button></div>'+tl.slice(0,5).map(t=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)"><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+t.title+'</div><div style="font-size:10px;color:var(--tx3)">'+t.assignedName+' · '+t.dueDate+'</div><div class="prog" style="margin-top:4px;width:100px"><div class="pf" style="width:'+t.progress+'%"></div></div></div><span class="badge '+(t.status==='Completed'?'bgn':t.status==='In Progress'?'bbl':'bgo')+'" style="margin-left:8px">'+t.status+'</span></div>').join('')+'<div id="tnolist">'+(tl.length===0?'<div class="emp"><div class="ei">✅</div><p>'+T('no_records')+'</p></div>':'')+'</div></div><div class="card"><div class="sh2"><h3>📢 '+T('announcements')+'</h3></div>'+anns.map(a=>'<div style="padding:8px 0;border-bottom:1px solid var(--bd)"><div style="font-size:12px;font-weight:500">'+a.title+'</div><div style="font-size:10px;color:var(--tx3);margin-top:2px">'+a.date+' · '+a.postedBy+'</div></div>').join('')+'</div></div>'+(isSA?'<div class="card" style="margin-top:13px"><div class="sh2"><h3>⚡ '+T('live_feed')+'</h3><button class="btn bg2 bsm" onclick="rActLog()">All</button></div><div class="tl2">'+logItems.map(l=>'<div class="tli"><div class="tld"></div><div class="tlm">'+new Date(l.time).toLocaleString(_lang==='ar'?'ar-SA':'en-SA')+' · <strong>'+l.user+'</strong></div><div class="tlc">'+l.action+'</div></div>').join('')+'</div></div>':'');
+  document.getElementById('pc').innerHTML=vpClassBanner+stats+'<div class="cg g2"><div class="card"><div class="sh2"><h3>✅ '+T('tasks')+'</h3><button class="btn bg2 bsm" onclick="navigate(\'tasks\')">'+T('view')+' All</button></div>'+tl.slice(0,5).map(t=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)"><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+t.title+'</div><div style="font-size:10px;color:var(--tx3)">'+t.assignedName+' · '+t.dueDate+'</div><div class="prog" style="margin-top:4px;width:100px"><div class="pf" style="width:'+t.progress+'%"></div></div></div><span class="badge '+(t.status==='Completed'?'bgn':t.status==='In Progress'?'bbl':'bgo')+'" style="margin-left:8px">'+t.status+'</span></div>').join('')+'<div id="tnolist">'+(tl.length===0?'<div class="emp"><div class="ei">✅</div><p>'+T('no_records')+'</p></div>':'')+'</div></div><div class="card"><div class="sh2"><h3>📢 '+T('announcements')+'</h3></div>'+anns.map(a=>'<div style="padding:8px 0;border-bottom:1px solid var(--bd)"><div style="font-size:12px;font-weight:500">'+a.title+'</div><div style="font-size:10px;color:var(--tx3);margin-top:2px">'+a.date+' · '+a.postedBy+'</div></div>').join('')+'</div></div>'+(isSA?'<div class="card" style="margin-top:13px"><div class="sh2"><h3>⚡ '+T('live_feed')+'</h3><button class="btn bg2 bsm" onclick="rActLog()">All</button></div><div class="tl2">'+logItems.map(l=>'<div class="tli"><div class="tld"></div><div class="tlm">'+new Date(l.time).toLocaleString(_lang==='ar'?'ar-SA':'en-SA')+' · <strong>'+esc(l.user)+'</strong>'+logMark(l)+' <span style="opacity:.7">'+esc(l.role||'')+'</span></div><div class="tlc">'+esc(l.action)+'</div></div>').join('')+'</div></div>':'');
 }
-function rActLog(){if(CU.role!=='superadmin'){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Activity log is only accessible to Super Admin</p></div>';return;}const log=DB.get('activity_log')||[];document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>⚡ '+T('activity_log')+'</h3><button class="btn bg2 bsm" onclick="rActLog()">🔄</button></div><div class="tw"><table><thead><tr><th>'+T('date')+'</th><th>'+T('name')+'</th><th>'+T('role')+'</th><th>Action</th></tr></thead><tbody>'+log.map(l=>'<tr><td style="font-size:10px;white-space:nowrap;color:var(--tx3)">'+new Date(l.time).toLocaleString(_lang==='ar'?'ar-SA':'en-SA')+'</td><td><strong>'+l.user+'</strong></td><td><span class="badge bbl">'+l.role+'</span></td><td style="color:var(--tx2);font-size:12px">'+l.action+'</td></tr>').join('')+'</tbody></table></div></div>';}
+function rActLog(){if(CU.role!=='superadmin'){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Activity log is only accessible to Super Admin</p></div>';return;}const log=DB.get('activity_log')||[];document.getElementById('pc').innerHTML='<div class="card"><div class="sh2"><h3>⚡ '+T('activity_log')+'</h3><button class="btn bg2 bsm" onclick="rActLog()">🔄</button></div><div class="tw"><table><thead><tr><th>'+T('date')+'</th><th>'+T('name')+'</th><th>'+T('role')+'</th><th>Action</th></tr></thead><tbody>'+log.map(l=>'<tr><td style="font-size:10px;white-space:nowrap;color:var(--tx3)">'+new Date(l.time).toLocaleString(_lang==='ar'?'ar-SA':'en-SA')+'</td><td><strong>'+esc(l.user)+'</strong>'+logMark(l)+'</td><td><span class="badge '+(l.roleKey==='portal'?'bgo':'bbl')+'">'+esc(l.role)+'</span></td><td style="color:var(--tx2);font-size:12px">'+esc(l.action)+'</td></tr>').join('')+'</tbody></table></div></div>';}
 function rProfile(){
   // If teacher, look up their linked teacher record to show subject
   let myTeacher=null;
@@ -7929,7 +7966,7 @@ function aqSubmit(){
   DB.set('attendance',all);
   const names=list.filter(function(x){return absent.indexOf(x.id)>=0;}).map(fN);
   st.done={cls:cls,date:date,total:list.length,absent:absent.length,present:list.length-absent.length,names:names};
-  logA('Attendance taken from the QR code for '+cls+' — '+absent.length+' absent of '+list.length);
+  logAs('Attendance QR','Register · link','Took the register of '+cls+' — '+(list.length-absent.length)+' present, '+absent.length+' absent');
   toast(cls+': '+(list.length-absent.length)+' present, '+absent.length+' absent','success');
   renderAttPortal();window.scrollTo(0,0);
 }
@@ -22453,7 +22490,7 @@ function scSubmit(){
     status:'pending',newSection:'',effectiveDate:'',note:'',decidedBy:'',decidedAt:'',
     date:now.toISOString().split('T')[0],at:now.toISOString(),deleted:false};
   scrPut(rec);
-  logA('Section change request '+rec.ref+' for '+rec.studentName+' ('+rec.grade+'-'+rec.currentSection+' → '+req+')');
+  logAs(pn,'Parent · link','Asked for a section change — '+rec.studentName+' ('+rec.grade+'-'+rec.currentSection+' → '+req+') · '+rec.ref);
   st.done=rec;
   renderScPortal();window.scrollTo(0,0);
 }
@@ -23203,6 +23240,8 @@ function xsPUnlock(){
     if(!name){say('That PIN is not right. It is the same one you use for the weekly plan.');return false;}
     const st=xsPState();
     st.unlocked=true;st.teacher=name;
+    portalActor(name,'Teacher · PIN',true);
+    logA('Opened the exam portion with his PIN');
     renderXsPortal();window.scrollTo(0,0);
     toast('Welcome, '+name,'success');
     return true;
@@ -23215,7 +23254,7 @@ function xsPEdit(id){
   window._xsEdit[id]=true;
   renderXsPortal();
 }
-function xsPReset(){window._xsEdit={};window._xsp={teacher:'',unlocked:false};renderXsPortal();window.scrollTo(0,0);}
+function xsPReset(){window._xsEdit={};window._xsp={teacher:'',unlocked:false};clearPortalActor();renderXsPortal();window.scrollTo(0,0);}
 // The subjects on this exam that he himself teaches, class by class
 function xsPMine(){
   const x=xsPortalExam();
@@ -24081,6 +24120,8 @@ function wpPUnlock(){
     if(wpIsExcludedTeacher(name)){say('You are not asked for a weekly plan at the moment.');return false;}
     const st=wpPState();
     st.unlocked=true;st.teacher=name;st.mode='teacher';st.cls='';
+    portalActor(name,'Teacher · PIN',true);
+    logA('Opened the weekly plan with his PIN');
     renderWpPortal();window.scrollTo(0,0);
     toast('Welcome, '+name,'success');
     return true;
@@ -24091,7 +24132,7 @@ function wpPTeacher(n){const st=wpPState();st.teacher=n;st.cls='';renderWpPortal
 function wpPPick(cls){wpPState().cls=cls;renderWpPortal();window.scrollTo(0,0);}
 function wpPBack(){wpPState().cls='';renderWpPortal();window.scrollTo(0,0);}
 function wpPBackName(){const st=wpPState();st.mode='';st.cls='';renderWpPortal();window.scrollTo(0,0);}
-function wpPReset(){window._wpp={mode:'',teacher:'',cls:'',unlocked:false};renderWpPortal();window.scrollTo(0,0);}
+function wpPReset(){window._wpp={mode:'',teacher:'',cls:'',unlocked:false};clearPortalActor();renderWpPortal();window.scrollTo(0,0);}
 
 // ── The same lessons in another section ──────────────────
 // A teacher who takes, say, both 4-A and 4-B writes the plan once and brings
