@@ -23234,26 +23234,14 @@ function eaTarget(){
   const x0=xsAll()[0];
   return x0?{x:x0,name:x0.name||''}:null;
 }
-// The sections of a grade where this teacher takes that subject
-function eaSectionsOf(grade,subject,teacher){
-  const k=(typeof wpNameKey==='function')?wpNameKey(teacher):String(teacher||'').toLowerCase();
-  const out=[];
-  (typeof xsClassesOf==='function'?xsClassesOf(grade):[]).forEach(function(cls){
-    const mine=((typeof wpLessons==='function')?wpLessons(cls):[]).some(function(l){
-      return String(l.subject||'')===String(subject)
-        &&((typeof wpNameKey==='function')?wpNameKey(l.teacher):String(l.teacher||'').toLowerCase())===k;
-    });
-    if(mine)out.push(cls);
-  });
-  return out;
-}
 function eaSortPapers(a,b){
   return String(a.cls).localeCompare(String(b.cls),undefined,{numeric:true})
+    ||((a.onSchedule?0:1)-(b.onSchedule?0:1))
     ||String(a.date||'').localeCompare(String(b.date||''))
     ||String(a.subject).localeCompare(String(b.subject));
 }
-// A session with no schedule behind it: every subject he takes, class by
-// class, straight from the timetable, with the day left to the one he marks
+// Every subject he takes, class by class, straight from the timetable, with
+// the day left open until the schedule of an exam gives it one
 function eaFreePapers(teacher){
   const off=(typeof wpIsOffTimetable==='function')&&wpIsOffTimetable(teacher);
   const k=(typeof wpNameKey==='function')?wpNameKey(teacher):String(teacher||'').toLowerCase();
@@ -23272,19 +23260,24 @@ function eaFreePapers(teacher){
   return out.sort(eaSortPapers);
 }
 // Every paper this teacher is to mark the absentees of: one card per section
+// Every subject he takes is his to mark, whether or not it was put on the
+// portion & schedule. Where it was, the day it is sat comes with it.
 function eaPapers(t,teacher){
   if(!t||!teacher)return [];
-  if(!t.x)return eaFreePapers(teacher);
-  const off=(typeof wpIsOffTimetable==='function')&&wpIsOffTimetable(teacher);
-  const out=[];
-  xsClassesOn(t.x.id).forEach(function(g){
-    xsRows(t.x.id,g).forEach(function(r){
-      const secs=off?(typeof xsClassesOf==='function'?xsClassesOf(g):[]):eaSectionsOf(g,r.subject,teacher);
-      secs.forEach(function(cls){
-        out.push({grade:g,cls:cls,subject:r.subject,date:r.date||'',rowId:r.id});
+  const out=eaFreePapers(teacher);
+  if(t.x){
+    const sched={};
+    xsClassesOn(t.x.id).forEach(function(g){
+      xsRows(t.x.id,g).forEach(function(r){
+        sched[g+''+String(r.subject||'')]={date:r.date||'',rowId:r.id};
       });
     });
-  });
+    out.forEach(function(p){
+      const m=sched[p.grade+''+p.subject];
+      if(!m)return;
+      p.date=m.date;p.rowId=m.rowId;p.onSchedule=true;
+    });
+  }
   return out.sort(eaSortPapers);
 }
 function eaStudents(cls){
@@ -23413,15 +23406,15 @@ function renderEaPortal(){
       }
       cards+='<button type="button" class="btn bg2" style="justify-content:space-between;padding:12px 13px;text-align:left;width:100%;margin-bottom:5px" onclick="eaPick('+i+')">'
        +'<span><strong style="font-size:15px">'+esc(p.subject)+'</strong>'
-       +'<div style="font-size:10px;color:var(--tx3)">'+(p.date?esc(wpDateText(p.date))+' · '+esc(getDayOfWeek(p.date)||''):'the day it is sat')+'</div></span>'
+       +'<div style="font-size:10px;color:var(--tx3)">'+(p.date?esc(wpDateText(p.date))+' · '+esc(getDayOfWeek(p.date)||''):'the day you mark it')+'</div></span>'
        +'<span style="font-size:11px;'+(n?'color:var(--dn);font-weight:700':'color:var(--tx3)')+'">'+(n?n+' absent':'not marked')+'</span></button>';
     });
     body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
      +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong></div>'
      +'<button class="btn bg2 bsm" onclick="eaReset()">Not you?</button></div>'
-     +pdpQ('Choose the paper','Only the subjects and sections you teach are shown. Then tap whoever did not sit it.',
+     +pdpQ('Choose the subject','Every subject you teach is here, section by section, whether or not it was put on the portion & schedule. Then tap whoever did not sit it.',
        (list.length?'<div>'+cards+'</div>'
-         :'<div class="al aw" style="margin:0">No paper on this exam is one you teach.</div>'),true);
+         :'<div class="al aw" style="margin:0">You have no subject on the timetable.</div>'),true);
   }else{
     const p=st.paper;
     const list=eaStudents(p.cls);
@@ -23514,9 +23507,9 @@ function eaQrFor(name,examId){
   const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f4f1} '+esc(name)+' — absentees code</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">Share this with the teachers invigilating. Each scans it, types the same four-digit PIN he uses for the weekly plan, and sees only the subjects and sections he teaches. He picks one, taps whoever did not sit the paper, and they go straight onto this list under <strong>'+esc(name)+'</strong>.</div>'
-  +(x?'<div class="al ag">The subjects and the days they are sat come from the schedule of this exam.</div>'
-     :'<div class="al aw">This exam has no portion &amp; schedule behind it, so every subject a teacher takes is offered and the day is taken as the day he marks it. Opening it in <strong>Exam Portion &amp; Schedule</strong> under the same name gives it its subjects and dates.</div>')
+  +'<div class="al ai">Share this with the teachers invigilating. Each scans it, types the same four-digit PIN he uses for the weekly plan, and sees the subjects and sections he teaches. He picks one, taps whoever did not sit the paper, and they go straight onto this list under <strong>'+esc(name)+'</strong>.</div>'
+  +(x?'<div class="al ag">Every subject a teacher takes is offered, whether or not it was put on the portion &amp; schedule of this exam. The ones that were carry the day they are sat; for the rest the day he marks them is taken.</div>'
+     :'<div class="al aw">This exam has no portion &amp; schedule behind it, so every subject a teacher takes is offered and the day he marks it is taken as the day. Opening it in <strong>Exam Portion &amp; Schedule</strong> under the same name puts the days on it.</div>')
   +'<div style="text-align:center;padding:8px"><img src="'+qr+'" alt="" style="width:210px;height:210px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
   +'<div class="fg"><label>The link</label><input value="'+esc(url)+'" readonly onclick="this.select()"></div>'
   +'<a href="'+esc(qrLg)+'" download="absentees_qr.png" class="btn bg2 bsm" style="text-decoration:none">⬇️ Download the code</a>'
