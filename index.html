@@ -12968,7 +12968,7 @@ const SYNC_KEYS = [
   'visit_forms','task_requests','exam_absents','exam_sessions','academic_calendar','academic_terms','attendance',
   'student_health','remedial_plans','vp_reports','warning_letters','teacher_achievements','reexam_schedules',
   'sessions','active_session_id','behaviour','duty_rosters','substitutions','user_permissions','late_arrivals','teacher_development',
-  'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','bd_exclusions','student_card_sets','certificate_templates','certificate_sets','break_discipline','school_timetable','section_requests','exam_schedules','exam_subjects','exam_topics','weekly_plans','weekly_plan_weeks','class_wa_links','wp_teacher_pins','wp_excluded_teachers','wp_day_notices','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
+  'duty_places','duty_remarks','duty_blocks','tt_name_links','classroom_discipline','period_discipline','pd_exclusions','bd_exclusions','student_card_sets','certificate_templates','certificate_sets','break_discipline','school_timetable','section_requests','exam_schedules','exam_classes','exam_subjects','exam_topics','weekly_plans','weekly_plan_weeks','class_wa_links','wp_teacher_pins','wp_excluded_teachers','wp_day_notices','sub_preferences','todos','deleted_ids','excused','teacher_evaluations','teval_criteria','eval_rubric',
   // sv7 marks a bucket as already provisioned. It MUST sync: without it a
   // second device sees no marker and re-seeds the school over live data.
   'sv7'
@@ -12997,7 +12997,7 @@ const AUTO_REFRESH_MAP = {
   reexam_schedules:['rReexam'],
   duty_rosters:['rDutyRoster','rMyDuties'],substitutions:['rSubstitutions','rMyDuties'],
   duty_places:['rDutyRoster'],duty_blocks:['rDutyRoster'],tt_name_links:['rDutyRoster'],duty_remarks:['rDutyRoster','rMyDuties'],
-  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],bd_exclusions:['rBreakDiscipline','rPeriodDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],school_timetable:['rBreakDiscipline','rPeriodDiscipline'],section_requests:['rSectionRequests'],exam_schedules:['rExamSchedule'],exam_subjects:['rExamSchedule'],exam_topics:['rExamSchedule'],weekly_plans:['rWeeklyPlan'],weekly_plan_weeks:['rWeeklyPlan'],class_wa_links:['rWeeklyPlan'],wp_teacher_pins:['rWeeklyPlan'],wp_excluded_teachers:['rWeeklyPlan'],wp_day_notices:['rWeeklyPlan'],sub_preferences:['rSubstitutions'],
+  classroom_discipline:['rClassroomDiscipline','rMyDisciplineReports'],period_discipline:['rPeriodDiscipline'],pd_exclusions:['rPeriodDiscipline','rBreakDiscipline'],bd_exclusions:['rBreakDiscipline','rPeriodDiscipline'],break_discipline:['rBreakDiscipline','rPeriodDiscipline'],school_timetable:['rBreakDiscipline','rPeriodDiscipline'],section_requests:['rSectionRequests'],exam_schedules:['rExamSchedule'],exam_classes:['rExamSchedule'],exam_subjects:['rExamSchedule'],exam_topics:['rExamSchedule'],weekly_plans:['rWeeklyPlan'],weekly_plan_weeks:['rWeeklyPlan'],class_wa_links:['rWeeklyPlan'],wp_teacher_pins:['rWeeklyPlan'],wp_excluded_teachers:['rWeeklyPlan'],wp_day_notices:['rWeeklyPlan'],sub_preferences:['rSubstitutions'],
   sessions:['rSessions'],active_session_id:['rSessions'],
   todos:['rMyTodos']
 };
@@ -13443,7 +13443,7 @@ async function rosterMergedWrite(k,local){
 // Collections written a record at a time by many people at once. A whole-array
 // push for one of these can only ever destroy what the writer had not seen, so
 // the sync layer upserts the records instead and never removes on a bulk write.
-const APPEND_ONLY_KEYS=['period_discipline','break_discipline','exam_schedules','exam_subjects','exam_topics','section_requests','weekly_plans','weekly_plan_weeks','class_wa_links','wp_teacher_pins','wp_excluded_teachers','wp_day_notices','tt_name_links','late_arrivals','teacher_development','bd_exclusions','student_card_sets','certificate_templates','certificate_sets'];
+const APPEND_ONLY_KEYS=['period_discipline','break_discipline','exam_schedules','exam_classes','exam_subjects','exam_topics','section_requests','weekly_plans','weekly_plan_weeks','class_wa_links','wp_teacher_pins','wp_excluded_teachers','wp_day_notices','tt_name_links','late_arrivals','teacher_development','bd_exclusions','student_card_sets','certificate_templates','certificate_sets'];
 function isAppendOnlyKey(k){return APPEND_ONLY_KEYS.indexOf(k)>=0;}
 
 // Upsert each record under its own key. Concurrent writers touch different
@@ -22459,14 +22459,16 @@ function scSubmit(){
 }
 // ═══════════════════════════════════════════════════════════
 // EXAM PORTION AND SCHEDULE
-// The supervisor opens an exam for a grade — every section sits the same one —
-// and puts the subjects on it from the class timetable, each with its date.
-// A code is shared with the teachers, who type the PIN they already use for
-// the weekly plan; each one is shown only the subjects he himself teaches in
-// that grade, and writes the portion. What comes out is the school's own quiz
-// schedule sheet: date, day, subject and topics, to print, to save as a PDF
-// or to send on WhatsApp. A closing time can be set, the exam locked, the
-// portion cleared, and whoever has not written his part listed at any moment.
+// An exam is opened by name — 1st Quiz, Mid-term — and classes are put on it,
+// as many as sit it; every section of a class sits the same one. Each class
+// carries its own subjects, taken from the timetable, each with its date. A
+// code is shared with the teachers, who type the PIN they already use for the
+// weekly plan; each is shown only the subjects he himself teaches in the
+// classes on the exam, and writes the portion. What comes out is the school's
+// own quiz schedule sheet, one per class: date, day, subject and topics, to
+// print, to save as a PDF or to send on WhatsApp. A closing time can be set,
+// the exam locked, a class's portion cleared or its whole schedule taken off,
+// and whoever has not written his part listed at any moment.
 // ═══════════════════════════════════════════════════════════
 function xsCanManage(){return mayEdit('exam_schedule',['superadmin','principal','vice_principal','academic_supervisor']);}
 function xsCanView(){return mayView('exam_schedule',['superadmin','principal','vice_principal','academic_supervisor','quality_incharge','admin_assistant']);}
@@ -22477,11 +22479,7 @@ function xsAll(){
    .sort(function(a,b){return String(b.at||'').localeCompare(String(a.at||''));});
 }
 function xsOne(id){return xsAll().filter(function(x){return x.id===id;})[0]||null;}
-function xsCur(){
-  const all=xsAll();
-  if(!all.length)return null;
-  return xsOne(window._xsId)||all[0];
-}
+function xsCur(){return xsOne(window._xsId);}
 function xsPut(rec){
   const a=fbToArrayShape(DB.get('exam_schedules'));
   const arr=(Array.isArray(a)?a:[]).slice();
@@ -22489,15 +22487,45 @@ function xsPut(rec){
   if(i>=0)arr[i]=Object.assign({},arr[i],rec);else arr.push(rec);
   DB.set('exam_schedules',arr);
 }
-// ── The subjects put on an exam ──────────────────────────
-function xsRowId(examId,subject){return examId+'~'+String(subject).replace(/[.#$/[\]]/g,'_');}
+// ── The classes on an exam ───────────────────────────────
+// The first class an exam was opened for is kept on the exam itself, so an
+// exam made before classes could be added still shows its own.
+function xsClassId(examId,grade){return examId+'~c'+String(grade);}
+function xsClassRows(){
+  const a=fbToArrayShape(DB.get('exam_classes'));
+  return (Array.isArray(a)?a:[]);
+}
+function xsClassesOn(examId){
+  const x=xsOne(examId);
+  const on={},off={};
+  xsClassRows().forEach(function(r){
+    if(!r||r.exam!==examId||!r.grade)return;
+    if(r.deleted)off[r.grade]=1;else on[r.grade]=1;
+  });
+  if(x&&x.grade&&!off[x.grade])on[x.grade]=1;
+  return Object.keys(on).sort(function(a,b){return (parseInt(a)||99)-(parseInt(b)||99)||a.localeCompare(b);});
+}
+function xsPutClasses(list){
+  const a=fbToArrayShape(DB.get('exam_classes'));
+  const arr=(Array.isArray(a)?a:[]).slice();
+  list.forEach(function(rec){
+    const i=arr.findIndex(function(x){return x&&x.id===rec.id;});
+    if(i>=0)arr[i]=Object.assign({},arr[i],rec);else arr.push(rec);
+  });
+  DB.set('exam_classes',arr);
+}
+// ── The subjects put on one class of an exam ─────────────
+function xsRowId(examId,grade,subject){
+  return examId+'~'+String(grade)+'~'+String(subject).replace(/[.#$/[\]]/g,'_');
+}
 function xsRowsAll(){
   const a=fbToArrayShape(DB.get('exam_subjects'));
   return (Array.isArray(a)?a:[]).filter(function(r){return r&&r.id&&!r.deleted;});
 }
-function xsRows(examId){
-  return xsRowsAll().filter(function(r){return r.exam===examId;})
-   .sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))
+function xsRows(examId,grade){
+  return xsRowsAll().filter(function(r){
+    return r.exam===examId&&(!grade||String(r.grade)===String(grade));
+  }).sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))
      ||String(a.subject||'').localeCompare(String(b.subject||''));});
 }
 function xsPutRows(list){
@@ -22519,7 +22547,11 @@ function xsTopicMap(examId){
   xsTopicsAll().forEach(function(r){if(r.exam===examId)m[r.id]=r;});
   return m;
 }
-function xsTopicOf(examId,subject){return xsTopicMap(examId)[xsRowId(examId,subject)]||null;}
+function xsTopicOf(examId,grade,subject){
+  const m=xsTopicMap(examId);
+  const row=xsRows(examId,grade).filter(function(r){return r.subject===subject;})[0];
+  return row?(m[row.id]||null):null;
+}
 function xsHasTopics(r){return !!(r&&String(r.topics||'').trim());}
 
 // ── What the timetable says about a grade ────────────────
@@ -22535,7 +22567,6 @@ function xsClassesOf(grade){
   return Object.keys((typeof bdTimetableData==='function')?bdTimetableData():{})
    .filter(function(c){return String(c).split('-')[0]===String(grade);}).sort();
 }
-// Every subject the grade is taught, and who teaches it in that grade
 function xsSubjects(grade){
   const by={};
   xsClassesOf(grade).forEach(function(cls){
@@ -22561,7 +22592,6 @@ function xsTeacherSubjects(grade,name){
     return s.teachers.some(function(t){return ((typeof wpNameKey==='function')?wpNameKey(t):String(t).toLowerCase())===k;});
   }).map(function(s){return s.subject;});
 }
-// Is the exam still open to be filled in?
 function xsOpen(x){
   if(!x)return {ok:false,why:'This exam is not set up yet.'};
   if(x.locked)return {ok:false,why:'This exam is locked. Nothing more can be written.'};
@@ -22577,24 +22607,24 @@ function xsDeadlineText(x){
   return wpDateText(p[0])+' at '+(p[1]||'').slice(0,5);
 }
 function xsDayName(d){return d?(getDayOfWeek(d)||''):'';}
-function xsStats(examId){
-  const rows=xsRows(examId),m=xsTopicMap(examId);
+// Counted for one class, or for the whole exam when no class is named
+function xsStats(examId,grade){
+  const rows=xsRows(examId,grade),m=xsTopicMap(examId);
   let filled=0;
   rows.forEach(function(r){if(xsHasTopics(m[r.id]))filled++;});
   return {total:rows.length,filled:filled,left:rows.length-filled,
     pct:rows.length?Math.round(filled/rows.length*100):0};
 }
-// Who has not written his portion
-function xsMissing(examId){
-  const x=xsOne(examId);
-  if(!x)return [];
+function xsMissing(examId,grade){
   const m=xsTopicMap(examId);
   const by={};
-  xsRows(examId).forEach(function(r){
-    if(xsHasTopics(m[r.id]))return;
-    const names=xsTeachersOf(x.grade,r.subject);
-    (names.length?names:['(nobody named on the timetable)']).forEach(function(n){
-      (by[n]=by[n]||[]).push(r.subject);
+  (grade?[String(grade)]:xsClassesOn(examId)).forEach(function(g){
+    xsRows(examId,g).forEach(function(r){
+      if(xsHasTopics(m[r.id]))return;
+      const names=xsTeachersOf(g,r.subject);
+      (names.length?names:['(nobody named on the timetable)']).forEach(function(n){
+        (by[n]=by[n]||[]).push('Class '+g+' — '+r.subject);
+      });
     });
   });
   return Object.keys(by).sort().map(function(n){return {teacher:n,subjects:by[n]};});
@@ -22602,11 +22632,11 @@ function xsMissing(examId){
 
 // ── The sheet, as the school issues it ───────────────────
 const XS_DAYCOL={Sunday:'#e11d48',Monday:'#ea580c',Tuesday:'#059669',Wednesday:'#2563eb',Thursday:'#7c3aed',Friday:'#0891b2',Saturday:'#6d28d9'};
-function xsSheetHTML(examId){
+function xsSheetHTML(examId,grade){
   const x=xsOne(examId);
   if(!x)return '';
   const s=DB.get('settings')||{};
-  const rows=xsRows(examId),m=xsTopicMap(examId);
+  const rows=xsRows(examId,grade),m=xsTopicMap(examId);
   const logo=(s.logo&&s.logo.startsWith&&s.logo.startsWith('data:'))
     ?'<img src="'+s.logo+'" style="width:100%;height:100%;object-fit:contain">'
     :'<div style="font-size:10mm;line-height:18mm;text-align:center">'+(s.logo||'\u{1f3eb}')+'</div>';
@@ -22642,37 +22672,38 @@ function xsSheetHTML(examId){
    +'<div style="width:18mm;flex:0 0 18mm"></div></div>'
    +'<div style="background:linear-gradient(135deg,#0b3d6b,#2b6cb0);color:#fff;text-align:center;padding:3mm 5mm">'
    +'<div style="font-size:17px;font-weight:bold;letter-spacing:2px">'+esc(String(x.name||'').toUpperCase())+'</div>'
-   +'<div style="font-size:12px;font-weight:bold;letter-spacing:1.2px;margin-top:.6mm">CLASS : '+esc(x.grade||'')+'</div></div>'
+   +'<div style="font-size:12px;font-weight:bold;letter-spacing:1.2px;margin-top:.6mm">CLASS : '+esc(grade||x.grade||'')+'</div></div>'
    +'</div>'
    +'<table><thead><tr><th style="width:24mm">Date</th><th style="width:22mm">Day</th>'
    +'<th style="width:32mm">Subject</th><th>Topics</th></tr></thead>'
-   +'<tbody>'+(body||'<tr><td colspan="4" style="text-align:center;padding:6mm">No subject has been put on this exam yet.</td></tr>')+'</tbody></table>'
+   +'<tbody>'+(body||'<tr><td colspan="4" style="text-align:center;padding:6mm">No subject has been put on this class yet.</td></tr>')+'</tbody></table>'
    +(x.note?'<div style="border:2px solid #f59e0b;border-left:7px solid #f59e0b;border-radius:2mm;background:#fffbeb;'
      +'padding:3mm 4mm;margin-top:4mm;font-size:10.5px;font-weight:bold;color:#7c4a03">'+esc(x.note).replace(/\n/g,'<br>')+'</div>':'')
    +'<div style="display:flex;justify-content:space-between;margin-top:5mm;font-size:8.5px;color:#42607e;font-weight:bold">'
-   +'<span>'+esc(s.schoolName||'')+' · '+esc(x.name||'')+' · Class '+esc(x.grade||'')+'</span>'
+   +'<span>'+esc(s.schoolName||'')+' · '+esc(x.name||'')+' · Class '+esc(grade||x.grade||'')+'</span>'
    +'<span>'+esc(wpDateText(ymd(new Date())))+'</span></div>'
    +'</div>';
 }
-function xsPrint(examId){
-  const id=examId||(xsCur()||{}).id;
+function xsPrint(examId,grade){
+  const id=examId||window._xsId;
+  const g=grade||window._xsG;
   const x=xsOne(id);
   if(!x){toast('Open an exam first','danger');return;}
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to print','danger');return;}
-  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(x.name||'Exam')+' — Class '+esc(x.grade||'')+'</title>'
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(x.name||'Exam')+' — Class '+esc(g||'')+'</title>'
    +'<style>@page{size:A4;margin:5mm}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style>'
-   +'</head><body>'+xsSheetHTML(id)
+   +'</head><body>'+xsSheetHTML(id,g)
    +'<script>setTimeout(function(){window.print();},700);<\/script></body></html>');
   w.document.close();
-  logA('Printed the exam schedule '+(x.name||'')+' for class '+(x.grade||''));
+  logA('Printed the exam schedule '+(x.name||'')+' for class '+(g||''));
 }
-async function xsPdfFile(examId){
+async function xsPdfFile(examId,grade){
   await rbLoadPdfLibs();
   const x=xsOne(examId);
   const holder=document.createElement('div');
   holder.style.cssText='position:fixed;left:-10000px;top:0;z-index:-1;background:#fff';
-  holder.innerHTML=xsSheetHTML(examId);
+  holder.innerHTML=xsSheetHTML(examId,grade);
   document.body.appendChild(holder);
   try{
     const canvas=await window.html2canvas(holder.firstChild,{scale:2,backgroundColor:'#ffffff',useCORS:true});
@@ -22685,29 +22716,30 @@ async function xsPdfFile(examId){
       left-=(H-2*mg);
       if(left>0){pdf.addPage();y+=(H-2*mg);}
     }
-    const nm=((x.name||'Exam')+'-Class-'+(x.grade||'')).replace(/[^A-Za-z0-9-]+/g,'_')+'.pdf';
+    const nm=((x.name||'Exam')+'-Class-'+(grade||'')).replace(/[^A-Za-z0-9-]+/g,'_')+'.pdf';
     return new File([pdf.output('blob')],nm,{type:'application/pdf'});
   }finally{holder.remove();}
 }
-async function xsShare(examId){
-  const id=examId||(xsCur()||{}).id;
+async function xsShare(examId,grade){
+  const id=examId||window._xsId;
+  const g=grade||window._xsG;
   const x=xsOne(id);
   if(!x)return;
   const s=DB.get('settings')||{};
-  const st=xsStats(id);
+  const st=xsStats(id,g);
   toast('Preparing the PDF…','info');
   let file;
-  try{file=await xsPdfFile(id);}
+  try{file=await xsPdfFile(id,g);}
   catch(e){toast('Could not make the PDF: '+(e&&e.message||e),'danger');return;}
-  const text=(s.schoolName||'School')+'\n'+(x.name||'')+' — Class '+(x.grade||'')
-    +'\n'+xsRows(id).map(function(r){
+  const text=(s.schoolName||'School')+'\n'+(x.name||'')+' — Class '+(g||'')
+    +'\n'+xsRows(id,g).map(function(r){
         return '• '+(r.date?wpDateText(r.date):'')+' '+xsDayName(r.date)+' — '+r.subject;
       }).join('\n')
     +'\n\n'+st.filled+' of '+st.total+' subject(s) have their portion written.';
   try{
     if(navigator.canShare&&navigator.canShare({files:[file]})){
-      await navigator.share({files:[file],title:(x.name||'Exam')+' — Class '+(x.grade||''),text:text});
-      logA('Shared the exam schedule '+(x.name||'')+' of class '+(x.grade||''));
+      await navigator.share({files:[file],title:(x.name||'Exam')+' — Class '+(g||''),text:text});
+      logA('Shared the exam schedule '+(x.name||'')+' of class '+(g||''));
       return;
     }
   }catch(e){if(e&&e.name==='AbortError')return;}
@@ -22716,89 +22748,154 @@ async function xsShare(examId){
   setTimeout(function(){URL.revokeObjectURL(url);},60000);
   const q=String.fromCharCode(39);
   window.__xsMsg=text;
-  openM('<div class="mh"><h3>\u{1f4ce} Saved — '+esc(x.name||'')+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  openM('<div class="mh"><h3>\u{1f4ce} Saved — '+esc(x.name||'')+' · Class '+esc(g||'')+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2"><div class="al ag">✅ <strong>'+esc(file.name)+'</strong> has been saved to this computer.</div>'
   +'<div class="al ai">Open WhatsApp and attach the saved PDF with the 📎 button — the message is already written. On a phone the PDF goes straight into WhatsApp instead.</div>'
   +'<button class="btn bs" style="width:100%;justify-content:center" onclick="window.open('+q+'https://wa.me/?text='+q+'+encodeURIComponent(window.__xsMsg),'+q+'_blank'+q+')">\u{1f4f2} Open WhatsApp</button>'
   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button></div>',true);
-  logA('Prepared the exam schedule '+(x.name||'')+' of class '+(x.grade||'')+' for WhatsApp');
+  logA('Prepared the exam schedule '+(x.name||'')+' of class '+(g||'')+' for WhatsApp');
 }
 
-// ── The tab ──────────────────────────────────────────────
+// ── The tab: the exams, then their classes, then the sheet ─
+function xsGo(examId,grade){
+  window._xsId=examId||'';
+  window._xsG=grade||'';
+  rExamSchedule();
+  window.scrollTo(0,0);
+}
 function rExamSchedule(){
   if(!xsCanView()){document.getElementById('pc').innerHTML='<div class="emp"><div class="ei">🔒</div><p>Access restricted</p></div>';return;}
-  const all=xsAll();
-  const x=xsCur();
   const canM=xsCanManage();
   const q=String.fromCharCode(39);
-  const st=x?xsStats(x.id):{total:0,filled:0,left:0,pct:0};
-  const og=x?xsOpen(x):{ok:false,why:''};
-  const rows=x?xsRows(x.id):[];
-  const m=x?xsTopicMap(x.id):{};
-  document.getElementById('pc').innerHTML=
-   '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>\u{1f4dd} '+T('exam_schedule')+'</h3>'
-   +'<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">'
-   +(all.length?'<select onchange="window._xsId=this.value;rExamSchedule()" style="padding:6px 10px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:12px">'
-     +all.map(function(e){return '<option value="'+esc(e.id)+'"'+(x&&e.id===x.id?' selected':'')+'>'+esc(e.name)+' · Class '+esc(e.grade)+(e.locked?' 🔒':'')+'</option>';}).join('')
-     +'</select>':'')
-   +(canM?'<button class="btn bp bsm" onclick="xsExamM()">+ New Exam</button>':'')
-   +(x&&canM?'<button class="btn bg2 bsm" onclick="xsExamM('+q+escJs(x.id)+q+')">\u{270f}\u{fe0f} Exam &amp; deadline</button>':'')
-   +(x&&canM?'<button class="btn bg2 bsm" onclick="xsSubjectsM()">\u{1f4da} Subjects &amp; dates</button>':'')
-   +(x?'<button class="btn bs bsm" onclick="xsQrM()">\u{1f4f1} Teacher QR</button>':'')
-   +(x?'<button class="btn bg2 bsm" onclick="xsMissingM()">\u{1f464} Who has not filled</button>':'')
-   +(x&&canM?'<button class="btn '+(x.locked?'bs':'bd3')+' bsm" onclick="xsLockToggle()">'+(x.locked?'\u{1f513} Unlock':'\u{1f512} Lock')+'</button>':'')
-   +'</div></div>'
-   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Open an exam for a grade — every section sits the same one — put its subjects on from the timetable with their dates, and share the code with the teachers. Each writes the portion for the subjects he teaches in that grade.</div>'
-   +(x?'<div style="margin-top:6px;font-size:12px"><strong>'+esc(x.name||'')+'</strong> · Class '+esc(x.grade||'')+' · '+esc(x.year||'')
-     +' · closes: <strong>'+esc(xsDeadlineText(x))+'</strong>'
-     +(x.locked?' · <span class="badge brd">🔒 locked'+(x.lockedBy?' by '+esc(x.lockedBy):'')+'</span>'
-              :(og.ok?' · <span class="badge bgn">open</span>':' · <span class="badge bgo">closed</span>'))+'</div>':'')
-   +'</div>'
-   +(all.length?'':'<div class="al ai" style="margin-bottom:12px">No exam has been opened yet.'+(canM?' Press <strong>+ New Exam</strong> to make the first one.':'')+'</div>')
-   +(x?'<div class="cg g4" style="margin-bottom:13px">'
-     +'<div class="stat bl"><div class="sl2">Subjects</div><div class="sv">'+st.total+'</div><div class="sb3">on this exam</div><div class="sic">\u{1f4da}</div></div>'
-     +'<div class="stat gn"><div class="sl2">Portion written</div><div class="sv">'+st.filled+'</div><div class="sb3">'+st.pct+'%</div><div class="sic">✅</div></div>'
-     +'<div class="stat go"><div class="sl2">Still to write</div><div class="sv">'+st.left+'</div><div class="sic">⏳</div></div>'
-     +'<div class="stat rd"><div class="sl2">Teachers behind</div><div class="sv">'+xsMissing(x.id).length+'</div><div class="sic">\u{1f464}</div></div></div>':'')
-   +(x?'<div class="card"><div class="sh2"><h3>'+esc(x.name||'')+' — Class '+esc(x.grade||'')+'</h3>'
-     +'<div style="display:flex;gap:5px;flex-wrap:wrap">'
-     +'<button class="btn bg2 bsm" onclick="xsPrint()">\u{1f5a8}\u{fe0f} Print</button>'
-     +'<button class="btn bs bsm" onclick="xsShare()">\u{1f4c4} PDF / WhatsApp</button>'
-     +(canM&&st.filled?'<button class="btn bd3 bsm" onclick="xsClear()">\u{1f9f9} Clear the portion</button>':'')
-     +'</div></div>'
-     +'<div class="tw"><table><thead><tr><th>Date</th><th>Day</th><th>Subject</th><th>Teacher(s)</th><th>Topics</th><th>Status</th></tr></thead><tbody>'
-     +rows.map(function(r){
-        const t=m[r.id];
-        const done=xsHasTopics(t);
-        return '<tr><td class="mono" style="font-size:11px">'+esc(r.date?wpDateText(r.date):'—')+'</td>'
-         +'<td style="font-size:11px">'+esc(xsDayName(r.date))+'</td>'
-         +'<td><strong>'+esc(r.subject)+'</strong></td>'
-         +'<td style="font-size:10px;color:var(--tx3)">'+esc(xsTeachersOf(x.grade,r.subject).join(', ')||'—')+'</td>'
-         +'<td style="font-size:11px;max-width:300px">'+(done?esc(String(t.topics).slice(0,160)).replace(/\n/g,'<br>')+(String(t.topics).length>160?'…':''):'<span style="color:var(--tx3)">—</span>')+'</td>'
-         +'<td>'+(done?'<span class="badge bgn">✓ written</span>'+(t.byName?'<div style="font-size:9px;color:var(--tx3)">'+esc(t.byName)+'</div>':'')
-                      :'<span class="badge bgo">waiting</span>')+'</td></tr>';
-      }).join('')+'</tbody></table></div>'
-     +(rows.length?'':'<div class="emp"><div class="ei">\u{1f4da}</div><p>No subject has been put on this exam yet.'+(canM?' Use 📚 Subjects &amp; dates.':'')+'</p></div>')
-     +'</div>':'');
+  const x=xsCur();
+  const g=window._xsG||'';
+  if(!x)return xsRenderExams(canM,q);
+  if(!g||xsClassesOn(x.id).indexOf(String(g))<0)return xsRenderClasses(x,canM,q);
+  return xsRenderOneClass(x,String(g),canM,q);
 }
-// ── Opening an exam ──────────────────────────────────────
+// level 1 — the exams
+function xsRenderExams(canM,q){
+  const all=xsAll();
+  document.getElementById('pc').innerHTML=
+   '<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>\u{1f4dd} '+T('exam_schedule')+' ('+all.length+')</h3>'
+   +(canM?'<button class="btn bp bsm" onclick="xsExamM()">+ New Exam</button>':'')+'</div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">Open an exam by name, put the classes on it that sit it, and give each class its subjects and dates from the timetable. The teachers write the portion from a code, with the PIN they already use for the weekly plan.</div></div>'
+   +(all.length
+     ?'<div class="cg g3">'+all.map(function(e){
+        const cls=xsClassesOn(e.id);
+        const st=xsStats(e.id);
+        const og=xsOpen(e);
+        return '<div class="card" style="cursor:pointer;border-top:4px solid '+(e.locked?'var(--dn)':og.ok?'var(--su)':'var(--wn)')+'" onclick="xsGo('+q+escJs(e.id)+q+')">'
+         +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+         +'<div><div style="font-size:16px;font-weight:700">'+esc(e.name||'')+'</div>'
+         +'<div style="font-size:11px;color:var(--tx3)">'+esc(e.year||'')+(e.term?' · '+esc(e.term):'')+'</div></div>'
+         +(e.locked?'<span class="badge brd">🔒 locked</span>':og.ok?'<span class="badge bgn">open</span>':'<span class="badge bgo">closed</span>')
+         +'</div>'
+         +'<div style="margin-top:9px;font-size:12px">'
+         +'<strong>'+cls.length+'</strong> class(es)'+(cls.length?' — '+cls.map(function(c){return esc(c);}).join(', '):'')
+         +'</div>'
+         +'<div style="margin-top:6px;background:var(--sf2);border-radius:6px;height:7px;overflow:hidden">'
+         +'<div style="height:100%;width:'+st.pct+'%;background:'+(st.pct===100?'var(--su)':'var(--ac)')+'"></div></div>'
+         +'<div style="font-size:10px;color:var(--tx3);margin-top:3px">'+st.filled+' of '+st.total+' subject(s) written · closes '+esc(xsDeadlineText(e))+'</div>'
+         +'<div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap" onclick="event.stopPropagation()">'
+         +'<button class="btn bg2 bxs" onclick="xsGo('+q+escJs(e.id)+q+')">Open →</button>'
+         +(canM?'<button class="btn bg2 bxs" onclick="xsExamM('+q+escJs(e.id)+q+')">\u{270f}\u{fe0f}</button>'
+               +'<button class="btn bd3 bxs" onclick="xsDeleteExam('+q+escJs(e.id)+q+')">\u{1f5d1}\u{fe0f}</button>':'')
+         +'</div></div>';
+      }).join('')+'</div>'
+     :'<div class="al ai">No exam has been opened yet.'+(canM?' Press <strong>+ New Exam</strong> to make the first one.':'')+'</div>');
+}
+// level 2 — the classes on one exam
+function xsRenderClasses(x,canM,q){
+  const cls=xsClassesOn(x.id);
+  const st=xsStats(x.id);
+  const og=xsOpen(x);
+  document.getElementById('pc').innerHTML=
+   '<div class="card" style="margin-bottom:12px"><div class="sh2">'
+   +'<h3><button class="btn bg2 bxs" style="margin-right:7px" onclick="xsGo()">← Exams</button>\u{1f4dd} '+esc(x.name||'')+'</h3>'
+   +'<div style="display:flex;gap:5px;flex-wrap:wrap">'
+   +(canM?'<button class="btn bp bsm" onclick="xsAddClassM()">+ Add a class</button>':'')
+   +(canM?'<button class="btn bg2 bsm" onclick="xsExamM('+q+escJs(x.id)+q+')">\u{270f}\u{fe0f} Exam &amp; deadline</button>':'')
+   +'<button class="btn bs bsm" onclick="xsQrM()">\u{1f4f1} Teacher QR</button>'
+   +'<button class="btn bg2 bsm" onclick="xsMissingM()">\u{1f464} Who has not filled</button>'
+   +(canM?'<button class="btn '+(x.locked?'bs':'bd3')+' bsm" onclick="xsLockToggle()">'+(x.locked?'\u{1f513} Unlock':'\u{1f512} Lock')+'</button>':'')
+   +'</div></div>'
+   +'<div style="margin-top:4px;font-size:12px">'+esc(x.year||'')+(x.term?' · '+esc(x.term):'')
+   +' · closes: <strong>'+esc(xsDeadlineText(x))+'</strong>'
+   +(x.locked?' · <span class="badge brd">🔒 locked'+(x.lockedBy?' by '+esc(x.lockedBy):'')+'</span>'
+            :(og.ok?' · <span class="badge bgn">open</span>':' · <span class="badge bgo">closed</span>'))+'</div></div>'
+   +'<div class="cg g4" style="margin-bottom:13px">'
+   +'<div class="stat bl"><div class="sl2">Classes</div><div class="sv">'+cls.length+'</div><div class="sb3">on this exam</div><div class="sic">\u{1f3eb}</div></div>'
+   +'<div class="stat gn"><div class="sl2">Portion written</div><div class="sv">'+st.filled+'</div><div class="sb3">of '+st.total+'</div><div class="sic">✅</div></div>'
+   +'<div class="stat go"><div class="sl2">Still to write</div><div class="sv">'+st.left+'</div><div class="sic">⏳</div></div>'
+   +'<div class="stat rd"><div class="sl2">Teachers behind</div><div class="sv">'+xsMissing(x.id).length+'</div><div class="sic">\u{1f464}</div></div></div>'
+   +(cls.length
+     ?'<div class="cg g3">'+cls.map(function(c){
+        const cs=xsStats(x.id,c);
+        return '<div class="card" style="cursor:pointer;border-top:4px solid var(--ac)" onclick="xsGo('+q+escJs(x.id)+q+','+q+escJs(c)+q+')">'
+         +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'
+         +'<div style="font-size:19px;font-weight:700">Class '+esc(c)+'</div>'
+         +(cs.total&&cs.left===0?'<span class="badge bgn">✓ complete</span>'
+           :cs.total?'<span class="badge bgo">'+cs.left+' to write</span>':'<span class="badge bgr">no subjects yet</span>')+'</div>'
+         +'<div style="margin-top:7px;background:var(--sf2);border-radius:6px;height:7px;overflow:hidden">'
+         +'<div style="height:100%;width:'+cs.pct+'%;background:'+(cs.pct===100?'var(--su)':'var(--ac)')+'"></div></div>'
+         +'<div style="font-size:11px;color:var(--tx3);margin-top:4px">'+cs.filled+' of '+cs.total+' subject(s) written</div>'
+         +'<div style="margin-top:9px;display:flex;gap:5px;flex-wrap:wrap" onclick="event.stopPropagation()">'
+         +'<button class="btn bg2 bxs" onclick="xsGo('+q+escJs(x.id)+q+','+q+escJs(c)+q+')">Open →</button>'
+         +'<button class="btn bg2 bxs" onclick="xsPrint('+q+escJs(x.id)+q+','+q+escJs(c)+q+')">\u{1f5a8}\u{fe0f}</button>'
+         +'<button class="btn bs bxs" onclick="xsShare('+q+escJs(x.id)+q+','+q+escJs(c)+q+')">\u{1f4c4}</button>'
+         +(canM?'<button class="btn bd3 bxs" onclick="xsDeleteClass('+q+escJs(x.id)+q+','+q+escJs(c)+q+')" title="Take this class off the exam">\u{1f5d1}\u{fe0f}</button>':'')
+         +'</div></div>';
+      }).join('')+'</div>'
+     :'<div class="al ai">No class is on this exam yet.'+(canM?' Press <strong>+ Add a class</strong>.':'')+'</div>');
+}
+// level 3 — one class of one exam
+function xsRenderOneClass(x,g,canM,q){
+  const rows=xsRows(x.id,g);
+  const m=xsTopicMap(x.id);
+  const st=xsStats(x.id,g);
+  document.getElementById('pc').innerHTML=
+   '<div class="card" style="margin-bottom:12px"><div class="sh2">'
+   +'<h3><button class="btn bg2 bxs" style="margin-right:7px" onclick="xsGo('+q+escJs(x.id)+q+')">← '+esc(x.name||'')+'</button>Class '+esc(g)+'</h3>'
+   +'<div style="display:flex;gap:5px;flex-wrap:wrap">'
+   +(canM?'<button class="btn bp bsm" onclick="xsSubjectsM()">\u{1f4da} Subjects &amp; dates</button>':'')
+   +'<button class="btn bg2 bsm" onclick="xsPrint()">\u{1f5a8}\u{fe0f} Print</button>'
+   +'<button class="btn bs bsm" onclick="xsShare()">\u{1f4c4} PDF / WhatsApp</button>'
+   +'<button class="btn bg2 bsm" onclick="xsMissingM('+q+escJs(g)+q+')">\u{1f464} Not written</button>'
+   +(canM&&st.filled?'<button class="btn bd3 bsm" onclick="xsClear()">\u{1f9f9} Clear the portion</button>':'')
+   +(canM?'<button class="btn bd3 bsm" onclick="xsDeleteClass('+q+escJs(x.id)+q+','+q+escJs(g)+q+')">\u{1f5d1}\u{fe0f} Delete this schedule</button>':'')
+   +'</div></div>'
+   +'<div style="margin-top:4px;font-size:12px">'+esc(x.name||'')+' · Class '+esc(g)+' · '+st.filled+' of '+st.total+' subject(s) written'
+   +' · closes: <strong>'+esc(xsDeadlineText(x))+'</strong>'+(x.locked?' · <span class="badge brd">🔒 locked</span>':'')+'</div></div>'
+   +'<div class="card"><div class="tw"><table><thead><tr><th>Date</th><th>Day</th><th>Subject</th><th>Teacher(s)</th><th>Topics</th><th>Status</th></tr></thead><tbody>'
+   +rows.map(function(r){
+      const t=m[r.id];
+      const done=xsHasTopics(t);
+      return '<tr><td class="mono" style="font-size:11px">'+esc(r.date?wpDateText(r.date):'—')+'</td>'
+       +'<td style="font-size:11px">'+esc(xsDayName(r.date))+'</td>'
+       +'<td><strong>'+esc(r.subject)+'</strong></td>'
+       +'<td style="font-size:10px;color:var(--tx3)">'+esc(xsTeachersOf(g,r.subject).join(', ')||'—')+'</td>'
+       +'<td style="font-size:11px;max-width:300px">'+(done?esc(String(t.topics).slice(0,160)).replace(/\n/g,'<br>')+(String(t.topics).length>160?'…':''):'<span style="color:var(--tx3)">—</span>')+'</td>'
+       +'<td>'+(done?'<span class="badge bgn">✓ written</span>'+(t.byName?'<div style="font-size:9px;color:var(--tx3)">'+esc(t.byName)+'</div>':'')
+                    :'<span class="badge bgo">waiting</span>')+'</td></tr>';
+    }).join('')+'</tbody></table></div>'
+   +(rows.length?'':'<div class="emp"><div class="ei">\u{1f4da}</div><p>No subject is on this class yet.'+(canM?' Use 📚 Subjects &amp; dates.':'')+'</p></div>')
+   +'</div>';
+}
+
+// ── Opening an exam, and the classes on it ───────────────
 function xsExamM(id){
   if(!xsCanManage()){toast('Only the principal, vice principals and academic supervisors can open an exam','danger');return;}
   const x=id?xsOne(id):null;
   const s=DB.get('settings')||{};
-  const grades=xsGrades();
   const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f4dd} '+(x?'Exam and deadline':'Open a new exam')+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai" style="font-size:11px">One exam for a whole grade — every section sits the same one. The subjects come from the class timetable once the grade is chosen.</div>'
-  +'<div class="fr f2"><div class="fg"><label>Exam name</label><input id="xs-name" value="'+esc(x?x.name||'':'1st Quiz')+'" placeholder="e.g. 1st Quiz, Mid-term Examination"></div>'
-  +'<div class="fg"><label>Class (grade)</label>'
-  +(x?'<div style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);font-size:13px">'+esc(x.grade||'')+'</div>'
-     :'<select id="xs-grade">'+grades.map(function(g){return '<option value="'+esc(g)+'">Class '+esc(g)+'</option>';}).join('')+'</select>')
-  +'</div></div>'
+  +'<div class="al ai" style="font-size:11px">Give the exam its name; the classes that sit it are added afterwards, as many as you like. Every section of a class sits the same one.</div>'
+  +'<div class="fg"><label>Exam name</label><input id="xs-name" value="'+esc(x?x.name||'':'1st Quiz')+'" placeholder="e.g. 1st Quiz, Mid-term Examination"></div>'
   +'<div class="fr f2"><div class="fg"><label>Academic year</label><input id="xs-year" value="'+esc(x?x.year||'':(s.academicYear||''))+'" placeholder="2026-2027"></div>'
   +'<div class="fg"><label>Term</label><input id="xs-term" value="'+esc(x?x.term||'':(s.term||'First Term'))+'" placeholder="First Term"></div></div>'
-  +'<div class="fg"><label>Note at the foot of the sheet</label><textarea id="xs-note" style="min-height:52px" placeholder="e.g. Practice all work related to the above units from the learner’s book, workbook, notebook and worksheets.">'
+  +'<div class="fg"><label>Note at the foot of every sheet</label><textarea id="xs-note" style="min-height:52px">'
   +esc(x?x.note||'':'Practice all work related to the above units from the learner’s book, workbook, notebook and worksheets.')+'</textarea></div>'
   +'<div class="fr f2"><div class="fg"><label>Closes on</label><input type="date" id="xs-dl-d" value="'+esc(x&&x.deadline?String(x.deadline).split('T')[0]:'')+'"></div>'
   +'<div class="fg"><label>at</label><input type="time" id="xs-dl-t" value="'+esc(x&&x.deadline?String(x.deadline).split('T')[1]||'':'')+'"></div></div>'
@@ -22813,46 +22910,117 @@ function xsExamSave(id){
   const old=id?xsOne(id):null;
   const name=v('xs-name');
   if(!name){toast('Give the exam a name','danger');return;}
-  const grade=old?old.grade:v('xs-grade');
-  if(!grade){toast('Choose the class','danger');return;}
   const dd=v('xs-dl-d'),dt=v('xs-dl-t');
   if(dd&&!dt){toast('Give the time it closes as well','danger');return;}
   if(dt&&!dd){toast('Give the date it closes as well','danger');return;}
   const rec=Object.assign({},old||{},{
-    id:id||nid('xs'),name:name,grade:grade,year:v('xs-year'),term:v('xs-term'),note:v('xs-note'),
+    id:id||nid('xs'),name:name,year:v('xs-year'),term:v('xs-term'),note:v('xs-note'),
     deadline:dd&&dt?dd+'T'+dt:'',deleted:false,
     by:CU.id,byName:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),at:new Date().toISOString()});
   if(!old)rec.created=rec.at;
   xsPut(rec);
-  window._xsId=rec.id;
-  logA((old?'Changed':'Opened')+' the exam "'+name+'" for class '+grade);
-  closeM();toast(old?'Saved':'Exam opened — now put its subjects on','success');
-  rExamSchedule();
-  if(!old)setTimeout(xsSubjectsM,250);
+  logA((old?'Changed':'Opened')+' the exam "'+name+'"');
+  closeM();toast(old?'Saved':'Exam opened — now add the classes that sit it','success');
+  xsGo(rec.id,old?window._xsG:'');
+  if(!old)setTimeout(xsAddClassM,250);
+}
+function xsDeleteExam(id){
+  if(!xsCanManage()){toast('You may not delete an exam','danger');return;}
+  const x=xsOne(id);if(!x)return;
+  const cls=xsClassesOn(id);
+  if(!confirm('Delete the exam "'+x.name+'"?\n\nIt is taken off the list with its '+cls.length+' class(es). Nothing is destroyed — the subjects and everything written stay on the record.'))return;
+  xsPut({id:id,deleted:true,deletedBy:((CU.firstName||'')+' '+(CU.lastName||'')).trim(),deletedAt:new Date().toISOString()});
+  logA('Deleted the exam '+x.name);
+  toast('Exam deleted','success');
+  xsGo();
+}
+function xsAddClassM(){
+  if(!xsCanManage()){toast('You may not add a class','danger');return;}
+  const x=xsCur();if(!x){toast('Open an exam first','danger');return;}
+  const on=xsClassesOn(x.id);
+  const all=xsGrades();
+  const free=all.filter(function(g){return on.indexOf(g)<0;});
+  openM('<div class="mh"><h3>\u{1f3eb} Classes on '+esc(x.name||'')+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai" style="font-size:11px">Tick every class that sits this exam. Each one then carries its own subjects and dates. Every section of a class sits the same exam.</div>'
+  +(all.length
+    ?'<div style="display:flex;flex-wrap:wrap;gap:7px">'
+     +all.map(function(g,i){
+        const has=on.indexOf(g)>=0;
+        return '<label style="flex:1 1 92px;display:flex;align-items:center;gap:6px;padding:9px 10px;border:2px solid '+(has?'var(--ac)':'var(--bd)')+';border-radius:8px;cursor:pointer;background:'+(has?'var(--ac2)':'var(--sf2)')+'">'
+         +'<input type="checkbox" id="xs-cl-'+i+'" value="'+esc(g)+'"'+(has?' checked':'')+' style="width:16px;height:16px">'
+         +'<span style="font-size:14px;font-weight:700">Class '+esc(g)+'</span></label>';
+      }).join('')+'</div>'
+     +(free.length?'':'<div style="font-size:11px;color:var(--tx3);margin-top:8px">Every class on the timetable is already on this exam.</div>')
+    :'<div class="al aw">The timetable has no classes yet.</div>')
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+  +(all.length?'<button class="btn bp" onclick="xsAddClassSave()">Save the classes</button>':'')+'</div>',true);
+}
+function xsAddClassSave(){
+  if(!xsCanManage()){toast('You may not add a class','danger');return;}
+  const x=xsCur();if(!x)return;
+  const on=xsClassesOn(x.id);
+  const all=xsGrades();
+  const now=new Date().toISOString();
+  const by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  const put=[];let add=0,rem=0;
+  all.forEach(function(g,i){
+    const c=document.getElementById('xs-cl-'+i);
+    if(!c)return;
+    const want=!!c.checked,has=on.indexOf(g)>=0;
+    if(want===has)return;
+    put.push({id:xsClassId(x.id,g),exam:x.id,grade:g,deleted:!want,by:CU.id,byName:by,at:now});
+    if(want)add++;else rem++;
+  });
+  if(!put.length){toast('Nothing was changed','info');return;}
+  xsPutClasses(put);
+  logA('Set the classes on the exam '+x.name+(add?' — '+add+' added':'')+(rem?', '+rem+' taken off':''));
+  closeM();toast((add?add+' class(es) added':'')+(add&&rem?' · ':'')+(rem?rem+' taken off':''),'success');
+  xsGo(x.id,'');
+}
+// A class taken off the exam: its subjects go with it, and everything written
+// is kept on the record in case it is put back.
+function xsDeleteClass(examId,grade){
+  if(!xsCanManage()){toast('Only the principal, vice principals and academic supervisors can do that','danger');return;}
+  const x=xsOne(examId);if(!x)return;
+  const rows=xsRows(examId,grade);
+  const st=xsStats(examId,grade);
+  if(!confirm('Take class '+grade+' off "'+x.name+'"?\n\nIts '+rows.length+' subject(s) and their dates go with it'
+    +(st.filled?', and the portion written for '+st.filled+' of them stops showing':'')
+    +'.\nNothing is destroyed — put the class back and it all returns.'))return;
+  const now=new Date().toISOString();
+  const by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  xsPutClasses([{id:xsClassId(examId,grade),exam:examId,grade:String(grade),deleted:true,by:CU.id,byName:by,at:now}]);
+  if(rows.length)xsPutRows(rows.map(function(r){return {id:r.id,deleted:true,removedBy:by,removedAt:now};}));
+  logA('Took class '+grade+' off the exam '+x.name+' ('+rows.length+' subject(s))');
+  toast('Class '+grade+' taken off','success');
+  xsGo(examId,'');
 }
 function xsLockToggle(){
   if(!xsCanManage()){toast('You may not lock an exam','danger');return;}
   const x=xsCur();if(!x)return;
   const lock=!x.locked;
-  if(!confirm(lock?('Lock '+x.name+'?\n\nNo teacher will be able to write anything more until it is unlocked. Everything already written stays.')
+  if(!confirm(lock?('Lock '+x.name+'?\n\nNo teacher will be able to write anything more, for any class on it, until it is unlocked. Everything already written stays.')
                   :('Unlock '+x.name+'?\n\nThe teachers will be able to write again.')))return;
   xsPut({id:x.id,locked:lock,
     lockedBy:lock?((CU.firstName||'')+' '+(CU.lastName||'')).trim():'',
     lockedAt:lock?new Date().toISOString():''});
-  logA((lock?'Locked':'Unlocked')+' the exam '+x.name+' (class '+x.grade+')');
+  logA((lock?'Locked':'Unlocked')+' the exam '+x.name);
   toast(lock?'Locked':'Unlocked','success');
   rExamSchedule();
 }
-// ── The subjects, from the timetable ─────────────────────
+// ── The subjects of one class, from the timetable ────────
 function xsSubjectsM(){
   if(!xsCanManage()){toast('You may not change the subjects','danger');return;}
-  const x=xsCur();if(!x){toast('Open an exam first','danger');return;}
-  const subs=xsSubjects(x.grade);
+  const x=xsCur();const g=window._xsG;
+  if(!x||!g){toast('Open a class first','danger');return;}
+  const subs=xsSubjects(g);
   const have={};
-  xsRows(x.id).forEach(function(r){have[r.subject]=r;});
-  openM('<div class="mh"><h3>\u{1f4da} Subjects and dates — '+esc(x.name||'')+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  xsRows(x.id,g).forEach(function(r){have[r.subject]=r;});
+  openM('<div class="mh"><h3>\u{1f4da} Subjects and dates — '+esc(x.name||'')+' · Class '+esc(g)+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai" style="font-size:11px">Every subject class '+esc(x.grade)+' is taught, from the timetable. Tick the ones on this exam and give each its date; the day fills itself in. Whoever teaches the subject in that grade is the one asked for its portion.</div>'
+  +'<div class="al ai" style="font-size:11px">Every subject class '+esc(g)+' is taught, from the timetable. Tick the ones on this exam and give each its date; the day fills itself in. Whoever teaches the subject in that class is the one asked for its portion.</div>'
   +(subs.length
     ?'<div class="tw" style="max-height:52vh;overflow:auto"><table style="font-size:11px"><thead><tr><th style="width:34px">On it</th><th>Subject</th><th>Teacher(s)</th><th style="width:150px">Date</th></tr></thead><tbody>'
      +subs.map(function(sb,i){
@@ -22862,17 +23030,18 @@ function xsSubjectsM(){
          +'<td style="font-size:10px;color:var(--tx3)">'+esc(sb.teachers.join(', ')||'—')+'</td>'
          +'<td><input type="date" id="xs-dt-'+i+'" value="'+esc(r?r.date||'':'')+'" style="width:100%;padding:4px 6px;background:var(--sf);border:1px solid var(--bd);border-radius:4px;color:var(--tx);font-size:11px"></td></tr>';
       }).join('')+'</tbody></table></div>'
-    :'<div class="al aw">The timetable has no subject for class '+esc(x.grade)+'.</div>')
+    :'<div class="al aw">The timetable has no subject for class '+esc(g)+'.</div>')
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
   +(subs.length?'<button class="btn bp" onclick="xsSubjectsSave()">Save the subjects</button>':'')+'</div>',true);
 }
 function xsSubjectsSave(){
   if(!xsCanManage()){toast('You may not change the subjects','danger');return;}
-  const x=xsCur();if(!x)return;
-  const subs=xsSubjects(x.grade);
+  const x=xsCur();const g=window._xsG;
+  if(!x||!g)return;
+  const subs=xsSubjects(g);
   const have={};
-  xsRows(x.id).forEach(function(r){have[r.subject]=r;});
+  xsRows(x.id,g).forEach(function(r){have[r.subject]=r;});
   const now=new Date().toISOString();
   const by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
   const put=[];let on=0,off=0;
@@ -22884,61 +23053,62 @@ function xsSubjectsSave(){
     const date=d?String(d.value||'').trim():'';
     const r=have[sb.subject];
     if(want){
-      if(!r||r.date!==date||r.deleted)put.push({id:xsRowId(x.id,sb.subject),exam:x.id,grade:x.grade,
+      if(!r||r.date!==date)put.push({id:r?r.id:xsRowId(x.id,g,sb.subject),exam:x.id,grade:String(g),
         subject:sb.subject,date:date,deleted:false,by:CU.id,byName:by,at:now});
       on++;
     }else if(r){
-      // taken off the exam, but whatever was written for it is kept
       put.push({id:r.id,deleted:true,at:now});
       off++;
     }
   });
   if(!put.length){toast('Nothing was changed','info');return;}
   xsPutRows(put);
-  logA('Set the subjects of the exam '+x.name+' (class '+x.grade+') — '+on+' on it'+(off?', '+off+' taken off':''));
-  closeM();toast(on+' subject(s) on this exam','success');
+  logA('Set the subjects of '+x.name+' for class '+g+' — '+on+' on it'+(off?', '+off+' taken off':''));
+  closeM();toast(on+' subject(s) on class '+g,'success');
   rExamSchedule();
 }
 function xsClear(){
   if(!xsCanManage()){toast('Only the principal, vice principals and academic supervisors can clear a portion','danger');return;}
-  const x=xsCur();if(!x)return;
+  const x=xsCur();const g=window._xsG;
+  if(!x||!g)return;
   const m=xsTopicMap(x.id);
-  const mine=Object.keys(m).filter(function(k){return xsHasTopics(m[k]);});
-  if(!mine.length){toast('Nothing has been written yet','info');return;}
-  if(!confirm('Clear the portion written for '+x.name+'?\n\n'+mine.length+' subject(s) will be emptied so the teachers can write them again.\nThe exam, its subjects and their dates are kept.'))return;
+  const ids=xsRows(x.id,g).map(function(r){return r.id;}).filter(function(id){return xsHasTopics(m[id]);});
+  if(!ids.length){toast('Nothing has been written for class '+g+' yet','info');return;}
+  if(!confirm('Clear the portion written for class '+g+' of "'+x.name+'"?\n\n'+ids.length+' subject(s) will be emptied so the teachers can write them again.\nThe subjects and their dates are kept, and no other class is touched.'))return;
   const a=fbToArrayShape(DB.get('exam_topics'));
   const arr=(Array.isArray(a)?a:[]).slice();
   const now=new Date().toISOString();
   const by=((CU.firstName||'')+' '+(CU.lastName||'')).trim();
   const out=arr.map(function(r){
-    if(!r||r.exam!==x.id)return r;
+    if(!r||ids.indexOf(r.id)<0)return r;
     return Object.assign({},r,{deleted:true,clearedBy:by,clearedAt:now});
   });
   DB.set('exam_topics',out);
-  logA('Cleared the portion of the exam '+x.name+' (class '+x.grade+') — '+mine.length+' subject(s)');
-  toast(mine.length+' subject(s) cleared','success');
+  logA('Cleared the portion of '+x.name+' for class '+g+' ('+ids.length+' subject(s))');
+  toast(ids.length+' subject(s) cleared','success');
   rExamSchedule();
 }
-function xsMissingM(){
+function xsMissingM(grade){
   const x=xsCur();if(!x)return;
-  const list=xsMissing(x.id);
-  openM('<div class="mh"><h3>\u{1f464} Not written yet — '+esc(x.name||'')+'</h3><button class="mc" onclick="closeM()">×</button></div>'
+  const g=grade||'';
+  const list=xsMissing(x.id,g);
+  openM('<div class="mh"><h3>\u{1f464} Not written yet — '+esc(x.name||'')+(g?' · Class '+esc(g):'')+'</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
   +(list.length
-    ?'<div class="al aw">'+list.length+' teacher(s) have still to write their portion for class '+esc(x.grade)+'.</div>'
-     +'<div class="tw" style="max-height:52vh;overflow:auto"><table style="font-size:11px"><thead><tr><th>Teacher</th><th>Subject(s)</th></tr></thead><tbody>'
+    ?'<div class="al aw">'+list.length+' teacher(s) have still to write their portion.</div>'
+     +'<div class="tw" style="max-height:52vh;overflow:auto"><table style="font-size:11px"><thead><tr><th>Teacher</th><th>Class &amp; subject</th></tr></thead><tbody>'
      +list.map(function(r){
         return '<tr><td><strong>'+esc(r.teacher)+'</strong></td><td>'+esc(r.subjects.join(', '))+'</td></tr>';
       }).join('')+'</tbody></table></div>'
-    :'<div class="al ag">✅ Every subject on this exam has its portion written.</div>')
+    :'<div class="al ag">✅ Every subject has its portion written.</div>')
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
-  +(list.length?'<button class="btn bs" onclick="xsMissingPrint()">\u{1f5a8}\u{fe0f} Print the list</button>':'')+'</div>',true);
+  +(list.length?'<button class="btn bs" onclick="xsMissingPrint('+(g?String.fromCharCode(39)+escJs(g)+String.fromCharCode(39):'')+')">\u{1f5a8}\u{fe0f} Print the list</button>':'')+'</div>',true);
 }
-function xsMissingPrint(){
+function xsMissingPrint(grade){
   const x=xsCur();if(!x)return;
   const s=DB.get('settings')||{};
-  const list=xsMissing(x.id);
+  const list=xsMissing(x.id,grade||'');
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to print','danger');return;}
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Not written — '+esc(x.name||'')+'</title>'
@@ -22947,9 +23117,9 @@ function xsMissingPrint(){
   +'table{width:100%;border-collapse:collapse}th,td{border:1px solid #9fb0c4;padding:6px 7px;font-size:11px;text-align:left}'
   +'thead th{background:#0b3d6b;color:#fff}</style></head><body>'
   +'<h1>'+esc(s.schoolName||'School')+'</h1>'
-  +'<h2>'+esc(x.name||'')+' · Class '+esc(x.grade||'')+' — portion not yet written'
-  +(x.deadline?' · closed '+esc(xsDeadlineText(x)):'')+'</h2>'
-  +'<table><thead><tr><th>Teacher</th><th>Subject(s)</th></tr></thead><tbody>'
+  +'<h2>'+esc(x.name||'')+(grade?' · Class '+esc(grade):'')+' — portion not yet written'
+  +(x.deadline?' · closes '+esc(xsDeadlineText(x)):'')+'</h2>'
+  +'<table><thead><tr><th>Teacher</th><th>Class &amp; subject</th></tr></thead><tbody>'
   +(list.length?list.map(function(r){return '<tr><td><b>'+esc(r.teacher)+'</b></td><td>'+esc(r.subjects.join(', '))+'</td></tr>';}).join('')
     :'<tr><td colspan="2">Everything has been written.</td></tr>')
   +'</tbody></table><script>setTimeout(function(){window.print();},700);<\/script></body></html>');
@@ -22969,9 +23139,10 @@ function xsQrM(){
   const qr='https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data='+encodeURIComponent(url);
   const q=String.fromCharCode(39);
   const og=xsOpen(x);
+  const cls=xsClassesOn(x.id);
   openM('<div class="mh"><h3>\u{1f4f1} '+esc(x.name||'')+' — teacher code</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">Share this with the teachers of class '+esc(x.grade)+'. They scan it, type the same four-digit PIN they use for the weekly plan, and are shown only the subjects they themselves teach in that grade, to write the portion.</div>'
+  +'<div class="al ai">One code for the whole exam — class'+(cls.length>1?'es ':' ')+esc(cls.join(', '))+'. A teacher scans it, types the same four-digit PIN he uses for the weekly plan, and is shown only the subjects he himself teaches in those classes, to write the portion.</div>'
   +(og.ok?'<div class="al ag">Open until <strong>'+esc(xsDeadlineText(x))+'</strong>.</div>'
          :'<div class="al aw">'+esc(og.why)+' Nothing can be written at the moment.</div>')
   +'<div style="text-align:center;padding:8px"><img src="'+qr+'" alt="" style="width:210px;height:210px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
@@ -22979,14 +23150,14 @@ function xsQrM(){
   +'</div>'
   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
   +'<button class="btn bg2 bsm" onclick="navigator.clipboard.writeText('+q+escJs(url)+q+').then(function(){toast('+q+'Link copied'+q+','+q+'success'+q+');})">\u{1f4cb} Copy</button>'
-  +'<button class="btn bs" onclick="window.open('+q+'https://wa.me/?text='+q+'+encodeURIComponent('+q+escJs((x.name||'')+' — Class '+(x.grade||'')+'. Please write the portion of the subjects you teach: '+url)+q+'),'+q+'_blank'+q+')">\u{1f4f2} WhatsApp</button></div>',true);
+  +'<button class="btn bs" onclick="window.open('+q+'https://wa.me/?text='+q+'+encodeURIComponent('+q+escJs((x.name||'')+'. Please write the portion of the subjects you teach: '+url)+q+'),'+q+'_blank'+q+')">\u{1f4f2} WhatsApp</button></div>',true);
 }
 
 // ═══════════════════════════════════════════════════════════
 // THE LINK THE TEACHERS OPEN
-// The same four-digit PIN as the weekly plan. Once it is typed, only the
-// subjects that teacher takes in that grade are shown, each with its date and
-// a box for the portion. A subject he does not teach is not his to write.
+// The same four-digit PIN as the weekly plan. Once it is typed, the subjects
+// he himself teaches are shown, class by class, each with its date and a box
+// for the portion. A subject he does not teach is not his to write.
 // ═══════════════════════════════════════════════════════════
 function checkXsMode(){
   const params=new URLSearchParams(window.location.search);
@@ -23022,13 +23193,19 @@ function xsPUnlock(){
   });
 }
 function xsPReset(){window._xsp={teacher:'',unlocked:false};renderXsPortal();window.scrollTo(0,0);}
-// The subjects on this exam that he himself teaches in that grade
+// The subjects on this exam that he himself teaches, class by class
 function xsPMine(){
   const x=xsPortalExam();
   const st=xsPState();
   if(!x||!st.teacher)return [];
-  const mine=xsTeacherSubjects(x.grade,st.teacher);
-  return xsRows(x.id).filter(function(r){return mine.indexOf(r.subject)>=0;});
+  const out=[];
+  xsClassesOn(x.id).forEach(function(g){
+    const mine=xsTeacherSubjects(g,st.teacher);
+    xsRows(x.id,g).forEach(function(r){
+      if(mine.indexOf(r.subject)>=0)out.push(r);
+    });
+  });
+  return out;
 }
 function renderXsPortal(){
   const s=DB.get('settings')||{};
@@ -23056,28 +23233,34 @@ function renderXsPortal(){
   }else{
     const mine=xsPMine();
     const m=xsTopicMap(x.id);
+    let rows='';
+    let last='';
+    mine.forEach(function(r){
+      if(r.grade!==last){
+        last=r.grade;
+        rows+='<div style="font-size:12px;font-weight:700;color:var(--ac);margin:12px 0 6px">Class '+esc(r.grade)+'</div>';
+      }
+      const t=m[r.id]||{};
+      const col=XS_DAYCOL[xsDayName(r.date)]||'var(--ac)';
+      rows+='<div class="card" style="padding:12px;margin-bottom:9px;border-left:5px solid '+col+'">'
+       +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:7px">'
+       +'<div><strong style="font-size:15px">'+esc(r.subject)+'</strong>'
+         +' <span style="font-size:11px;color:var(--tx3)">· Class '+esc(r.grade)+'</span></div>'
+       +'<div style="font-size:11px;color:var(--tx3)">'+esc(r.date?wpDateText(r.date):'date to be set')
+         +(r.date?' · '+esc(xsDayName(r.date)):'')+'</div></div>'
+       +(og.ok
+         ?'<textarea id="xsf-'+esc(r.id)+'" placeholder="The portion — units, lessons, pages" style="min-height:104px">'+esc(t.topics||'')+'</textarea>'
+         :'<div style="font-size:12px;white-space:pre-wrap">'+(esc(t.topics||'')||'<span style="color:var(--tx3)">— not written yet —</span>')+'</div>')
+       +(t.at?'<div style="font-size:10px;color:var(--tx3);margin-top:5px">✓ written '+esc(String(t.at).replace('T',' ').slice(0,16))+(t.byName?' — '+esc(t.byName):'')+'</div>':'')
+       +'</div>';
+    });
     body='<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
-     +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong> · Class '+esc(x.grade||'')+'</div>'
+     +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong></div>'
      +'<button class="btn bg2 bsm" onclick="xsPReset()">Not you?</button></div>'
      +(og.ok?'<div class="al ai" style="font-size:11px">Write the portion for each of your subjects — the units, the lessons and the pages the boys are to revise. '
         +(x.deadline?'This closes on <strong>'+esc(xsDeadlineText(x))+'</strong>. ':'')+'Press Save at the bottom; you can come back and add more until it closes.</div>'
        :'<div class="al aw" style="font-size:11px">'+esc(og.why)+' You can read what is there but nothing more can be written.</div>')
-     +(mine.length
-       ?mine.map(function(r){
-          const t=m[r.id]||{};
-          const col=XS_DAYCOL[xsDayName(r.date)]||'var(--ac)';
-          return '<div class="card" style="padding:12px;margin-bottom:9px;border-left:5px solid '+col+'">'
-           +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:7px">'
-           +'<div><strong style="font-size:15px">'+esc(r.subject)+'</strong></div>'
-           +'<div style="font-size:11px;color:var(--tx3)">'+esc(r.date?wpDateText(r.date):'date to be set')
-             +(r.date?' · '+esc(xsDayName(r.date)):'')+'</div></div>'
-           +(og.ok
-             ?'<textarea id="xsf-'+esc(r.id)+'" placeholder="The portion — units, lessons, pages" style="min-height:104px">'+esc(t.topics||'')+'</textarea>'
-             :'<div style="font-size:12px;white-space:pre-wrap">'+(esc(t.topics||'')||'<span style="color:var(--tx3)">— not written yet —</span>')+'</div>')
-           +(t.at?'<div style="font-size:10px;color:var(--tx3);margin-top:5px">✓ written '+esc(String(t.at).replace('T',' ').slice(0,16))+(t.byName?' — '+esc(t.byName):'')+'</div>':'')
-           +'</div>';
-        }).join('')
-       :'<div class="al aw">No subject on this exam is one you teach in class '+esc(x.grade||'')+'.</div>')
+     +(mine.length?rows:'<div class="al aw">No subject on this exam is one you teach.</div>')
      +(og.ok&&mine.length?'<button class="btn bp" id="xsp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:6px" onclick="xsPSave()">Save my portion →</button>':'');
   }
   wrap.innerHTML='<style>#xsp input,#xsp textarea{width:100%;box-sizing:border-box;padding:10px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:14px;font-family:inherit}#xsp .card{border-radius:10px}</style>'
@@ -23090,7 +23273,8 @@ function renderXsPortal(){
    +'<div style="font-size:11px;color:var(--tx3)">'+esc(s.schoolNameAr||'')+'</div></div></div>'
    +'<h1 style="font-size:22px;font-weight:700;color:var(--tx);margin-bottom:6px">'+esc(x?(x.name||'Exam'):'Exam portion')+'</h1>'
    +'<p style="font-size:13px;color:var(--tx2);line-height:1.6">'
-   +(x?'Class '+esc(x.grade||'')+(x.year?' · '+esc(x.year):'')+(x.deadline?' · closes '+esc(xsDeadlineText(x)):''):'')+'</p>'
+   +(x?('Class'+(xsClassesOn(x.id).length>1?'es ':' ')+esc(xsClassesOn(x.id).join(', '))
+       +(x.year?' · '+esc(x.year):'')+(x.deadline?' · closes '+esc(xsDeadlineText(x)):'')):'')+'</p>'
    +'</div></div>'+body+'</div>';
   document.body.appendChild(wrap);
 }
@@ -23113,7 +23297,7 @@ function xsPSave(){
     const was=old&&!old.deleted?String(old.topics||''):'';
     if(was===val)return;
     if(!val&&!old)return;
-    const rec={id:r.id,exam:x.id,grade:x.grade,subject:r.subject,date:r.date||'',
+    const rec={id:r.id,exam:x.id,grade:r.grade,subject:r.subject,date:r.date||'',
       topics:val,deleted:false,byName:st.teacher,at:now};
     const i=cur.findIndex(function(z){return z&&z.id===r.id;});
     if(i>=0)cur[i]=Object.assign({},cur[i],rec);else cur.push(rec);
@@ -23121,11 +23305,10 @@ function xsPSave(){
   });
   if(!n){toast('Nothing new was written','info');return;}
   DB.set('exam_topics',cur);
-  logA('Exam portion written for '+x.name+' (class '+x.grade+') by '+st.teacher+' — '+n+' subject(s)');
+  logA('Exam portion written for '+x.name+' by '+st.teacher+' — '+n+' subject(s)');
   toast(n+' subject(s) saved','success');
   renderXsPortal();
 }
-
 function rWeeklyPlan(){
   const weeks=wpWeeks();
   const w=wpCur();
