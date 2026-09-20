@@ -22403,13 +22403,13 @@ function checkScMode(){
   if(params.get('sc')==='1'){renderScPortal();return true;}
   return false;
 }
-function scState(){
+function scPState(){
   if(!window._scr)window._scr={grade:'',section:'',sid:'',done:null};
   return window._scr;
 }
 function renderScPortal(){
   const s=DB.get('settings')||{};
-  const st=scState();
+  const st=scPState();
   const lp=document.getElementById('lp');if(lp)lp.classList.add('hidden');
   const ap=document.getElementById('app');if(ap)ap.classList.add('hidden');
   const old=document.getElementById('scp');if(old)old.remove();
@@ -22484,12 +22484,12 @@ function renderScPortal(){
    +'</div></div>'+body+'</div>';
   document.body.appendChild(wrap);
 }
-function scPickGrade(g){const st=scState();st.grade=g;st.section='';st.sid='';renderScPortal();}
-function scPickSection(x){const st=scState();st.section=x;st.sid='';renderScPortal();}
-function scPickStudent(id){const st=scState();st.sid=id;renderScPortal();}
+function scPickGrade(g){const st=scPState();st.grade=g;st.section='';st.sid='';renderScPortal();}
+function scPickSection(x){const st=scPState();st.section=x;st.sid='';renderScPortal();}
+function scPickStudent(id){const st=scPState();st.sid=id;renderScPortal();}
 function scReset(){window._scr={grade:'',section:'',sid:'',done:null};renderScPortal();window.scrollTo(0,0);}
 function scSubmit(){
-  const st=scState();
+  const st=scPState();
   const v=function(x){const e=document.getElementById(x);return e?String(e.value||'').trim():'';};
   const say=function(t){const e=document.getElementById('sc-msg');if(e)e.textContent=t;else toast(t,'danger');};
   const sel=st.sid?(DB.get('students')||[]).filter(function(x){return x.id===st.sid;})[0]:null;
