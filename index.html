@@ -8164,7 +8164,7 @@ function lateApplyScans(date){
   if(!Array.isArray(rec.lateIds))rec.lateIds=[];
   if(!Array.isArray(rec.absentIds))rec.absentIds=[];
   if(!rec.lateTimes||typeof rec.lateTimes!=='object')rec.lateTimes={};
-  let added=0;
+  let added=0,touched=false;
   const done=[];
   scans.forEach(function(r){
     if(!r.studentId)return;
@@ -8175,9 +8175,10 @@ function lateApplyScans(date){
       added++;
     }
     if(!rec.lateTimes[r.studentId]&&r.time)rec.lateTimes[r.studentId]=r.time;
+    if(r.recordedBy&&!(rec.lateBy||{})[r.studentId]){lateSetBy(rec,r.studentId,r.recordedBy);touched=true;}
     done.push(Object.assign({},r,{applied:true,appliedAt:new Date().toISOString()}));
   });
-  if(added)DB.set('attendance',all);
+  if(added||touched)DB.set('attendance',all);
   // Remember they are on the register, so a time an office later corrects by
   // hand is not put back by the next visit to this tab
   if(done.length){
@@ -8187,6 +8188,38 @@ function lateApplyScans(date){
   }
   return added;
 }
+
+// ── Who recorded the arrival ──────────────────────────────
+// Whoever ticks a boy late is written down beside him: the staff member
+// signed in, or the name behind the PIN typed at the gate. It is kept in a
+// map of its own on the day's record, so nothing already stored is disturbed
+// and a day recorded before this existed simply has no name against it.
+function lateWhoName(){
+  if(typeof CU!=='undefined'&&CU)return ((CU.firstName||'')+' '+(CU.lastName||'')).trim();
+  const p=window.__portalWho;
+  return p&&p.user?String(p.user):'';
+}
+function lateSetBy(rec,sid,name){
+  if(!rec||!sid||!name)return;
+  if(!rec.lateBy||typeof rec.lateBy!=='object')rec.lateBy={};
+  if(!rec.lateBy[sid])rec.lateBy[sid]=name;
+}
+function lateClearBy(rec,sid){
+  if(rec&&rec.lateBy&&typeof rec.lateBy==='object')delete rec.lateBy[sid];
+}
+// The name against one boy on one day, and where it came from. A gate scan
+// from before the PIN existed carries no name, so a later tick by the office
+// gives it one — and it is the office, not the gate, that is credited.
+function lateWhoOn(sid,date){
+  const a=(DB.get('attendance')||[]).find(function(x){return x&&x.date===date;});
+  const n=a&&a.lateBy&&typeof a.lateBy==='object'?a.lateBy[sid]:'';
+  const sc=getLateArrivals().filter(function(r){return r.date===date&&r.studentId===sid;})[0];
+  if(n)return {name:String(n),how:(sc&&sc.recordedBy&&String(sc.recordedBy)===String(n))?'gate':'office'};
+  if(sc&&sc.recordedBy)return {name:String(sc.recordedBy),how:'gate'};
+  return {name:'',how:sc?'gate':'office'};
+}
+function lateByOn(sid,date){return lateWhoOn(sid,date).name;}
+function lateHowOn(sid,date){return lateWhoOn(sid,date).how;}
 
 // ── The form the gate sees ────────────────────────────────
 function lateQrUrl(){
@@ -8235,9 +8268,10 @@ function renderLatePortal(){
   const old=document.getElementById('ltp');if(old)old.remove();
   const grades=lateGrades();
   window.__portalClassSig=portalClasses().join(',');
-  const st=window._ltp||(window._ltp={grade:'',section:'',sid:'',note:''});
+  const st=window._ltp||(window._ltp={grade:'',section:'',sid:'',note:'',unlocked:false,who:''});
   if(!st.date)st.date=ymd(new Date());
   if(!st.time)st.time=lateNowTime();
+  const open=!!st.unlocked&&!!st.who;
   const wrap=document.createElement('div');
   wrap.id='ltp';
   wrap.style.cssText='min-height:100vh;background:var(--bg);padding:18px 14px 40px';
@@ -8252,10 +8286,22 @@ function renderLatePortal(){
   +'<div style="font-size:11px;color:var(--tx3)">'+esc(s.schoolNameAr||'')+'</div></div></div>'
   +'<h1 style="font-size:23px;font-weight:700;color:var(--tx);margin-bottom:6px">Late Comers</h1>'
   +'<p style="font-size:13px;color:var(--tx2);line-height:1.6">Record a student who has arrived late: the grade, the section, then the name.</p>'
-  +'<div style="margin-top:10px;font-size:11px;color:var(--dn)">* Required</div>'
+  +(open?'':'<div style="margin-top:10px;font-size:11px;color:var(--dn)">* Required</div>')
   +'</div></div>'
+  +(open
+    ?'<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+     +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.who)+'</strong> <span style="font-size:11px;color:var(--tx3)">— every arrival you record carries your name</span></div>'
+     +'<button class="btn bg2 bsm" onclick="ltpReset()">Not you?</button></div>'
+    :'')
   +'<div id="ltp-body">'
-  +pdpQ('1. Date','Today is filled in. Change it only for an earlier day.',
+  +(open?'':pdpQ('Your 4-digit PIN','The same one you use for the weekly plan.',
+    (wpPinsInUse()
+      ?'<div style="display:flex;gap:7px;flex-wrap:wrap">'
+       +'<input id="ltp-pin" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" onkeydown="if(event.key===\'Enter\')ltpUnlock()" style="flex:1 1 130px;letter-spacing:10px;font-size:22px;text-align:center">'
+       +'<button type="button" class="btn bp" style="flex:0 0 auto;padding:12px 18px" onclick="ltpUnlock()">Open the gate form →</button></div>'
+       +'<div id="ltp-pin-msg" style="font-size:11px;color:var(--dn);margin-top:5px"></div>'
+      :'<div class="al aw" style="margin:0">No PIN has been given out yet. Please ask the school office for yours.</div>'),true))
+  +(open?pdpQ('1. Date','Today is filled in. Change it only for an earlier day.',
     '<input type="date" id="ltp-d" value="'+esc(st.date)+'" max="'+esc(ymd(new Date()))+'" onchange="ltpDate()">'
     +'<div id="ltp-d-day" style="font-size:12px;color:var(--tx3);margin-top:6px">'+esc(pdpDateLabel(st.date))+'</div>',true)
   +pdpQ('2. Grade','',
@@ -8273,12 +8319,37 @@ function renderLatePortal(){
     '<input type="time" id="ltp-t" value="'+esc(st.time)+'" onchange="window._ltp.time=this.value">',true)
   +pdpQ('6. Reason given','',
     '<textarea id="ltp-n" placeholder="Optional — traffic, transport, medical…" style="min-height:60px">'+esc(st.note||'')+'</textarea>',false)
+  :'')
   +'</div>'
-  +'<button class="btn bp" id="ltp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:4px" onclick="ltpSubmit()">Record arrival →</button>'
+  +(open?'<button class="btn bp" id="ltp-go" style="width:100%;justify-content:center;padding:14px;font-size:15px;margin-top:4px" onclick="ltpSubmit()">Record arrival →</button>':'')
   +'<div style="text-align:center;margin-top:16px;font-size:11px;color:var(--tx3)"><a href="?" style="color:var(--ac);text-decoration:none">Staff sign in →</a></div>'
   +'</div>';
   document.body.appendChild(wrap);
-  ltpSections();
+  if(open)ltpSections();
+}
+// The same four-digit PIN as the weekly plan, so the arrival carries a name
+function ltpUnlock(){
+  const e=document.getElementById('ltp-pin');
+  const msg=document.getElementById('ltp-pin-msg');
+  const say=function(t){if(msg)msg.textContent=t;else toast(t,'danger');};
+  const p=e?String(e.value||'').trim():'';
+  if(!/^\d{4}$/.test(p)){say('A PIN is four digits.');return Promise.resolve(false);}
+  return wpPinHolder(p).then(function(name){
+    if(!name){say('That PIN is not right. It is the same one you use for the weekly plan.');return false;}
+    const st=window._ltp||(window._ltp={});
+    st.unlocked=true;st.who=name;
+    portalActor(name,'Gate · PIN',true);
+    logA('Opened the late comers gate with his PIN');
+    renderLatePortal();window.scrollTo(0,0);
+    toast('Welcome, '+name,'success');
+    return true;
+  });
+}
+function ltpReset(){
+  const p=window._ltp||{};
+  window._ltp={grade:'',section:'',sid:'',note:'',date:p.date||ymd(new Date()),time:lateNowTime(),unlocked:false,who:''};
+  clearPortalActor();
+  renderLatePortal();window.scrollTo(0,0);
 }
 function ltpDate(){
   const el=document.getElementById('ltp-d');
@@ -8333,6 +8404,7 @@ function ltpStudents(){
 }
 function ltpSubmit(){
   const st=window._ltp;
+  if(!st||!st.unlocked||!st.who){toast('Type your PIN first','danger');renderLatePortal();return;}
   const date=((document.getElementById('ltp-d')||{}).value||'')||ymd(new Date());
   const sid=((document.getElementById('ltp-s')||{}).value||'').trim();
   const time=((document.getElementById('ltp-t')||{}).value||'').trim()||lateNowTime();
@@ -8348,8 +8420,11 @@ function ltpSubmit(){
   const rec={id:lateArrivalId(date,sid),date:date,studentId:sid,
     studentName:stu?fN(stu):'',className:grSec(st.grade,st.section),
     grade:st.grade,section:st.section,time:time,reason:note,
-    recordedBy:'',source:'qr',applied:false,created:new Date().toISOString()};
-  appendLateArrival(rec).catch(function(){return null;}).then(function(replaced){ltpDone(rec,replaced);});
+    recordedBy:st.who,recordedByPin:true,source:'qr',applied:false,created:new Date().toISOString()};
+  appendLateArrival(rec).catch(function(){return null;}).then(function(replaced){
+    logA('Recorded '+(rec.studentName||'a student')+' ('+rec.className+') late at '+rec.time+' on '+rec.date);
+    ltpDone(rec,replaced);
+  });
 }
 function ltpDone(rec,replaced){
   const body=document.getElementById('ltp-body');
@@ -8362,14 +8437,16 @@ function ltpDone(rec,replaced){
    +'<div style="font-size:13px;color:var(--tx2);line-height:1.7"><strong>'+esc(rec.studentName||'Student')+'</strong> · '+esc(rec.className)
    +'<br>'+esc(rec.date)+' · '+esc(getDayOfWeek(rec.date)||'')
    +'<br>Arrived at <strong>'+esc(rec.time)+'</strong>'
-   +(rec.reason?'<br>'+esc(rec.reason):'')+'</div>'
+   +(rec.reason?'<br>'+esc(rec.reason):'')
+   +(rec.recordedBy?'<br><span style="font-size:11px;color:var(--tx3)">Recorded by '+esc(rec.recordedBy)+'</span>':'')+'</div>'
    +(replaced?'<div class="al aw" style="margin-top:12px;text-align:left">ℹ️ This student was already recorded late today'+(replaced.recordedBy?' by '+esc(replaced.recordedBy):'')+'. The time has been updated.</div>':'')
    +'<div style="margin-top:16px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">'
    +'<button class="btn bp" onclick="ltpAgain()">Record another student</button></div></div>';
 }
 function ltpAgain(){
   const p=window._ltp||{};
-  window._ltp={grade:p.grade||'',section:p.section||'',sid:'',note:'',date:p.date||ymd(new Date()),time:lateNowTime()};
+  window._ltp={grade:p.grade||'',section:p.section||'',sid:'',note:'',date:p.date||ymd(new Date()),time:lateNowTime(),
+    unlocked:!!p.unlocked,who:p.who||''};
   renderLatePortal();
 }
 
@@ -8380,7 +8457,7 @@ function lateQrM(){
   window._ltQrUrl=url;
   openM('<div class="mh"><h3>\u{1f4f1} Late Comers QR Code</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">One code for the whole school. Whoever is on the gate scans it, picks the grade, then the section, then the student — no signing in. The arrivals appear here and go on the register with the time.</div>'
+  +'<div class="al ai">One code for the whole school. Whoever is on the gate scans it and types the same four-digit PIN he uses for the weekly plan, then picks the grade, the section and the student. The arrivals appear here and go on the register with the time, each carrying the name of the man who recorded it.</div>'
   +'<div style="text-align:center;padding:8px"><img src="'+qr+'" alt="" style="width:220px;height:220px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
   +'<div style="background:var(--sf2);padding:8px;border-radius:var(--rs);font-size:10px;color:var(--ac);word-break:break-all;border:1px solid var(--bd)">'+esc(url)+'</div>'
   +'</div>'
@@ -8410,9 +8487,9 @@ function latePrintPoster(){
    +'</style></head><body><div class="poster">'
    +'<div class="school">'+esc(s.schoolName||'School')+'</div>'
    +'<div class="title">Late Comers</div>'
-   +'<div class="sub">Scan at the gate — no sign-in needed</div>'
+   +'<div class="sub">Scan at the gate — your 4-digit PIN, the same one as the weekly plan</div>'
    +'<div class="qr"><img src="'+qr+'" alt=""></div>'
-   +'<div><div class="steps">1. Scan the code<br>2. Choose the grade<br>3. Choose the section<br>4. Choose the student<br>5. Check the time and send</div></div>'
+   +'<div><div class="steps">1. Scan the code<br>2. Type your 4-digit PIN<br>3. Choose the grade<br>4. Choose the section<br>5. Choose the student<br>6. Check the time and send</div></div>'
    +'</div><script>setTimeout(function(){window.print();},900);<\/script></body></html>');
   w.document.close();
 }
@@ -8423,12 +8500,14 @@ function lateScanCard(date,canM){
   if(!scans.length)return '';
   return '<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>\u{1f4f1} Scanned at the gate</h3>'
    +'<span style="font-size:11px;color:var(--tx3)">'+scans.length+' arrival(s) on '+esc(date)+'</span></div>'
-   +'<div class="tw"><table style="font-size:11px"><thead><tr><th>Time</th><th>Student</th><th>Class</th><th>Reason</th><th>Source</th></tr></thead><tbody>'
+   +'<div class="tw"><table style="font-size:11px"><thead><tr><th>Time</th><th>Student</th><th>Class</th><th>Reason</th><th>Recorded by</th></tr></thead><tbody>'
    +scans.map(function(r){
      const stu=(DB.get('students')||[]).find(function(x){return x&&x.id===r.studentId;});
      return '<tr><td class="mono">'+esc(r.time||'')+'</td><td><strong>'+esc(stu?fN(stu):(r.studentName||'—'))+'</strong></td>'
       +'<td>'+esc(r.className||'')+'</td><td style="color:var(--tx2)">'+esc(r.reason||'')+'</td>'
-      +'<td style="color:var(--tx2)">'+esc(r.recordedBy||'Gate scan')+'</td></tr>';
+      +'<td>'+(r.recordedBy
+         ?'<strong>'+esc(r.recordedBy)+'</strong>'+(r.recordedByPin?' <span class="badge bbl" style="font-size:9px">\u{1f511} PIN</span>':'')
+         :'<span style="color:var(--tx3)">Gate scan</span>')+'</td></tr>';
    }).join('')
    +'</tbody></table></div>'
    +'<div style="font-size:11px;color:var(--tx3);margin-top:8px">These are on the late list below with their times. Changing a name here is done on the list — the gate never alters what the office has marked.</div></div>';
@@ -8451,10 +8530,12 @@ function lateRangeRows(from,to,grade){
       if(!s)return;
       if(grade&&String(s.grade)!==String(grade))return;
       const sc=scans[a.date+'|'+sid];
+      const who=lateWhoOn(sid,a.date);
       rows.push({date:a.date,day:getDayOfWeek(a.date)||'',
         time:((a.lateTimes||{})[sid])||(sc?sc.time:'')||'',
         name:fN(s),cls:grSec(s.grade,s.section),grade:s.grade,
         reason:sc?(sc.reason||''):'',
+        by:who.name,how:who.how,
         source:sc?'Gate scan':'Office'});
     });
   });
@@ -8497,8 +8578,8 @@ function lateRangeArgs(){
 function lateRangeCSV(){
   const a=lateRangeArgs();
   if(!a)return;
-  expCSV(['Date','Day','Time','Student','Class','Reason','Recorded'],
-    a.rows.map(function(r){return [r.date,r.day,r.time,r.name,r.cls,r.reason,r.source];}),
+  expCSV(['Date','Day','Time','Student','Class','Reason','Recorded by','How'],
+    a.rows.map(function(r){return [r.date,r.day,r.time,r.name,r.cls,r.reason,r.by||'',r.source];}),
     'late_comers_'+a.from+'_to_'+a.to);
   logA('Exported the late comers record '+a.from+' → '+a.to);
 }
@@ -8549,11 +8630,12 @@ function lateRangePDF(){
    +'<div class="bar"><button onclick="window.print()">\u{1f5a8}️ Print / Save as PDF</button>'
    +' <span style="font-size:12px;color:#333;margin-left:8px">'+a.rows.length+' arrival(s) · A4 portrait</span></div>'
    +'<div class="sheet">'+head
-   +'<table><colgroup><col style="width:23mm"><col style="width:23mm"><col style="width:14mm"><col><col style="width:16mm"><col style="width:34mm"><col style="width:20mm"></colgroup>'
-   +'<thead><tr><th>Date</th><th>Day</th><th>Time</th><th>Student</th><th>Class</th><th>Reason</th><th>Recorded</th></tr></thead><tbody>'
+   +'<table><colgroup><col style="width:21mm"><col style="width:20mm"><col style="width:13mm"><col><col style="width:15mm"><col style="width:26mm"><col style="width:32mm"></colgroup>'
+   +'<thead><tr><th>Date</th><th>Day</th><th>Time</th><th>Student</th><th>Class</th><th>Reason</th><th>Recorded by</th></tr></thead><tbody>'
    +a.rows.map(function(r){
      return '<tr><td class="c dt">'+esc(r.date)+'</td><td class="c">'+esc(r.day)+'</td><td class="c">'+esc(r.time||'—')+'</td>'
-      +'<td>'+esc(r.name)+'</td><td class="c">'+esc(r.cls)+'</td><td>'+esc(r.reason||'')+'</td><td class="c">'+esc(r.source)+'</td></tr>';
+      +'<td>'+esc(r.name)+'</td><td class="c">'+esc(r.cls)+'</td><td>'+esc(r.reason||'')+'</td>'
+      +'<td>'+(r.by?esc(r.by)+' <span style="font-size:.8em;color:#666">('+esc(r.how||'office')+')</span>':esc(r.source))+'</td></tr>';
    }).join('')
    +'</tbody></table>'
    +(repeat.length?'<h2>Late more than once</h2>'
@@ -8665,7 +8747,15 @@ function buildLateList(students,lateSet,canM,attDate){
       return '<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid var(--bd);background:'+(isLate?'var(--gdbg,#fff8e1)':'transparent')+';border-radius:var(--rs);margin-bottom:2px">'
       +(canM?'<input type="checkbox" id="late-'+s.id+'" '+(isLate?'checked':'')+' onchange="togLate(\''+s.id+'\')" style="width:17px;height:17px;cursor:pointer;accent-color:var(--gd)">':'<div style="width:17px"></div>')
       +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+esc(fN(s))+'</div>'
-      +'<div style="font-size:10px;color:var(--tx3)">SN: '+esc(String(s.sn||''))+' · '+esc(String(s.fatherPhone||s.motherPhone||'No phone'))+'</div></div>'
+      +'<div style="font-size:10px;color:var(--tx3)">SN: '+esc(String(s.sn||''))+' · '+esc(String(s.fatherPhone||s.motherPhone||'No phone'))+'</div>'
+      +(function(){
+        if(!isLate||!attDate)return '';
+        const w=lateWhoOn(s.id,attDate);
+        if(!w.name)return '';
+        return '<div style="font-size:10px;color:var(--ac)">Recorded by <strong>'+esc(w.name)+'</strong>'
+          +(w.how==='gate'?' at the gate':'')
+          +(lateTimeOn(s.id,attDate)?' · '+esc(lateTimeOn(s.id,attDate)):'')+'</div>';
+      })()+'</div>'
       +(exc?'<span class="badge bbl" title="Excused '+esc(exc.from)+' → '+esc(exc.to)+(exc.reason?' · '+esc(exc.reason):'')+' — parents are not messaged">📝 Excused'+(exc.from!==exc.to?' '+esc(exc.from)+'→'+esc(exc.to):'')+'</span>':'')
       +'<span class="badge '+(isLate?'bgo':'bgn')+'" style="min-width:62px;justify-content:center">'+(isLate?'⏰ Late':'✅ On Time')+'</span>'
       +'</div>';
@@ -8932,7 +9022,8 @@ function bulkApply(){
     if(kind==='absent'&&rec.lateIds.indexOf(sid)>=0){refused.push(sid);return;}
     set.add(sid);
     rec[other]=rec[other].filter(x=>x!==sid);   // the two are mutually exclusive
-    if(kind==='absent')delete rec.lateTimes[sid];
+    if(kind==='late'&&typeof lateSetBy==='function')lateSetBy(rec,sid,lateWhoName());
+    if(kind==='absent'){delete rec.lateTimes[sid];if(typeof lateClearBy==='function')lateClearBy(rec,sid);}
   });
   const done=picked.length-refused.length;
   rec[target]=[...set];
@@ -9071,13 +9162,14 @@ function togAbs(sid){
 function togLate(sid){
   const r=_attDayRec();
   const set=new Set(r.all[r.i].lateIds);
-  if(set.has(sid)){set.delete(sid);delete r.all[r.i].lateTimes[sid];}
+  if(set.has(sid)){set.delete(sid);delete r.all[r.i].lateTimes[sid];lateClearBy(r.all[r.i],sid);}
   else{
     set.add(sid);
     if(!r.all[r.i].lateTimes[sid]){
       const n=new Date();
       r.all[r.i].lateTimes[sid]=('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2);
     }
+    lateSetBy(r.all[r.i],sid,lateWhoName());
     r.all[r.i].absentIds=(r.all[r.i].absentIds||[]).filter(x=>x!==sid);
   }
   r.all[r.i].lateIds=[...set];
