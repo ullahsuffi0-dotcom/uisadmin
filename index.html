@@ -7833,15 +7833,62 @@ function aqLateSet(date){
   const r=aqDay(date);
   return new Set((r&&r.lateIds)||[]);
 }
+// The classes taken from the scanned code on one day, and who took each
+function aqTakenCard(date){
+  const r=(DB.get('attendance')||[]).find(function(a){return a&&a.date===date;});
+  const done=(r&&r.classDone&&typeof r.classDone==='object')?r.classDone:{};
+  const keys=Object.keys(done).sort();
+  if(!keys.length)return '';
+  return '<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>\u{1f4f1} Taken from the code</h3>'
+   +'<span style="font-size:11px;color:var(--tx3)">'+keys.length+' class(es) on '+esc(date)+'</span></div>'
+   +'<div class="tw"><table style="font-size:11px"><thead><tr><th>Class</th><th>Taken by</th><th class="c">On the roll</th>'
+   +'<th class="c">Present</th><th class="c">Absent</th><th>Time</th></tr></thead><tbody>'
+   +keys.map(function(c){
+     const d=done[c]||{};
+     return '<tr><td><strong>'+esc(c)+'</strong></td>'
+      +'<td>'+(d.by&&d.by!=='QR code'
+         ?'<strong>'+esc(d.by)+'</strong>'+(d.viaPin?' <span class="badge bbl" style="font-size:9px">\u{1f511} PIN</span>':'')
+         :'<span style="color:var(--tx3)">Code scan</span>')+'</td>'
+      +'<td class="c">'+(d.total||0)+'</td><td class="c" style="color:var(--su)">'+(d.present||0)+'</td>'
+      +'<td class="c" style="color:var(--dn)">'+(d.absent||0)+'</td>'
+      +'<td style="color:var(--tx2)">'+esc(d.at?String(d.at).slice(11,16):'')+'</td></tr>';
+   }).join('')
+   +'</tbody></table></div>'
+   +'<div style="font-size:11px;color:var(--tx3);margin-top:8px">Whoever scans the code types his own PIN, so each class says who took it. Marks made here by hand are not changed by it.</div></div>';
+}
 function aqDone(date,cls){
   const r=aqDay(date);
   return (r&&r.classDone&&r.classDone[cls])||null;
 }
 
 function aqState(){
-  if(!window._aq)window._aq={cls:'',absent:{},done:null};
+  if(!window._aq)window._aq={cls:'',absent:{},done:null,unlocked:false,who:''};
   if(!window._aq.absent)window._aq.absent={};
   return window._aq;
+}
+function aqOpen(){const st=aqState();return !!st.unlocked&&!!st.who;}
+// The same four-digit PIN as the weekly plan, so the register carries a name
+function aqUnlock(){
+  const e=document.getElementById('aqp-pin');
+  const msg=document.getElementById('aqp-pin-msg');
+  const say=function(t){if(msg)msg.textContent=t;else toast(t,'danger');};
+  const p=e?String(e.value||'').trim():'';
+  if(!/^\d{4}$/.test(p)){say('A PIN is four digits.');return Promise.resolve(false);}
+  return wpPinHolder(p).then(function(name){
+    if(!name){say('That PIN is not right. It is the same one you use for the weekly plan.');return false;}
+    const st=aqState();
+    st.unlocked=true;st.who=name;st.cls='';st.absent={};st.done=null;
+    portalActor(name,'Register · PIN',true);
+    logA('Opened the attendance code with his PIN');
+    renderAttPortal();window.scrollTo(0,0);
+    toast('Welcome, '+name,'success');
+    return true;
+  });
+}
+function aqReset(){
+  window._aq={cls:'',absent:{},done:null,unlocked:false,who:''};
+  clearPortalActor();
+  renderAttPortal();window.scrollTo(0,0);
 }
 function checkAttMode(){
   const params=new URLSearchParams(window.location.search);
@@ -7860,13 +7907,22 @@ function renderAttPortal(){
   wrap.id='aqp';
   wrap.style.cssText='min-height:100vh;background:var(--bg);padding:18px 14px 40px';
   let body='';
-  if(st.done){
+  if(!aqOpen()){
+    body=pdpQ('Your 4-digit PIN','The same one you use for the weekly plan.',
+      (wpPinsInUse()
+        ?'<div style="display:flex;gap:7px;flex-wrap:wrap">'
+         +'<input id="aqp-pin" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" onkeydown="if(event.key===\'Enter\')aqUnlock()" style="flex:1 1 130px;letter-spacing:10px;font-size:22px;text-align:center">'
+         +'<button type="button" class="btn bp" style="flex:0 0 auto;padding:12px 18px" onclick="aqUnlock()">Open the register →</button></div>'
+         +'<div id="aqp-pin-msg" style="font-size:11px;color:var(--dn);margin-top:5px"></div>'
+        :'<div class="al aw" style="margin:0">No PIN has been given out yet. Please ask the school office for yours.</div>'),true);
+  }else if(st.done){
     // what was just submitted
     const d=st.done;
     body='<div class="card" style="padding:18px;margin-bottom:12px;text-align:center;border-top:6px solid var(--su)">'
      +'<div style="font-size:34px">✅</div>'
      +'<div style="font-size:17px;font-weight:700;margin-top:4px">'+esc(d.cls)+' — attendance taken</div>'
-     +'<div style="font-size:12px;color:var(--tx3);margin-top:2px">'+esc(wpDateText(d.date))+' · '+esc(getDayOfWeek(d.date)||'')+'</div>'
+     +'<div style="font-size:12px;color:var(--tx3);margin-top:2px">'+esc(wpDateText(d.date))+' · '+esc(getDayOfWeek(d.date)||'')
+     +(d.by?' · by '+esc(d.by):'')+'</div>'
      +'<div class="cg g3" style="margin-top:14px">'
      +'<div class="stat bl"><div class="sl2">Total</div><div class="sv">'+d.total+'</div><div class="sb3">on the roll</div><div class="sic">\u{1f468}\u{200d}\u{1f393}</div></div>'
      +'<div class="stat gn"><div class="sl2">Present</div><div class="sv">'+d.present+'</div><div class="sb3">'+(d.total?Math.round(d.present/d.total*100):0)+'%</div><div class="sic">✅</div></div>'
@@ -7933,7 +7989,13 @@ function renderAttPortal(){
    +'<div style="font-size:11px;color:var(--tx3)">'+esc(s.schoolNameAr||'')+'</div></div></div>'
    +'<h1 style="font-size:22px;font-weight:700;color:var(--tx);margin-bottom:6px">Daily Attendance</h1>'
    +'<p style="font-size:13px;color:var(--tx2);line-height:1.6">'+esc(getDayOfWeek(date)||'')+' '+esc(wpDateText(date))+' · tap whoever is absent, then submit.</p>'
-   +'</div></div>'+body+'</div>';
+   +'</div></div>'
+   +(aqOpen()
+     ?'<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.who)+'</strong> <span style="font-size:11px;color:var(--tx3)">— every class you take is recorded in your name</span></div>'
+      +'<button class="btn bg2 bsm" onclick="aqReset()">Not you?</button></div>'
+     :'')
+   +body+'</div>';
   document.body.appendChild(wrap);
 }
 function aqPick(cls){
@@ -7961,6 +8023,7 @@ function aqSubmit(){
   const cls=st.cls;
   const date=aqToday();
   if(!cls)return;
+  if(!aqOpen()){toast('Type your PIN first','danger');renderAttPortal();return;}
   const list=aqStudents(cls);
   if(!list.length){toast('That class has nobody on the roll','danger');return;}
   const mine=list.map(function(x){return x.id;});
@@ -7974,11 +8037,11 @@ function aqSubmit(){
   rec.absentIds=keep.concat(absent);
   rec.classDone=Object.assign({},rec.classDone||{});
   rec.classDone[cls]={total:list.length,absent:absent.length,present:list.length-absent.length,
-    by:'QR code',at:new Date().toISOString()};
+    by:st.who||'QR code',viaPin:!!st.who,at:new Date().toISOString()};
   DB.set('attendance',all);
   const names=list.filter(function(x){return absent.indexOf(x.id)>=0;}).map(fN);
-  st.done={cls:cls,date:date,total:list.length,absent:absent.length,present:list.length-absent.length,names:names};
-  logAs('Attendance QR','Register · link','Took the register of '+cls+' — '+(list.length-absent.length)+' present, '+absent.length+' absent');
+  st.done={cls:cls,date:date,total:list.length,absent:absent.length,present:list.length-absent.length,names:names,by:st.who||''};
+  logAs(st.who||'Attendance QR','Register · PIN','Took the register of '+cls+' — '+(list.length-absent.length)+' present, '+absent.length+' absent',true);
   toast(cls+': '+(list.length-absent.length)+' present, '+absent.length+' absent','success');
   renderAttPortal();window.scrollTo(0,0);
 }
@@ -7991,7 +8054,7 @@ function aqQrM(){
   const q=String.fromCharCode(39);
   openM('<div class="mh"><h3>\u{1f4f1} Attendance QR</h3><button class="mc" onclick="closeM()">×</button></div>'
   +'<div class="mb2">'
-  +'<div class="al ai">One code for the whole school. Whoever takes the register scans it, picks the class, taps the boys who are not there and submits — the screen then shows the class total, how many are present and how many absent. It writes into today’s attendance here, class by class, so two people can take two classes at the same time.</div>'
+  +'<div class="al ai">One code for the whole school. Whoever takes the register scans it and types the same four-digit PIN he uses for the weekly plan, then picks the class, taps the boys who are not there and submits — the screen shows the class total, how many are present and how many absent. It writes into today’s attendance here, class by class, each saying who took it, so two people can take two classes at the same time.</div>'
   +'<div style="text-align:center;padding:10px"><img src="'+qr+'" alt="Attendance QR" style="width:230px;height:230px;background:#fff;padding:8px;border:1px solid var(--bd);border-radius:var(--rs)"></div>'
   +'<div style="background:var(--sf2);padding:9px;border-radius:var(--rs);font-family:'+q+'JetBrains Mono'+q+',monospace;font-size:10px;color:var(--ac);word-break:break-all;border:1px solid var(--bd);margin-bottom:10px">'+esc(url)+'</div>'
   +'<button class="btn bg2 bsm" onclick="navigator.clipboard.writeText('+q+escJs(url)+q+').then(function(){toast('+q+'Link copied'+q+','+q+'success'+q+');})">\u{1f4cb} Copy Link</button>'
@@ -8019,9 +8082,10 @@ function aqPrintPoster(){
   +'<div class="qr"><img src="'+qr+'" alt=""></div>'
   +'<div class="st">'
   +'<div class="s"><div class="n">1</div>Scan with the camera</div>'
-  +'<div class="s"><div class="n">2</div>Choose the class</div>'
-  +'<div class="s"><div class="n">3</div>Tap whoever is absent</div>'
-  +'<div class="s"><div class="n">4</div>Submit — the totals appear</div>'
+  +'<div class="s"><div class="n">2</div>Type your 4-digit PIN</div>'
+  +'<div class="s"><div class="n">3</div>Choose the class</div>'
+  +'<div class="s"><div class="n">4</div>Tap whoever is absent</div>'
+  +'<div class="s"><div class="n">5</div>Submit — the totals appear</div>'
   +'</div><div class="u">'+esc(url)+'</div>'
   +'<script>setTimeout(function(){window.print();},700);<\/script></body></html>');
   w.document.close();
@@ -8057,6 +8121,7 @@ function rAttendance(){
   +(canM&&absentCount>0?'<div class="card" style="margin-bottom:13px;background:linear-gradient(135deg,var(--ac2),var(--pubg));border-color:var(--ac3)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:700;font-size:13px;color:var(--ac);margin-bottom:3px">📱 Notify Parents via WhatsApp</div><div style="font-size:11px;color:var(--tx2)">Click below to open WhatsApp chats for each absent student\'s father and mother. You can review the message before sending.'+(excusedCount?'<br><strong style="color:var(--su)">'+excusedCount+' excused student(s) will be skipped.</strong>':'')+(alreadyNotified?'<br><strong style="color:var(--su)">'+alreadyNotified+' already notified — they are not in the list.</strong>':'')+'</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bs bsm" onclick="sendWaAll(\'father\')">📱 Father ('+toNotify+')</button><button class="btn bs bsm" onclick="sendWaAll(\'mother\')">📱 Mother ('+toNotify+')</button><button class="btn bp bsm" onclick="sendWaAll(\'both\')">📱 Both Parents ('+(toNotify*2)+')</button></div></div></div>':'')
   +buildNotifiedCard('absent',sel,canM)
   +excAttendanceNotice(sel,canM)
+  +aqTakenCard(sel)
   +'<div class="card" style="margin-bottom:13px"><div class="sh2"><h3>🔍 Mark Absent Students</h3><div style="display:flex;gap:6px">'+(canM?'<button class="btn bs bsm" onclick="bulkMarkM(\'absent\')">➕ Mark Several Absent</button><button class="btn bg2 bsm" onclick="markAllPresent()">↺ Reset All Present</button><button class="btn bp bsm" onclick="submitAtt()">'+(dayRec.marked?'Update':'Submit')+' Attendance →</button>':'')+'</div></div>'
   +'<div style="display:flex;gap:8px;margin-bottom:12px"><input id="attq" placeholder="🔍 Search by name or grade…" oninput="fltAtt()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"><select id="attgf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Grades</option>'+[...new Set(students.map(s=>s.grade))].sort().map(g=>'<option value="'+g+'">Gr '+g+'</option>').join('')+'</select><select id="attsf" onchange="fltAtt()" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx)"><option value="">All Status</option><option value="absent">Absent only</option><option value="present">Present only</option><option value="late">Late only</option><option value="excused">Excused only</option><option value="tonotify">Absent — to notify</option></select></div>'
   +'<div id="attlist">'+buildAttList(students,absentSet,canM,sel,lateSet,lateTimes)+'</div></div>'
