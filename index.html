@@ -25745,6 +25745,201 @@ function pdMissingText(list,max){
   return bits.join('; ')+(list.length>max?'; +'+(list.length-max)+' more':'');
 }
 
+// ═══════════════════════════════════════════════════════════
+// WHO DID NOT FILL IN, FROM ONE PERIOD TO ANOTHER
+// A sheet of its own: choose the days and the run of periods — the third to
+// the fifth, or the first alone — and out comes the list of teachers who left
+// those lessons blank, each with the classes and days it happened on.
+// Nothing is changed by looking; it only reads what is already recorded.
+// ═══════════════════════════════════════════════════════════
+function pdNfState(){
+  if(!window._pdNf){
+    const d=window._pdDate||ymd(new Date());
+    window._pdNf={from:d,to:d,p1:PD_PERIODS[0],p2:PD_PERIODS[PD_PERIODS.length-1]};
+  }
+  return window._pdNf;
+}
+// Every lesson left blank in that run of periods, gathered under its teacher
+function pdNotFilled(from,to,p1,p2){
+  const a=Math.min(Number(p1)||PD_PERIODS[0],Number(p2)||PD_PERIODS[0]);
+  const b=Math.max(Number(p1)||PD_PERIODS[0],Number(p2)||PD_PERIODS[0]);
+  const ix=pdIndex(from,to);
+  const byT={},all=[];
+  let expected=0,filled=0;
+  const put=function(name,item){
+    const t=name||'(no teacher on the timetable)';
+    (byT[t]=byT[t]||[]).push(item);
+    all.push(Object.assign({teacher:t},item));
+  };
+  ix.classes.forEach(function(c){
+    const k=normClass(c);
+    ix.days.forEach(function(d){
+      const res=pdDayResult(c,d,ix.pBy[k+'|'+d]||[],ix.bBy[k+'|'+d]||[]);
+      res.periods.forEach(function(x){
+        if(x.p<a||x.p>b||x.excluded||!x.lesson)return;
+        expected++;
+        if(x.rec)filled++;
+      });
+      (res.missing||[]).forEach(function(m){
+        if(m.p<a||m.p>b)return;
+        put(m.teacher,{className:c,date:d,p:m.p,subject:m.subject||'',partial:false,filledBy:''});
+      });
+      (res.partial||[]).forEach(function(m){
+        if(m.p<a||m.p>b)return;
+        (m.missing||[]).forEach(function(t){
+          put(t,{className:c,date:d,p:m.p,subject:m.subject||'',partial:true,
+            filledBy:(m.filledBy||[]).join(', ')});
+        });
+      });
+    });
+  });
+  const teachers=Object.keys(byT).sort(function(x,y){
+    return byT[y].length-byT[x].length||x.localeCompare(y);
+  }).map(function(t){
+    return {teacher:t,items:byT[t].slice().sort(function(m,n){
+      return String(m.date).localeCompare(String(n.date))||m.p-n.p||String(m.className).localeCompare(String(n.className));
+    })};
+  });
+  all.sort(function(m,n){
+    return String(m.date).localeCompare(String(n.date))||m.p-n.p
+      ||String(m.className).localeCompare(String(n.className))||String(m.teacher).localeCompare(String(n.teacher));
+  });
+  return {from:from,to:to,p1:a,p2:b,teachers:teachers,all:all,
+    days:ix.days,classes:ix.classes,expected:expected,filled:filled,blank:all.length};
+}
+function pdNfWhere(m){
+  return m.className+' · '+(PD_DAY_SHORT[getDayOfWeek(m.date)]||'')+' '+m.date+' · P'+m.p;
+}
+function pdNfRange(r){
+  return r.p1===r.p2?('Period '+r.p1):('Periods '+r.p1+' to '+r.p2);
+}
+function pdNfDates(r){
+  return r.from===r.to?wpDateText(r.from):(wpDateText(r.from)+' to '+wpDateText(r.to));
+}
+function pdNotFilledM(){
+  const st=pdNfState();
+  const q=String.fromCharCode(39);
+  const opt=function(sel){
+    return PD_PERIODS.map(function(p){return '<option value="'+p+'"'+(Number(sel)===p?' selected':'')+'>Period '+p+'</option>';}).join('');
+  };
+  openM('<div class="mh"><h3>\u{1f4c4} Who has not filled in</h3><button class="mc" onclick="closeM()">×</button></div>'
+  +'<div class="mb2">'
+  +'<div class="al ai">Choose the days and the run of periods. The sheet names the teachers who left those lessons blank, with the class and day of each. Nothing here changes a single record.</div>'
+  +'<div class="fr f2"><div class="fg"><label>From this day</label><input type="date" id="pd-nf-f" value="'+esc(st.from)+'" onchange="pdNfSet()"></div>'
+  +'<div class="fg"><label>To this day</label><input type="date" id="pd-nf-t" value="'+esc(st.to)+'" onchange="pdNfSet()"></div></div>'
+  +'<div class="fr f2"><div class="fg"><label>From this period</label><select id="pd-nf-p1" onchange="pdNfSet()">'+opt(st.p1)+'</select></div>'
+  +'<div class="fg"><label>To this period</label><select id="pd-nf-p2" onchange="pdNfSet()">'+opt(st.p2)+'</select></div></div>'
+  +'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">'
+  +'<button class="btn bg2 bxs" onclick="pdNfQuick(1,'+PD_PERIODS[PD_PERIODS.length-1]+')">The whole day</button>'
+  +PD_PERIODS.map(function(p){return '<button class="btn bg2 bxs" onclick="pdNfQuick('+p+','+p+')">P'+p+' alone</button>';}).join('')
+  +'</div>'
+  +'<div id="pd-nf-box"></div>'
+  +'</div>'
+  +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+  +'<button class="btn bg2 bsm" onclick="pdNfShare()">\u{1f4f2} WhatsApp</button>'
+  +'<button class="btn bp" onclick="pdNotFilledPDF()">\u{1f5a8}\u{fe0f} Print / PDF</button></div>',true);
+  pdNfPaint();
+}
+function pdNfSet(){
+  const st=pdNfState();
+  const v=function(k){const e=document.getElementById(k);return e?String(e.value||''):'';};
+  st.from=v('pd-nf-f')||st.from;
+  st.to=v('pd-nf-t')||st.to;
+  if(st.to<st.from)st.to=st.from;
+  st.p1=Number(v('pd-nf-p1'))||st.p1;
+  st.p2=Number(v('pd-nf-p2'))||st.p2;
+  const t=document.getElementById('pd-nf-t');if(t)t.value=st.to;
+  pdNfPaint();
+}
+function pdNfQuick(p1,p2){
+  const st=pdNfState();
+  st.p1=p1;st.p2=p2;
+  const a=document.getElementById('pd-nf-p1'),b=document.getElementById('pd-nf-p2');
+  if(a)a.value=String(p1);if(b)b.value=String(p2);
+  pdNfPaint();
+}
+function pdNfPaint(){
+  const box=document.getElementById('pd-nf-box');
+  if(!box)return;
+  const st=pdNfState();
+  const r=pdNotFilled(st.from,st.to,st.p1,st.p2);
+  box.innerHTML='<div class="cg g3" style="margin-bottom:9px">'
+   +'<div class="stat bl"><div class="sl2">Lessons in that run</div><div class="sv">'+r.expected+'</div><div class="sb3">'+esc(pdNfRange(r))+'</div><div class="sic">\u{1f4d8}</div></div>'
+   +'<div class="stat gn"><div class="sl2">Filled in</div><div class="sv">'+r.filled+'</div><div class="sic">✅</div></div>'
+   +'<div class="stat rd"><div class="sl2">Left blank</div><div class="sv">'+r.blank+'</div><div class="sb3">by '+r.teachers.length+' teacher(s)</div><div class="sic">✗</div></div></div>'
+   +(!r.days.length
+     ?'<div class="al aw">Nothing at all was recorded on those days, so there is nothing to go by.</div>'
+     :(r.teachers.length
+       ?'<div class="tw" style="max-height:260px;overflow:auto"><table style="font-size:11px"><thead><tr><th>Teacher</th><th class="c">Lessons</th><th>Class, day and period</th></tr></thead><tbody>'
+        +r.teachers.map(function(t){
+          return '<tr><td><strong>'+esc(t.teacher)+'</strong></td><td class="c"><strong style="color:var(--dn)">'+t.items.length+'</strong></td>'
+           +'<td style="font-size:10px">'+t.items.map(function(m){
+              return esc(pdNfWhere(m))+(m.partial?' <span style="color:var(--tx3)">(the other group was filled in by '+esc(m.filledBy)+')</span>':'');
+            }).join('<br>')+'</td></tr>';
+        }).join('')+'</tbody></table></div>'
+       :'<div class="al ag">Every lesson in that run of periods was filled in.</div>'));
+}
+function pdNfShare(){
+  const st=pdNfState();
+  const r=pdNotFilled(st.from,st.to,st.p1,st.p2);
+  const s=DB.get('settings')||{};
+  const lines=[(s.schoolName||'School')+' — lessons not filled in',
+    pdNfRange(r)+' · '+pdNfDates(r),''];
+  if(!r.teachers.length)lines.push('Every lesson in that run was filled in.');
+  else r.teachers.forEach(function(t){
+    lines.push('• '+t.teacher+' — '+t.items.length+' lesson(s): '+t.items.map(pdNfWhere).join('; '));
+  });
+  lines.push('','Filled in '+r.filled+' of '+r.expected+'.');
+  window.open('https://wa.me/?text='+encodeURIComponent(lines.join('\n')),'_blank');
+  logA('Shared who had not filled in, '+pdNfRange(r).toLowerCase()+', '+r.from+' to '+r.to);
+}
+function pdNotFilledPDF(){
+  const st=pdNfState();
+  const r=pdNotFilled(st.from,st.to,st.p1,st.p2);
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to open the PDF','danger');return;}
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Not filled in — '+esc(pdNfRange(r))+'</title><style>'
+   +'@page{size:A4;margin:14mm}body{font-family:Arial,sans-serif;color:#1a3a5c;font-size:11px}'
+   +'table{width:100%;border-collapse:collapse;margin-top:6px;font-size:10px}'
+   +'th{background:#1a5f7a;color:#fff;padding:5px;text-align:left;font-size:9px;text-transform:uppercase}'
+   +'td{padding:4px 6px;border-bottom:1px solid #ddd;vertical-align:top}.c{text-align:center}'
+   +'h2{font-size:13px;margin:16px 0 0;padding-bottom:3px;border-bottom:2px solid #1a5f7a}'
+   +'h2 span{font-weight:normal;font-size:10px;color:#666}'
+   +'.band{background:#eef4f8;border:1px solid #cfe0ea;border-radius:6px;padding:7px 11px;margin:7px 0;font-size:11px}'
+   +'.band b{font-size:15px}'
+   +'.n{color:#a52424;font-weight:bold}.ok{color:#15803d;font-weight:bold}'
+   +'.note{margin-top:12px;font-size:9px;color:#666;line-height:1.6}'
+   +'@media print{button{display:none}tr{page-break-inside:avoid}}</style></head><body>'
+   +pdfHeaderHTML({subtitle:'Class Period Discipline — lessons not filled in'})
+   +'<button onclick="window.print()" style="margin-bottom:10px;padding:7px 15px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">\u{1f5a8}\u{fe0f} Print / Save as PDF</button>'
+   +'<div style="font-size:14px;font-weight:bold">'+esc(pdNfRange(r))+'</div>'
+   +'<div style="font-size:11px;color:#555">'+esc(pdNfDates(r))+(r.days.length>1?' · '+r.days.length+' day(s) recorded':'')+'</div>'
+   +'<div class="band"><b>'+r.blank+'</b> lesson(s) left blank by <b>'+r.teachers.length+'</b> teacher(s) &nbsp;·&nbsp; '
+   +'<span class="ok">'+r.filled+'</span> of '+r.expected+' filled in'
+   +(r.expected?' ('+Math.round(r.filled/r.expected*100)+'%)':'')+'</div>'
+   +(!r.days.length
+     ?'<div style="font-size:11px;color:#888;margin-top:10px">Nothing at all was recorded on those days.</div>'
+     :(r.teachers.length
+       ?'<h2>By teacher <span>· the one the lesson is timetabled to</span></h2>'
+        +'<table><thead><tr><th style="width:34%">Teacher</th><th class="c" style="width:12%">Lessons</th><th>Class, day and period</th></tr></thead><tbody>'
+        +r.teachers.map(function(t){
+          return '<tr><td><strong>'+esc(t.teacher)+'</strong></td><td class="c n">'+t.items.length+'</td>'
+           +'<td>'+t.items.map(function(m){return esc(pdNfWhere(m))+(m.partial?' (other group filled in by '+esc(m.filledBy)+')':'');}).join('<br>')+'</td></tr>';
+        }).join('')+'</tbody></table>'
+        +'<h2>Lesson by lesson</h2>'
+        +'<table><thead><tr><th>Date</th><th>Day</th><th class="c">Period</th><th>Class</th><th>Subject</th><th>Teacher</th></tr></thead><tbody>'
+        +r.all.map(function(m){
+          return '<tr><td>'+esc(m.date)+'</td><td>'+esc(getDayOfWeek(m.date)||'')+'</td><td class="c">P'+m.p+'</td>'
+           +'<td>'+esc(m.className)+'</td><td>'+esc(m.subject||'—')+'</td><td class="n">'+esc(m.teacher)+(m.partial?' <span style="color:#666;font-weight:normal">(split lesson)</span>':'')+'</td></tr>';
+        }).join('')+'</tbody></table>'
+       :'<div style="font-size:12px;color:#15803d;margin-top:10px;font-weight:bold">Every lesson in that run of periods was filled in.</div>'))
+   +'<div class="note">A lesson counts as not filled in when it is on the class timetable, is not written off as excluded, and no teacher recorded it. '
+   +'Where two teachers take a lesson at once, each is expected to fill in his own group, and only the one who did not is named. '
+   +'A day on which nothing at all was recorded is treated as a holiday and left out.</div>'
+   +'</body></html>');
+  w.document.close();
+  logA('Extracted who had not filled in, '+pdNfRange(r).toLowerCase()+', '+r.from+' to '+r.to+' — '+r.blank+' lesson(s)');
+}
 function pdRankClasses(from,to){
   const ix=pdIndex(from,to);
   return ix.classes.map(function(c){
@@ -26766,6 +26961,7 @@ function rPeriodDiscipline(){
    +'<button class="btn bg2 bsm" onclick="bdTtViewM()">\u{1f4c5} Timetable</button>'
    +'<button class="btn bs bsm" onclick="pdStudentReportM()">\u{1f464} Student Report</button>'
    +'<button class="btn bs bsm" onclick="pdSummaryM()">\u{1f4c8} Summary</button>'
+   +'<button class="btn bd3 bsm" onclick="pdNotFilledM()">\u{1f4c4} Who has not filled</button>'
    +'<button class="btn bs bsm" onclick="pdBestM()">\u{1f3c6} Best Class</button>'
    +'<button class="btn bg2 bsm" onclick="pdQrM()">\u{1f4f1} Class QR Poster</button>'
    +'<button class="btn bg2 bsm" onclick="pdExport()">\u{1f4ca} Export</button>'
