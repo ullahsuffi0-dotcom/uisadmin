@@ -12153,7 +12153,7 @@ function rExamAbsent(){
   const uniqueStudents=new Set(abs.map(a=>a.studentId||a.studentName)).size;
   const uniqueSubjects=new Set(abs.map(a=>a.subject)).size;
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📵 '+T('exam_absent')+'</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="expAbsC()">📊 CSV</button><button class="btn bg2 bsm" onclick="expAbsP()">📄 PDF</button>'+(canC&&abs.length?'<button class="btn bd3 bsm" onclick="clearAllExamAbsents()">🗑️ Clear All</button>':'')+(canC?'<button class="btn bp bsm" onclick="addExamSessionM()">+ New Session</button>':'')+'</div></div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>📵 '+T('exam_absent')+'</h3><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="expAbsC()">📊 CSV</button><button class="btn bg2 bsm" onclick="absPdfM(\'\')">📄 PDF</button>'+(canC&&abs.length?'<button class="btn bd3 bsm" onclick="clearAllExamAbsents()">🗑️ Clear All</button>':'')+(canC?'<button class="btn bp bsm" onclick="addExamSessionM()">+ New Session</button>':'')+'</div></div></div>'
   +'<div class="cg g4" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Absences</div><div class="sv">'+abs.length+'</div><div class="sic">📵</div></div><div class="stat go"><div class="sl2">Affected Students</div><div class="sv">'+uniqueStudents+'</div><div class="sic">👥</div></div><div class="stat gn"><div class="sl2">Sessions</div><div class="sv">'+sessions.length+'</div><div class="sic">📑</div></div><div class="stat rd"><div class="sl2">Multi-Subject</div><div class="sv">'+countMultiSubject(abs)+'</div><div class="sb3">2+ subjects</div><div class="sic">⚠️</div></div></div>'
   +'<div id="sessview">'+buildSessionCards(sessions,abs,canC)+'</div>';
 }
@@ -12260,7 +12260,7 @@ function renderSessionAbsents(sess){
   const uniqueStudents=new Set(abs.map(a=>a.studentId||a.studentName)).size;
   const uniqueSubjects=new Set(abs.map(a=>a.subject)).size;
 
-  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;align-items:center;gap:8px"><button class="btn bg2 bxs" onclick="exitExamSession()" title="Back to sessions">←</button><h3>📑 '+esc(sess.name)+' <span class="badge '+(sess.status==='active'?'bgn':'bgr')+'">'+esc(sess.status)+'</span></h3></div><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="expAbsSessionC(\''+esc(sess.name).replace(/'/g,"\\'")+'\')" >📊 CSV</button><button class="btn bg2 bsm" onclick="expAbsSessionP(\''+esc(sess.name).replace(/'/g,"\\'")+'\')" >📄 PDF</button><button class="btn bs bsm" onclick="eaSessQr(\''+sess.id+'\')">📱 Absentees QR</button>'+(canC&&sess.status==='active'?'<button class="btn bp bsm" onclick="addAbsM(\''+esc(sess.name).replace(/'/g,"\\'")+'\')">+ Add Absent</button>':'')+'</div></div></div>'
+  document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><div style="display:flex;align-items:center;gap:8px"><button class="btn bg2 bxs" onclick="exitExamSession()" title="Back to sessions">←</button><h3>📑 '+esc(sess.name)+' <span class="badge '+(sess.status==='active'?'bgn':'bgr')+'">'+esc(sess.status)+'</span></h3></div><div style="display:flex;gap:5px;flex-wrap:wrap"><button class="btn bg2 bsm" onclick="expAbsSessionC(\''+esc(sess.name).replace(/'/g,"\\'")+'\')" >📊 CSV</button><button class="btn bg2 bsm" onclick="absPdfM(\''+esc(sess.name).replace(/'/g,"\\'")+'\')" >📄 PDF</button><button class="btn bs bsm" onclick="eaSessQr(\''+sess.id+'\')">📱 Absentees QR</button>'+(canC&&sess.status==='active'?'<button class="btn bp bsm" onclick="addAbsM(\''+esc(sess.name).replace(/'/g,"\\'")+'\')">+ Add Absent</button>':'')+'</div></div></div>'
   +'<div class="cg g3" style="margin-bottom:13px"><div class="stat bl"><div class="sl2">Total Absences</div><div class="sv">'+abs.length+'</div><div class="sic">📵</div></div><div class="stat go"><div class="sl2">Students</div><div class="sv">'+uniqueStudents+'</div><div class="sic">👥</div></div><div class="stat gn"><div class="sl2">Subjects</div><div class="sv">'+uniqueSubjects+'</div><div class="sic">📚</div></div></div>'
   +'<div class="card" style="margin-bottom:12px"><div style="display:flex;gap:5px;flex-wrap:wrap"><button id="abv-list" class="btn bp bsm" onclick="absView(\'list\')">📋 List View</button><button id="abv-stu" class="btn bg2 bsm" onclick="absView(\'student\')">👨‍🎓 Group by Student</button><button id="abv-sub" class="btn bg2 bsm" onclick="absView(\'subject\')">📚 Group by Subject</button></div></div>'
   +'<div id="absview"></div>';
@@ -12272,6 +12272,170 @@ function renderSessionAbsents(sess){
 function absExportOrder(l){const m=absSortMode();return m==='added'?l:absSorted(l,m);}
 function expAbsSessionC(sessName){const l=absExportOrder((DB.get('exam_absents')||[]).filter(a=>a.examSession===sessName));expCSV(['Student','Grade','Section','Subject','Absent Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]),sessName.replace(/\s+/g,'_')+'_absents_'+new Date().toISOString().split('T')[0]);}
 function expAbsSessionP(sessName){const l=absExportOrder((DB.get('exam_absents')||[]).filter(a=>a.examSession===sessName));expPDF(sessName+' — Absent List',['Student','Grade','Section','Subject','Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]));}
+
+// ── The absent list as a PDF, arranged as asked ────────────
+// Date wise, subject wise or both (and class wise), with the classes always
+// running from the smallest grade to the biggest. Only reads the list.
+function absGradeNum(g){
+  const t=String(g==null?'':g).trim();
+  if(/^(kg|pre|nursery)/i.test(t))return -1+(parseInt(t.replace(/\D/g,''))||0)/10;
+  const n=parseInt(t,10);
+  return isNaN(n)?999:n;
+}
+function absClassOf(a){return String(a.grade||'')+(a.section?'-'+a.section:'');}
+function absClassCmp(a,b){
+  return absGradeNum(a.grade)-absGradeNum(b.grade)
+    ||String(a.grade||'').localeCompare(String(b.grade||''))
+    ||String(a.section||'').localeCompare(String(b.section||''));
+}
+function absPdfPrefs(){
+  let p={};
+  try{p=JSON.parse(localStorage.getItem('abs_pdf_prefs')||'{}')||{};}catch(e){p={};}
+  return {byDate:p.byDate!==false,bySubject:!!p.bySubject,byClass:!!p.byClass,
+    first:p.first==='subject'?'subject':'date',order:p.order||'class',newPage:!!p.newPage};
+}
+function absPdfM(sessName){
+  const all=(DB.get('exam_absents')||[]).filter(function(a){return !sessName||a.examSession===sessName;});
+  if(!all.length){toast('There are no absences to print','info');return;}
+  const p=absPdfPrefs();
+  const dates=[...new Set(all.map(function(a){return a.absentDate||'';}).filter(Boolean))].sort();
+  const subjects=[...new Set(all.map(function(a){return a.subject||'';}).filter(Boolean))].sort();
+  const classes=[...new Set(all.map(absClassOf))].sort(function(x,y){
+    const ax={grade:x.split('-')[0],section:x.split('-')[1]||''},ay={grade:y.split('-')[0],section:y.split('-')[1]||''};
+    return absClassCmp(ax,ay);
+  });
+  const q=String.fromCharCode(39);
+  const chk=function(id,on,label,sub){
+    return '<label style="display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--bd);border-radius:var(--rs);cursor:pointer;margin-bottom:6px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--tx)">'
+     +'<input type="checkbox" id="'+id+'"'+(on?' checked':'')+' style="width:auto;margin-top:2px">'
+     +'<span><strong style="font-size:13px">'+label+'</strong>'+(sub?'<br><span style="font-size:11px;color:var(--tx3)">'+sub+'</span>':'')+'</span></label>';
+  };
+  const rad=function(name,val,on,label){
+    return '<label style="display:inline-flex;gap:6px;align-items:center;margin-right:14px;font-size:13px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:var(--tx)">'
+     +'<input type="radio" name="'+name+'" value="'+val+'"'+(on?' checked':'')+' style="width:auto">'+label+'</label>';
+  };
+  openM('<div class="mh"><h3>📄 Absent List PDF'+(sessName?' — '+esc(sessName):'')+'</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2">'
+   +'<div class="al ai" style="margin-bottom:12px">'+all.length+' absence(s) · '+dates.length+' date(s) · '+subjects.length+' subject(s) · '+classes.length+' class(es)</div>'
+   +'<div class="fg"><label>Arrange the PDF</label>'
+   +chk('apdf-date',p.byDate,'📅 Date wise','A heading for each exam day')
+   +chk('apdf-subj',p.bySubject,'📚 Subject wise','A heading for each subject')
+   +chk('apdf-cls',p.byClass,'🏫 Class wise','A heading for each class, Grade 1 first, then 2, 3 …')
+   +'<div id="apdf-first-w" style="font-size:12px;color:var(--tx2);margin:4px 0 2px">When both date and subject are ticked, put first: '
+   +rad('apdf-first','date',p.first==='date','Date')+rad('apdf-first','subject',p.first==='subject','Subject')+'</div></div>'
+   +'<div class="fg"><label>Order of the students</label>'
+   +rad('apdf-order','class',p.order==='class','Class — Grade 1 first')
+   +rad('apdf-order','name',p.order==='name','Student name')
+   +rad('apdf-order','date',p.order==='date','Absent date')+'</div>'
+   +'<div class="fr f2"><div class="fg"><label>Only this date</label><select id="apdf-d"><option value="">All dates</option>'
+   +dates.map(function(d){return '<option value="'+esc(d)+'">'+esc(d)+' '+esc(getDayOfWeek(d)||'')+'</option>';}).join('')+'</select></div>'
+   +'<div class="fg"><label>Only this subject</label><select id="apdf-s"><option value="">All subjects</option>'
+   +subjects.map(function(x){return '<option value="'+esc(x)+'">'+esc(x)+'</option>';}).join('')+'</select></div></div>'
+   +'<div class="fg"><label>Only this class</label><select id="apdf-c"><option value="">All classes</option>'
+   +classes.map(function(x){return '<option value="'+esc(x)+'">'+esc(x)+'</option>';}).join('')+'</select></div>'
+   +chk('apdf-np',p.newPage,'Start each group on a new page','')
+   +'</div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button>'
+   +'<button class="btn bp" onclick="absPdfGo('+q+escJs(sessName||'')+q+')">📄 Make PDF →</button></div>');
+}
+function absPdfRead(){
+  const v=function(id){const e=document.getElementById(id);return e?e.value:'';};
+  const c=function(id){const e=document.getElementById(id);return !!(e&&e.checked);};
+  const r=function(n){const e=document.querySelector('input[name="'+n+'"]:checked');return e?e.value:'';};
+  return {byDate:c('apdf-date'),bySubject:c('apdf-subj'),byClass:c('apdf-cls'),first:r('apdf-first')||'date',
+    order:r('apdf-order')||'class',newPage:c('apdf-np'),date:v('apdf-d'),subject:v('apdf-s'),cls:v('apdf-c')};
+}
+// The rows and their headings; kept apart from the printing so it can be checked
+function absPdfGroups(list,o){
+  let rows=list.slice();
+  if(o.date)rows=rows.filter(function(a){return (a.absentDate||'')===o.date;});
+  if(o.subject)rows=rows.filter(function(a){return (a.subject||'')===o.subject;});
+  if(o.cls)rows=rows.filter(function(a){return absClassOf(a)===o.cls;});
+  const byName=function(a,b){return String(a.studentName||'').localeCompare(String(b.studentName||''));};
+  const byDate=function(a,b){return String(a.absentDate||'').localeCompare(String(b.absentDate||''));};
+  const bySubj=function(a,b){return String(a.subject||'').localeCompare(String(b.subject||''));};
+  const within=o.order==='name'?function(a,b){return byName(a,b)||absClassCmp(a,b)||byDate(a,b);}
+    :o.order==='date'?function(a,b){return byDate(a,b)||absClassCmp(a,b)||byName(a,b);}
+    :function(a,b){return absClassCmp(a,b)||byName(a,b)||byDate(a,b)||bySubj(a,b);};
+  const levels=[];
+  const dl={key:'date',label:function(a){return (a.absentDate||'No date')+(a.absentDate&&getDayOfWeek(a.absentDate)?' · '+getDayOfWeek(a.absentDate):'');},cmp:function(a,b){return String(a.absentDate||'￿').localeCompare(String(b.absentDate||'￿'));}};
+  const sl={key:'subject',label:function(a){return a.subject||'No subject';},cmp:bySubj};
+  const cl={key:'class',label:function(a){return 'Class '+absClassOf(a);},cmp:absClassCmp};
+  if(o.byDate&&o.bySubject){if(o.first==='subject')levels.push(sl,dl);else levels.push(dl,sl);}
+  else if(o.byDate)levels.push(dl);
+  else if(o.bySubject)levels.push(sl);
+  if(o.byClass)levels.push(cl);
+  rows.sort(function(a,b){
+    for(let i=0;i<levels.length;i++){const d=levels[i].cmp(a,b);if(d)return d;}
+    return within(a,b);
+  });
+  const groups=[];
+  rows.forEach(function(a){
+    const path=levels.map(function(l){return l.label(a);});
+    const key=path.join('');
+    let g=groups.length?groups[groups.length-1]:null;
+    if(!g||g.key!==key){g={key:key,path:path,rows:[]};groups.push(g);}
+    g.rows.push(a);
+  });
+  return {levels:levels.map(function(l){return l.key;}),groups:groups,total:rows.length};
+}
+function absPdfGo(sessName){
+  const o=absPdfRead();
+  try{localStorage.setItem('abs_pdf_prefs',JSON.stringify({byDate:o.byDate,bySubject:o.bySubject,byClass:o.byClass,first:o.first,order:o.order,newPage:o.newPage}));}catch(e){}
+  const list=(DB.get('exam_absents')||[]).filter(function(a){return !sessName||a.examSession===sessName;});
+  const G=absPdfGroups(list,o);
+  if(!G.total){toast('Nothing matches — change the choices','info');return;}
+  const lv=G.levels;
+  // A column the heading already gives is left out of the table
+  const cols=[['#',function(a,i){return String(i+1);}],['Student',function(a){return a.studentName||'';}]];
+  if(lv.indexOf('class')<0)cols.push(['Class',absClassOf]);
+  if(lv.indexOf('subject')<0)cols.push(['Subject',function(a){return a.subject||'';}]);
+  if(lv.indexOf('date')<0)cols.push(['Date',function(a){return a.absentDate||'';}]);
+  if(!sessName)cols.push(['Exam Session',function(a){return a.examSession||'';}]);
+  cols.push(['Remarks',function(a){return a.remarks||'';}],['Added By',function(a){return a.addedBy||'';}]);
+  const desc=[];
+  if(lv.length)desc.push('Arranged by '+lv.join(' › '));
+  desc.push('students by '+(o.order==='name'?'name':o.order==='date'?'date':'class, Grade 1 first'));
+  if(o.date)desc.push('date '+o.date);
+  if(o.subject)desc.push('subject '+o.subject);
+  if(o.cls)desc.push('class '+o.cls);
+  const title=(sessName?sessName+' — ':'')+'Exam Absent List';
+  const table=function(rows){
+    return '<table><thead><tr>'+cols.map(function(c){return '<th>'+esc(c[0])+'</th>';}).join('')+'</tr></thead><tbody>'
+     +rows.map(function(a,i){return '<tr>'+cols.map(function(c){return '<td>'+(esc(String(c[1](a,i)||''))||'—')+'</td>';}).join('')+'</tr>';}).join('')
+     +'</tbody></table>';
+  };
+  let body='',prev=[];
+  G.groups.forEach(function(g,gi){
+    let h='';
+    g.path.forEach(function(t,d){
+      if(prev[d]===t&&g.path.slice(0,d).join('')===prev.slice(0,d).join(''))return;
+      h+='<div class="h'+(d+1)+'">'+esc(t)+'</div>';
+    });
+    prev=g.path;
+    const stu=new Set(g.rows.map(function(a){return a.studentId||a.studentName;})).size;
+    body+='<div class="grp'+(o.newPage&&gi>0&&h?' np':'')+'">'+h
+     +(lv.length?'<div class="cnt">'+g.rows.length+' absence(s) · '+stu+' student(s)</div>':'')
+     +table(g.rows)+'</div>';
+  });
+  const s=DB.get('settings')||{};
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to make the PDF','danger');return;}
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(title)+'</title><style>'
+   +'body{font-family:Arial,sans-serif;padding:20px;color:#12263f}table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px}'
+   +'th{background:#1a5f7a;color:#fff;padding:6px 7px;text-align:left}td{padding:5px 7px;border-bottom:1px solid #ddd}'
+   +'tr:nth-child(even) td{background:#f6f9fb}.h1{font-size:15px;font-weight:bold;color:#0b3d6b;margin:16px 0 4px;padding:6px 9px;background:#e8f1f7;border-left:5px solid #1a5f7a}'
+   +'.h2{font-size:13px;font-weight:bold;color:#1a5f7a;margin:10px 0 3px 8px}.h3{font-size:12px;font-weight:bold;color:#42607e;margin:8px 0 3px 16px}'
+   +'.cnt{font-size:10px;color:#667;margin:0 0 4px 8px}.sum{font-size:11px;color:#42607e;margin:4px 0 10px}.grp{page-break-inside:auto}.np{page-break-before:always}'
+   +'thead{display:table-header-group}tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><body>'
+   +pdfHeaderHTML({subtitle:title})
+   +'<div class="sum">'+esc(desc.join(' · '))+' · <strong>'+G.total+'</strong> absence(s), <strong>'
+   +new Set([].concat.apply([],G.groups.map(function(g){return g.rows;})).map(function(a){return a.studentId||a.studentName;})).size+'</strong> student(s)</div>'
+   +'<button onclick="window.print()" style="margin-bottom:10px;padding:6px 14px;background:#1a5f7a;color:#fff;border:none;border-radius:4px;cursor:pointer">🖨️ Print</button>'
+   +body+'</body></html>');
+  w.document.close();
+  closeM();
+  logA('Made the exam absent PDF'+(sessName?' for '+sessName:'')+' ('+(lv.join(' › ')||'plain list')+')');
+  toast(T('export_pdf')+' ✓','success');
+}
 
 function countMultiSubject(abs){
   const map={};
