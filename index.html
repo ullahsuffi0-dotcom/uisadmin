@@ -12269,8 +12269,9 @@ function renderSessionAbsents(sess){
   absView(window._absMode);
 }
 
-function expAbsSessionC(sessName){const l=(DB.get('exam_absents')||[]).filter(a=>a.examSession===sessName);expCSV(['Student','Grade','Section','Subject','Absent Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]),sessName.replace(/\s+/g,'_')+'_absents_'+new Date().toISOString().split('T')[0]);}
-function expAbsSessionP(sessName){const l=(DB.get('exam_absents')||[]).filter(a=>a.examSession===sessName);expPDF(sessName+' — Absent List',['Student','Grade','Section','Subject','Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]));}
+function absExportOrder(l){const m=absSortMode();return m==='added'?l:absSorted(l,m);}
+function expAbsSessionC(sessName){const l=absExportOrder((DB.get('exam_absents')||[]).filter(a=>a.examSession===sessName));expCSV(['Student','Grade','Section','Subject','Absent Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]),sessName.replace(/\s+/g,'_')+'_absents_'+new Date().toISOString().split('T')[0]);}
+function expAbsSessionP(sessName){const l=absExportOrder((DB.get('exam_absents')||[]).filter(a=>a.examSession===sessName));expPDF(sessName+' — Absent List',['Student','Grade','Section','Subject','Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]));}
 
 function countMultiSubject(abs){
   const map={};
@@ -12297,20 +12298,59 @@ function getSessionAbs(){
   return sess?abs.filter(a=>a.examSession===sess.name):abs;
 }
 
+// How the absent list is ordered — only the view; the records keep their order
+const ABS_SORTS=[['added','Latest added first'],['date_desc','Absent date — newest first'],['date_asc','Absent date — oldest first']];
+function absSortMode(){
+  let m=window._absSort;
+  if(!m){try{m=localStorage.getItem('abs_sort_view')||'';}catch(e){m='';}}
+  return ABS_SORTS.some(function(x){return x[0]===m;})?m:'added';
+}
+function absSetSort(m){
+  window._absSort=m;
+  try{localStorage.setItem('abs_sort_view',m);}catch(e){}
+  if(typeof window.fltAbsList==='function')window.fltAbsList();
+}
+function absToggleDateSort(){
+  absSetSort(absSortMode()==='date_desc'?'date_asc':'date_desc');
+  const s=document.getElementById('abssort');if(s)s.value=absSortMode();
+}
+function absSorted(list,mode){
+  mode=mode||absSortMode();
+  const arr=list.map(function(a,i){return {a:a,i:i};});
+  if(mode==='added')return arr.reverse().map(function(x){return x.a;});
+  const dir=mode==='date_asc'?1:-1;
+  return arr.sort(function(x,y){
+    const dx=String(x.a.absentDate||''),dy=String(y.a.absentDate||'');
+    // a record with no date goes to the end either way
+    if(!dx&&dy)return 1;if(dx&&!dy)return -1;
+    return dir*dx.localeCompare(dy)
+      ||String(x.a.grade||'').localeCompare(String(y.a.grade||''),undefined,{numeric:true})
+      ||String(x.a.section||'').localeCompare(String(y.a.section||''))
+      ||String(x.a.studentName||'').localeCompare(String(y.a.studentName||''))
+      ||(y.i-x.i);
+  }).map(function(x){return x.a;});
+}
 function renderAbsList(){
   const abs=getSessionAbs();
-  document.getElementById('absview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px"><input id="absq" placeholder="🔍 Search by student name, subject, or grade…" oninput="fltAbsList()" style="flex:1;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px"></div><div id="absw">'+bAbsTbl(abs)+'</div></div>';
+  const m=absSortMode();
+  document.getElementById('absview').innerHTML='<div class="card"><div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"><input id="absq" placeholder="🔍 Search by student name, subject, or grade…" oninput="fltAbsList()" style="flex:1;min-width:200px;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
+   +'<select id="abssort" onchange="absSetSort(this.value)" title="Sort the list" style="padding:9px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--rs);color:var(--tx);font-size:13px">'
+   +ABS_SORTS.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===m?' selected':'')+'>↕ '+x[1]+'</option>';}).join('')+'</select></div>'
+   +'<div id="absw">'+bAbsTbl(abs)+'</div></div>';
   window.fltAbsList=function(){
-    const q=document.getElementById('absq').value.toLowerCase();
+    const el=document.getElementById('absq');
+    const q=el?el.value.toLowerCase():'';
     const list=q?getSessionAbs().filter(a=>(a.studentName+' '+a.subject+' '+(a.grade||'')+'-'+(a.section||'')).toLowerCase().includes(q)):getSessionAbs();
-    document.getElementById('absw').innerHTML=bAbsTbl(list);
+    const w=document.getElementById('absw');if(w)w.innerHTML=bAbsTbl(list);
   };
 }
 
 function bAbsTbl(list){
   if(!list.length)return'<div class="emp"><div class="ei">📵</div><p>'+T('no_records')+'</p></div>';
   const isQI=CU.role==='quality_incharge';
-  return'<div class="tw"><table><thead><tr><th>Student</th><th>'+T('grade')+'</th><th>'+T('exam_subject')+'</th><th>'+T('absent_date')+'</th><th>'+T('remarks')+'</th><th>Added By</th>'+(isQI?'':'<th>Actions</th>')+'</tr></thead><tbody>'+list.slice().reverse().map(a=>'<tr><td><strong>'+esc(a.studentName)+'</strong></td><td>'+(a.grade||'')+(a.section||'')+'</td><td><span class="badge brd">'+esc(a.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(a.absentDate)+'</td><td style="font-size:11px;color:var(--tx2)">'+esc(a.remarks||'—')+'</td><td style="font-size:11px;color:var(--tx3)">'+esc(a.addedBy||'')+'</td>'+(isQI?'':'<td><button class="btn bd3 bxs" onclick="delAbs(\''+a.id+'\')">Del</button></td>')+'</td></tr>').join('')+'</tbody></table></div>';
+  const m=absSortMode();
+  const arrow=m==='date_desc'?' ↓':m==='date_asc'?' ↑':' ↕';
+  return'<div class="tw"><table><thead><tr><th>Student</th><th>'+T('grade')+'</th><th>'+T('exam_subject')+'</th><th style="cursor:pointer;white-space:nowrap" onclick="absToggleDateSort()" title="Sort by absent date">'+T('absent_date')+arrow+'</th><th>'+T('remarks')+'</th><th>Added By</th>'+(isQI?'':'<th>Actions</th>')+'</tr></thead><tbody>'+absSorted(list,m).map(a=>'<tr><td><strong>'+esc(a.studentName)+'</strong></td><td>'+(a.grade||'')+(a.section||'')+'</td><td><span class="badge brd">'+esc(a.subject)+'</span></td><td class="mono" style="font-size:11px">'+esc(a.absentDate)+'</td><td style="font-size:11px;color:var(--tx2)">'+esc(a.remarks||'—')+'</td><td style="font-size:11px;color:var(--tx3)">'+esc(a.addedBy||'')+'</td>'+(isQI?'':'<td><button class="btn bd3 bxs" onclick="delAbs(\''+a.id+'\')">Del</button></td>')+'</td></tr>').join('')+'</tbody></table></div>';
 }
 
 function renderAbsByStudent(){
@@ -14047,8 +14087,8 @@ function addAbsM(sessionName){
 }
 function saveAbs(){const sid=document.getElementById('abssid').value,subj=document.getElementById('abss').value.trim(),dt=document.getElementById('absdt').value,session=(document.getElementById('abs-session')||{}).value||'';if(!session.trim()){toast('Please select an exam session','danger');return;}if(!sid||!subj||!dt){toast('Fill required fields','danger');return;}const s=gS(sid),abs=DB.get('exam_absents')||[];abs.push({id:nid('abs'),studentId:sid,studentName:fN(s),grade:s.grade,section:s.section,subject:subj,absentDate:dt,examSession:session.trim(),remarks:document.getElementById('absrm').value,addedBy:CU.firstName+' '+CU.lastName,created:new Date().toISOString()});DB.set('exam_absents',abs);logA('Exam absent: '+fN(s)+' — '+subj+' ('+session.trim()+')');closeM();toast('Added','success');rExamAbsent();}
 function delAbs(id){if(!confirm('Delete?'))return;DB.set('exam_absents',(DB.get('exam_absents')||[]).filter(a=>a.id!==id));toast('Deleted','danger');rExamAbsent();}
-function expAbsC(){const l=DB.get('exam_absents')||[];expCSV(['Student','Grade','Section','Exam Session','Subject','Absent Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.examSession||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]),'exam_absents_'+new Date().toISOString().split('T')[0]);}
-function expAbsP(){const l=DB.get('exam_absents')||[];expPDF('Exam Absent List',['Student','Grade','Section','Exam Session','Subject','Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.examSession||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]));}
+function expAbsC(){const l=absExportOrder(DB.get('exam_absents')||[]);expCSV(['Student','Grade','Section','Exam Session','Subject','Absent Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.examSession||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]),'exam_absents_'+new Date().toISOString().split('T')[0]);}
+function expAbsP(){const l=absExportOrder(DB.get('exam_absents')||[]);expPDF('Exam Absent List',['Student','Grade','Section','Exam Session','Subject','Date','Remarks','Added By'],l.map(a=>[a.studentName,a.grade,a.section||'',a.examSession||'',a.subject,a.absentDate,a.remarks||'',a.addedBy]));}
 function rAnnouncements(){const anns=DB.get('announcements')||[];const canP=['superadmin','principal','vice_principal','activity_incharge'].includes(CU.role);document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>'+T('announcements')+'</h3>'+(canP?'<button class="btn bp bsm" onclick="addAnnM()">+</button>':'')+'</div></div>'+anns.slice().reverse().map(a=>'<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between"><div><div style="font-weight:600;margin-bottom:3px">📢 '+a.title+'</div><div style="font-size:12px;color:var(--tx2);margin-bottom:5px;line-height:1.5">'+a.body+'</div><div style="font-size:10px;color:var(--tx3)">'+a.date+' · '+a.postedBy+'</div></div>'+(canP?'<button class="btn bg2 bxs" onclick="delAnn(\''+a.id+'\')">Del</button>':'')+'</div></div>').join('')||'<div class="card"><div class="emp"><div class="ei">📢</div><p>'+T('no_records')+'</p></div></div>';}
 function addAnnM(){openM('<div class="mh"><h3>📢 Post</h3><button class="mc" onclick="closeM()">×</button></div><div class="mb2"><div class="fg"><label>Title *</label><input id="ant"></div><div class="fg"><label>Message *</label><textarea id="anb" style="min-height:100px"></textarea></div></div><div class="mf"><button class="btn bg2" onclick="closeM()">'+T('cancel')+'</button><button class="btn bp" onclick="saveAnn()">Post →</button></div>');}
 function saveAnn(){const t=document.getElementById('ant').value.trim(),b=document.getElementById('anb').value.trim();if(!t||!b){toast('Fill all fields','danger');return;}const anns=DB.get('announcements')||[];anns.push({id:nid('an'),title:t,body:b,postedBy:CU.firstName+' '+CU.lastName,date:new Date().toISOString().split('T')[0]});DB.set('announcements',anns);logA('Posted: "'+t+'"');closeM();toast('Posted','success');rAnnouncements();}
