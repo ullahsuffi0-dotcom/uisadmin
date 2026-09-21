@@ -13691,7 +13691,43 @@ async function rosterMergedWrite(k,local){
 // push for one of these can only ever destroy what the writer had not seen, so
 // the sync layer upserts the records instead and never removes on a bulk write.
 const APPEND_ONLY_KEYS=['period_discipline','break_discipline','weekly_activity_weeks','weekly_activities','exam_schedules','exam_classes','exam_subjects','exam_topics','section_requests','weekly_plans','weekly_plan_weeks','class_wa_links','wp_teacher_pins','wp_excluded_teachers','wp_day_notices','tt_name_links','late_arrivals','teacher_development','bd_exclusions','student_card_sets','certificate_templates','certificate_sets'];
-function isAppendOnlyKey(k){return APPEND_ONLY_KEYS.indexOf(k)>=0;}
+// The exam absent list is kept per academic session (exam_absents_<session>).
+// Teachers mark it from their phones at the same time, and a phone holding an
+// old copy used to replace the whole list with it — wiping what others had sent
+// since. It is now merged record by record like the lists above.
+function isAppendOnlyKey(k){
+  return APPEND_ONLY_KEYS.indexOf(k)>=0||String(k||'').indexOf('exam_absents_')===0;
+}
+// Taking a record off the exam absent list keeps it, marked deleted, so the
+// removal reaches every phone and a phone that never saw it cannot bring it
+// back by accident. A record that changes carries when, so the newest wins.
+function absMergeForSave(prev,next){
+  const now=new Date().toISOString();
+  const who=(window.__portalWho&&window.__portalWho.user)||((typeof CU!=='undefined'&&CU)?((CU.firstName||'')+' '+(CU.lastName||'')).trim():'')||'';
+  const before={};
+  (Array.isArray(prev)?prev:[]).forEach(function(r){if(r&&r.id)before[r.id]=r;});
+  const out=[],seen={};
+  (Array.isArray(next)?next:[]).forEach(function(r){
+    if(!r)return;
+    if(!r.id){out.push(r);return;}
+    if(seen[r.id])return;
+    seen[r.id]=1;
+    const old=before[r.id];
+    let rec=r;
+    if(!old||old.deleted||JSON.stringify(old)!==JSON.stringify(r)){
+      rec=Object.assign({},r);
+      if(old)rec.updated=now;
+      if(rec.deleted){delete rec.deleted;delete rec.deletedAt;delete rec.deletedBy;rec.updated=now;}
+    }
+    out.push(rec);
+  });
+  Object.keys(before).forEach(function(id){
+    if(seen[id])return;
+    const r=before[id];
+    out.push(r.deleted?r:Object.assign({},r,{deleted:true,deletedAt:now,deletedBy:who,updated:now}));
+  });
+  return out;
+}
 
 // Upsert each record under its own key. Concurrent writers touch different
 // keys, so no submission can overwrite another.
@@ -15485,6 +15521,8 @@ function getAllSessions(){
       const v=origGet(k+'_'+sid);
       // A roster day marked deleted is kept for recovery but not shown
       if(k==='duty_rosters'&&Array.isArray(v))return v.filter(function(r){return !(r&&r.deleted);});
+      // Likewise an exam absence taken off the list
+      if(k==='exam_absents'&&Array.isArray(v))return v.filter(function(r){return !(r&&r.deleted);});
       return v;
     }
     return origGet(k);
@@ -15494,6 +15532,9 @@ function getAllSessions(){
     // local-only write gets its whole array pushed to the cloud anyway.
     if(SESSION_SCOPED_KEYS.includes(k)){
       const sid=window.__activeSessionId||getActiveSessionId();
+      if(k==='exam_absents'&&Array.isArray(v)&&typeof absMergeForSave==='function'){
+        v=absMergeForSave(origGet(k+'_'+sid),v);
+      }
       return origSet(k+'_'+sid,v,opts);
     }
     return origSet(k,v,opts);
@@ -23689,8 +23730,13 @@ function eaPick(i){
   const list=eaPapers(t,st.teacher);
   const p=list[i];
   if(!p||!t)return;
-  st.paper=p;st.done=null;st.absent={};
-  eaAlready(t.name,p.subject,p.cls).forEach(function(a){if(a.studentId)st.absent[a.studentId]=true;});
+  st.paper=p;st.done=null;st.absent={};st.seen={};
+  // What was already down when he opened it: only these can be taken off by
+  // his un-ticking — anything that arrives while he works is left alone
+  eaAlready(t.name,p.subject,p.cls).forEach(function(a){
+    if(a.studentId)st.absent[a.studentId]=true;
+    if(a.id)st.seen[a.id]=1;
+  });
   renderEaPortal();window.scrollTo(0,0);
 }
 function eaBack(){const st=eaState();st.paper=null;st.absent={};st.done=null;renderEaPortal();window.scrollTo(0,0);}
@@ -23811,11 +23857,15 @@ function eaSubmit(){
   const absent=mine.filter(function(id){return st.absent[id];});
   eaEnsureSession(t.name);
   const all=DB.get('exam_absents')||[];
+  const seen=st.seen||{};
   const keep=all.filter(function(a){
     if(!a)return false;
     const samePaper=a.examSession===t.name&&a.subject===p.subject
       &&(typeof grSec==='function')&&grSec(a.grade,a.section)===p.cls;
-    return !samePaper;
+    if(!samePaper)return true;
+    // Rewritten below if he still has the boy ticked. A record he never saw —
+    // one that reached this phone after he opened the paper — stays as it is.
+    return !seen[a.id]&&!(a.studentId&&st.absent[a.studentId]);
   });
   const had={};
   all.forEach(function(a){
