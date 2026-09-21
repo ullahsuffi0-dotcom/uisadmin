@@ -13838,6 +13838,9 @@ function subscribeToCollection(k){
     if((logicalKey==='students'||logicalKey==='school_timetable')&&typeof portalRefreshOpen==='function'){
       try{portalRefreshOpen();}catch(e){}
     }
+    if(logicalKey==='students'&&typeof pupRosterArrived==='function'){
+      try{pupRosterArrived();}catch(e){}
+    }
     const renderers=AUTO_REFRESH_MAP[logicalKey]||[];
     const curPage='r'+(_page||'').split('_').map(p=>p.charAt(0).toUpperCase()+p.slice(1)).join('');
     if(renderers.includes(curPage)){
@@ -14558,18 +14561,143 @@ function checkPickupMode(){
   return true;
 }
 
+// ── The pickup form, one step at a time ──────────────────
+// 1. the class  2. the student in it  3. the parents' numbers, taken from the
+// school's records  4. the name of whoever is collecting him — then the reason
+// and the time. What has been typed is kept in window._pup, so the form can be
+// rebuilt (a step chosen, the roll arriving) without losing any of it.
+function pupState(){
+  if(!window._pup)window._pup={cls:'',sid:'',contact:'',phone:'',name:'',rel:'',rphone:'',rid:'',reason:'',time:'',notes:''};
+  return window._pup;
+}
+function pupNow(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+// Only part of a number is shown on this open form; the school keeps the whole one
+function pupMask(ph){
+  const d=String(ph||'').replace(/\D/g,'');
+  if(d.length<=4)return d?'•••'+d:'';
+  return d.slice(0,2)+'•'.repeat(Math.max(3,d.length-5))+d.slice(-3);
+}
+function pupStudent(){
+  const st=pupState();
+  return st.sid?(DB.get('students')||[]).find(function(x){return x&&x.id===st.sid;})||null:null;
+}
+// The parents' numbers the school has for the chosen boy
+function pupContacts(s){
+  const out=[];
+  if(!s)return out;
+  if(String(s.fatherPhone||'').trim())out.push({role:'Father',ar:'الأب',phone:String(s.fatherPhone).trim()});
+  if(String(s.motherPhone||'').trim())out.push({role:'Mother',ar:'الأم',phone:String(s.motherPhone).trim()});
+  if(!out.length&&String(s.guardianPhone||'').trim())out.push({role:'Guardian',ar:'ولي الأمر',phone:String(s.guardianPhone).trim()});
+  return out;
+}
+function pupCapture(){
+  const st=pupState();
+  const v=function(id){const e=document.getElementById(id);return e?e.value:null;};
+  [['pup-gp','phone'],['pup-pname','name'],['pup-pickedby','rel'],['pup-pickedby-phone','rphone'],
+   ['pup-pickedby-id','rid'],['pup-reason','reason'],['pup-time','time'],['pup-notes','notes']].forEach(function(p){
+    const x=v(p[0]);if(x!==null)st[p[1]]=x;
+  });
+}
+function pupLabel(en,ar,req){
+  return '<label style="font-weight:600">'+en+(req?' *':'')+'<br><span style="font-weight:400;color:var(--tx3);font-size:10px">'+ar+'</span></label>';
+}
 function renderPickupRequestForm(){
   const c=document.getElementById('pup-content');if(!c)return;
-  c.innerHTML='<div class="al ai" style="margin-bottom:14px">📋 <strong>To request early pickup of your child:</strong> Fill in the form below. After submitting, please show the tracking number to the school admin office. You will receive a QR code to give the gate guard once your request is approved.</div>'
-  +'<div class="fg"><label style="font-weight:600">Student Name *<br><span style="font-weight:400;color:var(--tx3);font-size:10px">اسم الطالب</span></label><input id="pup-sn" placeholder="Full name as registered at school" autocomplete="off"></div>'
-  +'<div class="fg"><label style="font-weight:600">Grade & Section<br><span style="font-weight:400;color:var(--tx3);font-size:10px">الصف والفصل (e.g. 10A)</span></label><input id="pup-gr" placeholder="e.g. 10A" autocomplete="off"></div>'
-  +'<div class="fr f2"><div class="fg"><label style="font-weight:600">Your Name (Guardian) *<br><span style="font-weight:400;color:var(--tx3);font-size:10px">اسم ولي الأمر</span></label><input id="pup-gn" placeholder="Parent / Guardian name" autocomplete="off"></div><div class="fg"><label style="font-weight:600">Your Phone *<br><span style="font-weight:400;color:var(--tx3);font-size:10px">رقم الجوال</span></label><input id="pup-gp" placeholder="05XXXXXXXX" type="tel" autocomplete="off"></div></div>'
-  +'<div class="fg"><label style="font-weight:600">Who will pick up the student? *<br><span style="font-weight:400;color:var(--tx3);font-size:10px">من سيقوم بأخذ الطالب؟</span></label><select id="pup-pickedby" onchange="onPickedByChange()"><option value="">— Select —</option><option value="Father">Father / الأب</option><option value="Mother">Mother / الأم</option><option value="Brother">Brother / الأخ</option><option value="Sister">Sister / الأخت</option><option value="Uncle">Uncle / العم/الخال</option><option value="Aunt">Aunt / العمة/الخالة</option><option value="Grandfather">Grandfather / الجد</option><option value="Grandmother">Grandmother / الجدة</option><option value="Driver">Driver / السائق</option><option value="Other">Other (specify) / آخر</option></select></div>'
-  +'<div id="pup-pickedby-other" style="display:none"><div class="fr f2"><div class="fg"><label style="font-weight:600">Pickup Person Name *<br><span style="font-weight:400;color:var(--tx3);font-size:10px">اسم الشخص</span></label><input id="pup-pickedby-name" placeholder="Full name of the person picking up" autocomplete="off"></div><div class="fg"><label style="font-weight:600">Their Phone<br><span style="font-weight:400;color:var(--tx3);font-size:10px">رقم جواله (optional)</span></label><input id="pup-pickedby-phone" placeholder="05XXXXXXXX" type="tel" autocomplete="off"></div></div><div class="fg"><label style="font-weight:600">ID Number (optional)<br><span style="font-weight:400;color:var(--tx3);font-size:10px">رقم الهوية</span></label><input id="pup-pickedby-id" placeholder="National ID / Iqama #" autocomplete="off"></div></div>'
-  +'<div class="fg"><label style="font-weight:600">Reason for Early Pickup *<br><span style="font-weight:400;color:var(--tx3);font-size:10px">سبب الخروج المبكر</span></label><select id="pup-reason"><option value="">— Select reason —</option><option>Medical / Doctor Appointment</option><option>Family Emergency</option><option>Sickness / Not Feeling Well</option><option>Personal / Family Matter</option><option>Travel</option><option>Religious Reason</option><option>Government / Official Appointment</option><option>Other</option></select></div>'
-  +'<div class="fg"><label style="font-weight:600">Pickup Time (today) *<br><span style="font-weight:400;color:var(--tx3);font-size:10px">وقت الخروج</span></label><input type="time" id="pup-time" value="'+(()=>{const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");})()+'"></div>'
-  +'<div class="fg" style="margin-bottom:0"><label style="font-weight:600">Additional Notes (optional)<br><span style="font-weight:400;color:var(--tx3);font-size:10px">ملاحظات إضافية</span></label><textarea id="pup-notes" placeholder="Any additional details for the school" style="min-height:60px"></textarea></div>'
-  +'<button class="btn bp" style="width:100%;justify-content:center;padding:13px;margin-top:14px;font-size:14px" onclick="submitPickupRequest()">📤 Submit Request →</button>';
+  pupCapture();
+  const st=pupState();
+  if(!st.time)st.time=pupNow();
+  const q=String.fromCharCode(39);
+  const classes=(typeof portalClasses==='function')?portalClasses():aqClasses().map(function(x){return x.cls;});
+  const stu=pupStudent();
+  let h='<div class="al ai" style="margin-bottom:14px">📋 <strong>To request early pickup of your child:</strong> choose the class, then your child. The school already has your number. After submitting, please show the tracking number to the school admin office. You will receive a QR code to give the gate guard once your request is approved.</div>';
+  // 1. the class
+  h+='<div class="fg">'+pupLabel('1. Class','الفصل',true)
+   +(classes.length
+     ?'<div id="pup-classes" style="display:flex;flex-wrap:wrap;gap:6px">'+classes.map(function(k){
+        return '<button type="button" class="pill'+(k===st.cls?' on':'')+'" onclick="pupPickClass('+q+escJs(k)+q+')">'+esc(k)+'</button>';
+      }).join('')+'</div>'
+     :'<div style="font-size:12px;color:var(--tx3)">Loading the class list…</div>')+'</div>';
+  // 2. the student
+  if(st.cls){
+    const list=aqStudents(st.cls);
+    h+='<div class="fg">'+pupLabel('2. Student','اسم الطالب',true)
+     +(list.length
+       ?'<div id="pup-students" style="border:1px solid var(--bd);border-radius:var(--rs);overflow:hidden;max-height:320px;overflow-y:auto">'
+        +list.map(function(x){
+          const on=x.id===st.sid;
+          return '<div id="pup-s-'+esc(x.id)+'" onclick="pupPickStudent('+q+escJs(x.id)+q+')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--bd);cursor:pointer;'+(on?'background:var(--ac2)':'')+'">'
+           +'<div style="width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;'
+           +(on?'background:var(--ac);color:#fff':'border:1px solid var(--bd);color:var(--tx3)')+'">'+(on?'✓':'')+'</div>'
+           +'<div style="font-size:14px;'+(on?'font-weight:700;color:var(--ac)':'')+'">'+esc(fN(x))+'</div></div>';
+        }).join('')+'</div>'
+       :'<div style="font-size:12px;color:var(--tx3)">No students listed for '+esc(st.cls)+' yet. Please wait a moment — the list is still loading.</div>')+'</div>';
+  }
+  // 3. the parents' numbers, from the school's records
+  if(stu){
+    const cs=pupContacts(stu);
+    if(cs.length&&!cs.some(function(x){return x.role===st.contact;}))st.contact=cs[0].role;
+    h+='<div class="fg">'+pupLabel('3. Parent contact','رقم ولي الأمر المسجل لدى المدرسة',true)
+     +(cs.length
+       ?'<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">These are the numbers the school has on file for <strong>'+esc(fN(stu))+'</strong>. Choose the one the school should message.</div>'
+        +'<div id="pup-contacts" style="display:flex;flex-direction:column;gap:6px">'+cs.map(function(x){
+          const on=x.role===st.contact;
+          return '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid '+(on?'var(--ac)':'var(--bd)')+';border-radius:var(--rs);cursor:pointer;'+(on?'background:var(--ac2)':'')+'">'
+           +'<input type="radio" name="pup-contact" value="'+esc(x.role)+'"'+(on?' checked':'')+' onchange="pupPickContact(this.value)" style="width:auto">'
+           +'<span style="flex:1"><strong>'+esc(x.role)+'</strong> <span style="font-size:11px;color:var(--tx3)">'+esc(x.ar)+'</span></span>'
+           +'<span class="mono" style="font-size:13px">📞 '+esc(pupMask(x.phone))+'</span></label>';
+        }).join('')+'</div>'
+       :'<div class="al aw" style="margin:0 0 6px">The school has no parent number for '+esc(fN(stu))+'. Please give one so the school can reach you.</div>'
+        +'<input id="pup-gp" type="tel" placeholder="05XXXXXXXX" autocomplete="off" value="'+esc(st.phone||'')+'">')
+     +'</div>';
+    // 4. who is collecting him
+    const rels=[['Father','الأب'],['Mother','الأم'],['Brother','الأخ'],['Sister','الأخت'],['Uncle','العم/الخال'],['Aunt','العمة/الخالة'],
+      ['Grandfather','الجد'],['Grandmother','الجدة'],['Driver','السائق'],['Other','آخر']];
+    h+='<div class="fg">'+pupLabel('4. Name of the person picking up','اسم الشخص الذي سيستلم الطالب',true)
+     +'<input id="pup-pname" placeholder="Full name of the person collecting the student" autocomplete="off" value="'+esc(st.name||'')+'"></div>'
+     +'<div class="fr f2"><div class="fg">'+pupLabel('Relation to the student','صلة القرابة',true)
+     +'<select id="pup-pickedby"><option value="">— Select —</option>'
+     +rels.map(function(r){return '<option value="'+r[0]+'"'+(st.rel===r[0]?' selected':'')+'>'+r[0]+' / '+r[1]+'</option>';}).join('')+'</select></div>'
+     +'<div class="fg">'+pupLabel('Their phone (optional)','رقم جواله',false)
+     +'<input id="pup-pickedby-phone" type="tel" placeholder="05XXXXXXXX" autocomplete="off" value="'+esc(st.rphone||'')+'"></div></div>'
+     +'<div class="fg">'+pupLabel('ID number (optional)','رقم الهوية',false)
+     +'<input id="pup-pickedby-id" placeholder="National ID / Iqama #" autocomplete="off" value="'+esc(st.rid||'')+'"></div>';
+    // then the reason and the time, as before
+    const reasons=['Medical / Doctor Appointment','Family Emergency','Sickness / Not Feeling Well','Personal / Family Matter','Travel','Religious Reason','Government / Official Appointment','Other'];
+    h+='<div class="fg">'+pupLabel('5. Reason for early pickup','سبب الخروج المبكر',true)
+     +'<select id="pup-reason"><option value="">— Select reason —</option>'
+     +reasons.map(function(r){return '<option'+(st.reason===r?' selected':'')+'>'+esc(r)+'</option>';}).join('')+'</select></div>'
+     +'<div class="fg">'+pupLabel('6. Pickup time (today)','وقت الخروج',true)
+     +'<input type="time" id="pup-time" value="'+esc(st.time)+'"></div>'
+     +'<div class="fg" style="margin-bottom:0">'+pupLabel('Additional notes (optional)','ملاحظات إضافية',false)
+     +'<textarea id="pup-notes" placeholder="Any additional details for the school" style="min-height:60px">'+esc(st.notes||'')+'</textarea></div>'
+     +'<button class="btn bp" id="pup-go" style="width:100%;justify-content:center;padding:13px;margin-top:14px;font-size:14px" onclick="submitPickupRequest()">📤 Submit Request →</button>';
+  }
+  c.innerHTML='<style>#pup-content .pill{padding:9px 14px;border-radius:20px;border:1px solid var(--bd);background:var(--sf2);color:var(--tx);font-size:14px;cursor:pointer;font-family:inherit}'
+   +'#pup-content .pill.on{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:700}</style>'+h;
+}
+function pupPickClass(k){
+  pupCapture();
+  const st=pupState();
+  if(st.cls!==k){st.cls=k;st.sid='';st.contact='';st.phone='';}
+  renderPickupRequestForm();
+  const e=document.getElementById('pup-students');if(e&&e.scrollIntoView)e.scrollIntoView({block:'nearest'});
+}
+function pupPickStudent(id){
+  pupCapture();
+  const st=pupState();
+  if(st.sid!==id){st.sid=id;st.contact='';st.phone='';}
+  renderPickupRequestForm();
+  const e=document.getElementById('pup-contacts')||document.getElementById('pup-gp');if(e&&e.scrollIntoView)e.scrollIntoView({block:'center'});
+}
+function pupPickContact(role){
+  pupCapture();
+  pupState().contact=role;
+  renderPickupRequestForm();
+}
+// The roll reached the phone after the form was opened
+function pupRosterArrived(){
+  if(!document.getElementById('pup-content')||document.getElementById('pup-done'))return;
+  renderPickupRequestForm();
 }
 
 function onPickedByChange(){
@@ -14587,22 +14715,40 @@ function onPickedByChange(){
 }
 
 async function submitPickupRequest(){
-  const sn=document.getElementById('pup-sn').value.trim();
-  const gr=document.getElementById('pup-gr').value.trim();
-  const gn=document.getElementById('pup-gn').value.trim();
-  const gp=document.getElementById('pup-gp').value.trim();
-  const pickedBy=document.getElementById('pup-pickedby').value;
-  const pickedByName=document.getElementById('pup-pickedby-name')?document.getElementById('pup-pickedby-name').value.trim():'';
-  const pickedByPhone=document.getElementById('pup-pickedby-phone')?document.getElementById('pup-pickedby-phone').value.trim():'';
-  const pickedById=document.getElementById('pup-pickedby-id')?document.getElementById('pup-pickedby-id').value.trim():'';
-  const reason=document.getElementById('pup-reason').value;
-  const time=document.getElementById('pup-time').value;
-  const notes=document.getElementById('pup-notes').value.trim();
-  if(!sn||!gn||!gp||!pickedBy||!reason||!time){alert('Please fill all required fields including who will pick up the student');return;}
-  if(pickedBy!=='Father'&&pickedBy!=='Mother'&&!pickedByName){alert('Please enter the name of the person who will pick up the student');return;}
+  pupCapture();
+  const st=pupState();
+  const stu=pupStudent();
+  const say=function(t){if(typeof toast==='function')toast(t,'danger');else alert(t);};
+  if(!st.cls){say('Please choose the class');return;}
+  if(!stu){say('Please choose the student');return;}
+  const cs=pupContacts(stu);
+  const ct=cs.filter(function(x){return x.role===st.contact;})[0]||cs[0]||null;
+  const gp=ct?ct.phone:String(st.phone||'').trim();
+  if(!gp){say('Please give a phone number the school can reach you on');return;}
+  const pickedByName=String(st.name||'').trim();
+  const pickedBy=String(st.rel||'');
+  const pickedByPhone=String(st.rphone||'').trim();
+  const pickedById=String(st.rid||'').trim();
+  const reason=String(st.reason||'');
+  const time=String(st.time||'');
+  const notes=String(st.notes||'').trim();
+  if(!pickedByName){say('Please enter the name of the person picking up the student');return;}
+  if(!pickedBy){say('Please choose how that person is related to the student');return;}
+  if(!reason){say('Please choose the reason');return;}
+  if(!time){say('Please give the pickup time');return;}
+  const sn=fN(stu);
+  const gr=grSec(stu.grade,stu.section);
+  const role=ct?ct.role:'Parent';
+  // The parent who is collecting him is the one the message is addressed to;
+  // otherwise it is addressed to the parent whose number is on file
+  const gn=(pickedBy===role)?pickedByName:(role==='Parent'?pickedByName:role+' of '+sn);
+  const btn=document.getElementById('pup-go');if(btn){btn.disabled=true;btn.textContent='Sending…';}
   const trackNo='PU-'+Date.now().toString(36).toUpperCase().slice(-7);
   const id='pu'+Date.now();
-  const newEntry={id,trackNo,studentName:sn,grade:gr||'—',guardianName:gn,guardianPhone:gp,pickedBy,pickedByName:pickedByName||(pickedBy==='Father'||pickedBy==='Mother'?gn:''),pickedByPhone:pickedByPhone||(pickedBy==='Father'||pickedBy==='Mother'?gp:''),pickedById,reason,pickupTime:time,notes,status:'Pending',source:'parent_qr',submittedAt:new Date().toISOString(),created:new Date().toISOString()};
+  const newEntry={id,trackNo,studentName:sn,grade:gr||'—',guardianName:gn,guardianPhone:gp,
+    pickedBy,pickedByName,pickedByPhone:pickedByPhone||(pickedBy===role?gp:''),pickedById,reason,pickupTime:time,notes,
+    status:'Pending',source:'parent_qr',submittedAt:new Date().toISOString(),created:new Date().toISOString(),
+    studentId:stu.id,section:stu.section||'',guardianRole:role,guardianFromRecords:!!ct};
   // Pull latest from Firebase before appending to avoid overwriting existing records
   // Resolve the school's active session from Firebase itself. A parent's phone
   // can submit before the initial pull finishes, and a stale 'default' would
@@ -14633,12 +14779,13 @@ async function submitPickupRequest(){
   list.push(newEntry);
   DB.set('early_pickups',list);
   // Show success page
+  window._pup=null;
   const c=document.getElementById('pup-content');
-  c.innerHTML='<div style="text-align:center;padding:18px 8px"><div style="font-size:54px;margin-bottom:9px">✅</div><h2 style="font-size:19px;color:var(--tx);margin-bottom:9px">Request Submitted</h2><p style="font-size:12px;color:var(--tx2);margin-bottom:16px;line-height:1.6">Your early pickup request for <strong>'+esc(sn)+'</strong> has been received. Please show the tracking number below to the school admin office. Once approved, you will receive a QR code to show the gate guard.</p>'
+  c.innerHTML='<div id="pup-done" style="text-align:center;padding:18px 8px"><div style="font-size:54px;margin-bottom:9px">✅</div><h2 style="font-size:19px;color:var(--tx);margin-bottom:9px">Request Submitted</h2><p style="font-size:12px;color:var(--tx2);margin-bottom:16px;line-height:1.6">Your early pickup request for <strong>'+esc(sn)+'</strong> has been received. Please show the tracking number below to the school admin office. Once approved, you will receive a QR code to show the gate guard.</p>'
   +'<div style="background:var(--ac2);border:2px solid var(--ac);border-radius:10px;padding:16px;margin-bottom:18px"><div style="font-size:10px;color:var(--ac);text-transform:uppercase;font-weight:700;margin-bottom:5px">Tracking Number</div><div class="mono" style="font-size:24px;font-weight:bold;color:var(--ac);letter-spacing:1px">'+trackNo+'</div><div style="font-size:10px;color:var(--tx3);margin-top:5px">Save this — you may need it</div></div>'
-  +'<div style="background:var(--sf2);border-radius:8px;padding:11px 13px;font-size:11px;color:var(--tx2);text-align:left;line-height:1.7;margin-bottom:13px"><strong>Pickup will be done by:</strong><br>👤 '+esc(pickedBy==='Father'||pickedBy==='Mother'?(pickedBy+' ('+gn+')'):(pickedBy+' — '+pickedByName))+(pickedByPhone?'<br>📞 '+esc(pickedByPhone):'')+'</div>'
-  +'<div style="background:var(--sf2);border-radius:8px;padding:11px 13px;font-size:11px;color:var(--tx2);text-align:left;line-height:1.7;margin-bottom:13px"><strong>What happens next:</strong><br>1. School staff will review your request<br>2. They will verify with you (may call '+esc(gp)+')<br>3. Once approved, the office will give you a QR code<br>4. Show that QR to the gate guard for the student to be released</div>'
-  +'<button class="btn bp" style="width:100%;justify-content:center;padding:11px" onclick="renderPickupRequestForm()">+ Submit Another Request</button></div>';
+  +'<div style="background:var(--sf2);border-radius:8px;padding:11px 13px;font-size:11px;color:var(--tx2);text-align:left;line-height:1.7;margin-bottom:13px"><strong>Pickup will be done by:</strong><br>👤 '+esc(pickedByName+' ('+pickedBy+')')+(pickedByPhone?'<br>📞 '+esc(pickedByPhone):'')+'</div>'
+  +'<div style="background:var(--sf2);border-radius:8px;padding:11px 13px;font-size:11px;color:var(--tx2);text-align:left;line-height:1.7;margin-bottom:13px"><strong>What happens next:</strong><br>1. School staff will review your request<br>2. They will verify with you (may call the '+esc(role.toLowerCase())+'’s number, '+esc(pupMask(gp))+')<br>3. Once approved, the office will send the QR code to that number<br>4. Show that QR to the gate guard for the student to be released</div>'
+  +'<button class="btn bp" style="width:100%;justify-content:center;padding:11px" onclick="window._pup=null;renderPickupRequestForm()">+ Submit Another Request</button></div>';
 }
 
 // ─── ENTRANCE QR POSTER (Super Admin / Principal can print) ────────
@@ -14654,7 +14801,7 @@ function rPickupQR(){
   document.getElementById('pc').innerHTML='<div class="card" style="margin-bottom:12px"><div class="sh2"><h3>🚗 '+T('pickup_qr')+'</h3></div><div style="font-size:11px;color:var(--tx3);margin-top:4px">Print this poster and display at the school entrance, parent meeting hall, or share its link directly. Parents scan the QR with any phone camera to submit early pickup requests.</div></div>'
   +'<div class="cg g2" style="margin-bottom:13px"><div class="card" style="text-align:center;padding:18px"><div style="font-size:11px;color:var(--tx3);margin-bottom:9px;text-transform:uppercase;font-weight:700">QR Code</div><img src="'+qrUrl+'" alt="Parent Pickup QR" style="width:240px;height:240px;border:1px solid var(--bd);border-radius:var(--rs);background:#fff;padding:8px"><div style="margin-top:11px;font-size:11px;color:var(--tx2)">Parents scan this with their phone camera</div><div style="margin-top:11px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><button class="btn bp bsm" onclick="printPickupQRPoster()">🖨️ Print Poster</button><a href="'+qrLgUrl+'" download="pickup_portal_qr.png" class="btn bg2 bsm" style="text-decoration:none">⬇️ Download QR</a></div></div>'
   +'<div class="card" style="padding:18px"><div style="font-size:11px;color:var(--tx3);margin-bottom:7px;text-transform:uppercase;font-weight:700">Direct Link</div><div style="background:var(--sf2);padding:10px;border-radius:var(--rs);font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--ac);word-break:break-all;border:1px solid var(--bd);margin-bottom:12px">'+esc(pickupUrl)+'</div><button class="btn bg2 bsm" onclick="navigator.clipboard.writeText(\''+pickupUrl+'\').then(()=>toast(\'Link copied\',\'success\'))" style="margin-bottom:12px">📋 Copy Link</button>'
-  +'<div style="font-size:11px;color:var(--tx2);line-height:1.7"><strong>How parents use it:</strong><ol style="margin:7px 0 0 16px;padding:0"><li>Open phone camera</li><li>Point at QR code</li><li>Tap the link that pops up</li><li>Fill student name, reason, pickup time</li><li>Submit → get tracking number</li><li>Show tracking number at school office</li></ol></div></div></div>'
+  +'<div style="font-size:11px;color:var(--tx2);line-height:1.7"><strong>How parents use it:</strong><ol style="margin:7px 0 0 16px;padding:0"><li>Open phone camera</li><li>Point at QR code</li><li>Tap the link that pops up</li><li>Choose the class, then the student — the school already has the parents’ numbers</li><li>Give the name of the person picking up, the reason and the time</li><li>Submit → get tracking number</li><li>Show tracking number at school office</li></ol></div></div></div>'
   +'<div class="al aw">⚠️ <strong>Note:</strong> Parents do not need any login. The QR is open to anyone who scans it. Staff can verify each request by calling the parent\'s phone number before approving.</div>';
   // Save for the print poster
   window._pickupQRData={pickupUrl,qrLgUrl};
@@ -14671,7 +14818,7 @@ function printPickupQRPoster(){
   +'<div class="title">🚗 Early Pickup Request</div>'
   +'<div class="subtitle">Scan this QR code with your phone camera<br>to request early pickup of your child<br><span style="font-style:italic;color:#888;direction:rtl;display:inline-block;margin-top:6px">امسح رمز QR لطلب خروج مبكر لطفلك</span></div>'
   +'<div class="qr-box"><img src="'+qrLgUrl+'" alt="Parent Pickup QR"></div>'
-  +'<div class="steps"><div class="step"><div class="step-num">1</div><div class="step-text"><b>Open Camera</b><br>Point at the QR code</div></div><div class="step"><div class="step-num">2</div><div class="step-text"><b>Tap Link</b><br>Open the request page</div></div><div class="step"><div class="step-num">3</div><div class="step-text"><b>Fill Form</b><br>Student name & reason</div></div><div class="step"><div class="step-num">4</div><div class="step-text"><b>Submit</b><br>Show tracking number to office</div></div></div>'
+  +'<div class="steps"><div class="step"><div class="step-num">1</div><div class="step-text"><b>Open Camera</b><br>Point at the QR code</div></div><div class="step"><div class="step-num">2</div><div class="step-text"><b>Tap Link</b><br>Open the request page</div></div><div class="step"><div class="step-num">3</div><div class="step-text"><b>Fill Form</b><br>Class, student, who is picking up</div></div><div class="step"><div class="step-num">4</div><div class="step-text"><b>Submit</b><br>Show tracking number to office</div></div></div>'
   +'<div class="url">'+pickupUrl+'</div>'
   +'<div class="footer">© '+new Date().getFullYear()+' '+(s.schoolName||'School')+' · Powered by EduAdmin Pro</div>'
   +'<script>setTimeout(()=>window.print(),700);<\/script></body></html>');
