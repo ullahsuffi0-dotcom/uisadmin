@@ -917,7 +917,257 @@ const TR={en:{dashboard:'Dashboard',activity_log:'Activity Log',students:'Studen
 ar:{dashboard:'لوحة التحكم',activity_log:'سجل الأنشطة',students:'الطلاب',accounts:'حسابات الموظفين',complaints:'الشكاوى',tasks:'المهام',infractions:'المخالفات',referrals:'الإحالات',class_visits:'زيارات الفصول',notebook_checks:'فحص الكراسات',activities:'الأنشطة',early_pickup:'الانصراف المبكر',exam_absent:'غياب الاختبارات',announcements:'الإعلانات',settings:'الإعدادات',infraction_forms:'نماذج المخالفات',visit_forms:'نماذج الزيارات',behaviour:'المتابعة السلوكية',discipline_reports:'تقارير الانضباط',task_requests:'طلبات المهام',my_profile:'ملفي الشخصي',export_data:'تصدير البيانات',academic_calendar:'التقويم الأكاديمي',parent_qr:'بوابة أولياء الأمور',activity_reports:'تقارير الأنشطة',teachers:'المعلمون',teacher_reports:'عرض التقارير حسب المعلم',daily_attendance:'الحضور اليومي',excused_students:'الطلاب المعذورون',monthly_attendance:'كشف الحضور الشهري',student_followup:'سجل متابعة الطلاب',marks_list:'كشف الدرجات',late_comers:'المتأخرون',student_health:'الصحة الطلابية',student_cards:'بطاقات الطلاب',certificates:'الشهادات',remedial_plans:'الخطط العلاجية',weekly_plan:'الخطة الأسبوعية',weekly_activities:'الأنشطة الأسبوعية',exam_schedule:'مقرر وجدول الاختبارات',section_requests:'طلبات تغيير الفصل',vp_reports:'التقارير إلى المدير',warning_letters:'خطابات الاستفسار',teacher_achievements:'إنجازات المعلمين',teacher_development:'تطوير المعلمين',reexam_schedule:'جدول الإختبارات التعويضية',reexam_received:'الإختبارات التعويضية المستلمة',pickup_qr:'رمز QR للخروج المبكر',sessions:'الفصول الدراسية',my_class_visits:'زياراتي الصفية',my_warnings:'خطابات الاستفسار الخاصة بي',my_remedials:'خططي العلاجية',my_achievements:'إنجازاتي',duty_roster:'جدول المناوبات',substitutions:'المناوبات الاحتياطية',my_duties:'مناوباتي وحصصي',my_todos:'قائمة المهام',student_discipline_report:'تقرير انضباط الطالب',classroom_discipline:'تقارير انضباط الطلاب',period_discipline:'انضباط الفصل لكل حصة',break_discipline:'انضباط خروج الفصول للاستراحة',my_discipline_reports:'تقرير انضباط الطالب',permissions:'الصلاحيات',sign_in:'تسجيل الدخول',sign_out:'تسجيل الخروج',save:'حفظ',cancel:'إلغاء',edit:'تعديل',delete:'حذف',view:'عرض',add:'إضافة',search:'بحث',close:'إغلاق',first_name:'الاسم الأول',last_name:'اسم العائلة',nationality:'الجنسية',father_phone:'هاتف الأب',mother_phone:'هاتف الأم',serial_no:'الرقم التسلسلي',class_sn:'رقم الفصل',username:'اسم المستخدم',password:'كلمة المرور',name:'الاسم',email:'البريد الإلكتروني',phone:'الهاتف',role:'الوظيفة',status:'الحالة',date:'التاريخ',grade:'الصف',section:'الفصل',subject:'المادة',description:'الوصف',assigned_to:'مُكلَّف إلى',assigned_by:'مُكلَّف من',due_date:'تاريخ الاستحقاق',priority:'الأولوية',pending:'معلق',in_progress:'جارٍ',completed:'مكتمل',open:'مفتوح',resolved:'محلول',closed:'مغلق',active:'نشط',inactive:'غير نشط',select_student:'ابحث عن طالب…',no_records:'لا توجد سجلات',acknowledge:'إقرار',export_excel:'تصدير Excel',export_pdf:'تصدير PDF',date_from:'من تاريخ',date_to:'إلى تاريخ',language:'اللغة',color_theme:'نظام الألوان',change_password:'تغيير كلمة المرور',current_password:'كلمة المرور الحالية',new_password:'كلمة المرور الجديدة',confirm_password:'تأكيد كلمة المرور',save_profile:'حفظ الملف الشخصي',remarks:'ملاحظات',action_taken:'الإجراء المتخذ',infraction_type:'نوع المخالفة',degree:'الدرجة',teacher:'المعلم',period:'الحصة',observations:'الملاحظات',strengths:'نقاط القوة',improvements:'مجالات التحسين',follow_up:'متابعة',rating:'التقييم',academic_ack:'إقرار المشرف الأكاديمي',principal_ack:'إقرار المدير',complaint_type:'نوع الشكوى',track_number:'رقم التتبع',parent_name:'اسم ولي الأمر',add_remark:'إضافة ملاحظة',remark_history:'سجل الملاحظات',reason:'السبب',note:'ملاحظة',live_feed:'سجل الأنشطة الحي',total_students:'إجمالي الطلاب',open_complaints:'الشكاوى المفتوحة',active_tasks:'المهام النشطة',overview:'نظرة عامة',management:'الإدارة',system:'النظام',academic:'الأكاديمي',my_work:'عملي',discipline:'الانضباط',monitoring:'المراقبة',exam_subject:'مادة الاختبار',absent_date:'تاريخ الغياب',school_name:'اسم المدرسة',academic_year:'العام الدراسي',upload_logo:'رفع الشعار',logo_emoji:'شعار رمزي',live_mode:'وضع البث المباشر',event_name:'اسم الحدث',event_date:'تاريخ الحدث',days_left:'يوم متبقي',upcoming_events:'الأحداث القادمة',add_event:'إضافة حدث',guardian:'ولي الأمر'}};
 let _lang='en';
 function T(k){return TR[_lang]?.[k]||TR.en[k]||k;}
-function setLang(l){_lang=l;document.getElementById('root').lang=l;document.getElementById('root').dir=l==='ar'?'rtl':'ltr';}
+function setLang(l){
+  const was=_lang;
+  _lang=l;
+  const r=document.getElementById('root');
+  if(r){r.lang=l;r.dir=l==='ar'?'rtl':'ltr';}
+  document.body&&document.body.setAttribute('dir',l==='ar'?'rtl':'ltr');
+  // The words on the screen follow the language, both ways
+  try{if(typeof arObserve==='function'){if(l==='ar')arObserve(true);else if(was==='ar')arObserve(false);}}catch(e){}
+}
+// ═══════════════════════════════════════════════════════════
+// ARABIC — the whole screen, not only the menu
+// Most screens are written in English in the page itself, so choosing Arabic
+// used to leave nearly everything in English. The words below are put over
+// whatever the app draws: every heading, button, column, label, message and
+// notice whose English text is known. It touches the screen only — no record,
+// no setting and nothing anybody typed is changed, and switching back to
+// English puts every word back as it was.
+// ═══════════════════════════════════════════════════════════
+const AR_UI={
+// ── the words that appear everywhere ──
+'Class':'الفصل','Date':'التاريخ','Status':'الحالة','Student':'الطالب','Students':'الطلاب','Subject':'المادة','Subjects':'المواد','Actions':'إجراءات','Teacher':'المعلم','Teachers':'المعلمون','View':'عرض','Day':'اليوم','Days':'الأيام','Updated':'تم التحديث','Del':'حذف','Delete':'حذف','Cancel':'إلغاء','Time':'الوقت','Times':'الأوقات','Period':'الحصة','Deleted':'محذوف','From':'من','To':'إلى','Reason':'السبب','Week':'الأسبوع','All':'الكل','Clear':'مسح','Note':'ملاحظة','Notes':'ملاحظات','Name':'الاسم','Remarks':'ملاحظات','Break':'الاستراحة','Edit':'تعديل','Remove':'إزالة','Close':'إغلاق','Created':'أُنشئ','Classes':'الفصول','Type':'النوع','Total':'الإجمالي','Marks':'الدرجات','Mark':'الدرجة','Save':'حفظ','Today':'اليوم','Username':'اسم المستخدم','Password':'كلمة المرور','Email':'البريد الإلكتروني','Phone':'الهاتف','School':'المدرسة','City':'المدينة','Grade':'الصف','Section':'الفصل','Place':'المكان','Venue':'المكان','Score':'الدرجة','Points':'النقاط','Year':'السنة','Years':'السنوات','Hours':'الساعات','Role':'الوظيفة','Staff':'الموظفون','Field':'المجال','Title':'العنوان','Stage':'المرحلة','Set':'تعيين','Open':'فتح','Skip':'تخطي','Share':'مشاركة','Reply':'رد','Rate':'النسبة','Rating':'التقييم','Schedule':'الجدول','Files':'الملفات','Card':'البطاقة','Wording':'الصياغة','Domain':'المجال','Post':'الوظيفة','Qualification':'المؤهل','Programme':'البرنامج','Specialization':'التخصص','Institution':'الجهة','Department':'القسم','Duration':'المدة','Progress':'التقدم','Collection':'المجموعة','Records':'السجلات','Details':'التفاصيل','Manage':'إدارة','Reset':'إعادة تعيين','Slot':'الفترة','Salah':'الصلاة','Homework':'الواجب','Activity':'النشاط','Lessons':'الدروس','Topics':'المواضيع','Notebook':'الكراسة','Workbook':'كتاب النشاط','Occurrence':'التكرار','Violation':'المخالفة','Degree':'الدرجة','Issues':'الملاحظات','Position':'الموقع','Classroom':'الفصل','Supervisor':'المشرف','Advisor':'المرشد','Invigilator':'المراقب','Guardian':'ولي الأمر','Certificate':'الشهادة','Absent':'غائب','Present':'حاضر','Late':'متأخر','Excused':'معذور','Checked':'تم الفحص','Submitted':'تم الإرسال','Added':'تمت الإضافة','Saved':'تم الحفظ','Removed':'تمت الإزالة','Approved':'معتمد','Resolved':'تم الحل','Denied':'مرفوض','Replied':'تم الرد','Scheduled':'مجدول','Postponed':'مؤجل','Cancelled':'ملغى','Completed':'مكتمل','Complete':'مكتمل','Incomplete':'غير مكتمل','Pending':'معلق','Active':'نشط','Closed':'مغلق','Normal':'عادي','High':'عالية','Low':'منخفضة','Medium':'متوسطة','Severe':'شديد','Moderate':'متوسط','Mild':'بسيط','Satisfactory':'مقبول','Poor':'ضعيف','Male':'ذكر','Female':'أنثى','Other':'أخرى','Upcoming':'قادم','Conducted':'تم التنفيذ','Not Conducted':'لم يُنفذ','Not Checked':'لم يُفحص','Acknowledged':'تم الإقرار','In Progress':'جارٍ','Awaiting Reply':'بانتظار الرد','Duties':'المناوبات','Substitutions':'المناوبات الاحتياطية','Substitute':'البديل','PIN':'الرمز السري','SN':'م','No.':'رقم','Sr.N':'م','Week (from the Academic Calendar)':'الأسبوع (من التقويم الأكاديمي)',
+// ── column headings and labels ──
+'Student Name':'اسم الطالب','First Name':'الاسم الأول','Last Name':'اسم العائلة','Father Phone':'هاتف الأب','Mother Phone':'هاتف الأم','Parent Name':'اسم ولي الأمر','Parent Phone':'هاتف ولي الأمر','Employee ID':'الرقم الوظيفي','Employee / Teacher Name':'اسم الموظف / المعلم','Academic Year':'العام الدراسي','Academic year':'العام الدراسي','Term':'الفصل الدراسي','First Term':'الفصل الأول','Added By':'أضافه','Added by':'أضافه','Recorded by':'سجّله','Reported by':'أبلغ عنه','Submitted By':'قدّمه','Submitted On':'تاريخ الإرسال','Evaluated By':'قيّمه','Issued By':'أصدره','Given by':'قدّمه','Taken by':'نفّذه','Handed Over To':'سُلّم إلى','Picked Up By':'استلمه','Absent Teacher':'المعلم الغائب','Duty Teacher':'معلم المناوبة','Duty Time':'وقت المناوبة','Class teacher':'رائد الفصل','Teacher name':'اسم المعلم','Teacher(s)':'المعلم/المعلمون','Teacher responsible':'المعلم المسؤول','Teachers responsible':'المعلمون المسؤولون','Teacher Conducted':'المعلم المنفذ','Teacher Checking':'المعلم المصحح','Tchr Check':'فحص المعلم','Name on the timetable':'الاسم في الجدول','Activity Name':'اسم النشاط','Session Name':'اسم الفترة','Exam Session':'فترة الاختبار','Exam Status':'حالة الاختبار','Exam Subject':'مادة الاختبار','Absent Date':'تاريخ الغياب','Absent Subjects':'المواد الغائب عنها','Subjects Missed':'المواد الفائتة','Date(s) Absent':'تواريخ الغياب','Latest Date':'آخر تاريخ','Re-exam Date':'تاريخ الاختبار التعويضي','Schedule Status':'حالة الجدول','Days in range':'الأيام في الفترة','Times late':'مرات التأخر','Times Late':'مرات التأخر','Absent %':'نسبة الغياب','Absent Students':'الطلاب الغائبون','Total Students':'إجمالي الطلاب','Total Reports':'إجمالي التقارير','Total Absences':'إجمالي الغياب','Total Duty Time':'إجمالي وقت المناوبة','Teachers behind':'المعلمون المتأخرون','Days Left':'الأيام المتبقية','Track #':'رقم التتبع','Follow-up':'المتابعة','Follow-up Status':'حالة المتابعة','Guardian Contact':'تواصل ولي الأمر','Actions Taken':'الإجراءات المتخذة','Action':'الإجراء','Priority':'الأولوية','Waiting on':'بانتظار','Academic Ack':'إقرار المشرف','Principal Ack':'إقرار المدير','VP Remarks':'ملاحظات الوكيل','Discipline Issues':'ملاحظات الانضباط','Evaluation Criteria':'معايير التقييم','Mark Obtained':'الدرجة المحققة','Order of students':'ترتيب الطلاب','On the roll':'في القائمة','When':'متى','Where it is':'مكانه','Recipient':'المستلم','Column in your file':'العمود في ملفك','First row':'الصف الأول','Required resources':'الوسائل المطلوبة','Class, day and period':'الفصل واليوم والحصة','Class &amp; subject':'الفصل والمادة','Class & subject':'الفصل والمادة','Topic &amp; educational objectives':'الموضوع والأهداف التعليمية','Topic & educational objectives':'الموضوع والأهداف التعليمية','Violation &amp; detail':'المخالفة والتفصيل','Violation & detail':'المخالفة والتفصيل','What happened':'ما حدث','Why it is needed':'سبب الحاجة','By when':'الموعد','Named':'الاسم','Filled in':'تم التعبئة','Place of the activity':'مكان النشاط','School / place':'المدرسة / المكان','From — To':'من — إلى','Below 5':'أقل من 5','Additional Note':'ملاحظة إضافية','Additional Notes':'ملاحظات إضافية','Note (optional)':'ملاحظة (اختياري)','Gender':'الجنس','Logo':'الشعار','Gmail / Email':'البريد الإلكتروني','Backup JSON File':'ملف النسخة الاحتياطية','Custom Permissions':'صلاحيات مخصصة','This Week':'هذا الأسبوع','Quick pick a week':'اختيار سريع للأسبوع','Teacher leading the class out':'المعلم المرافق للفصل','Specify Other Issue':'حدد ملاحظة أخرى','Slot label':'اسم الفترة','Salah Break':'استراحة الصلاة','Infractions':'المخالفات','Alphabetical (A–Z)':'أبجدي (أ–ي)','By class serial number':'حسب رقم الطالب في الفصل',
+// ── required-field labels ──
+'Title *':'العنوان *','Student *':'الطالب *','Teacher *':'المعلم *','Date *':'التاريخ *','Class *':'الفصل *','Grade *':'الصف *','Section *':'الفصل *','Subject *':'المادة *','Username *':'اسم المستخدم *','Password *':'كلمة المرور *','City *':'المدينة *','From *':'من *','To *':'إلى *','From Date *':'من تاريخ *','To Date *':'إلى تاريخ *','From Week *':'من أسبوع *','To Week *':'إلى أسبوع *','Remark *':'الملاحظة *','Message *':'الرسالة *','Message Template *':'قالب الرسالة *','Send to *':'إرسال إلى *','File *':'الملف *','CSV File *':'ملف CSV *','Refer To *':'إحالة إلى *','Programme *':'البرنامج *','Occurrence *':'التكرار *','Session Name *':'اسم الفترة *','Exam Session *':'فترة الاختبار *','Violation Description *':'وصف المخالفة *','Degree of Violation *':'درجة المخالفة *','Name for this set *':'اسم هذه المجموعة *','Parent Name *':'اسم ولي الأمر *','Parent Phone *':'هاتف ولي الأمر *','School Name (EN)':'اسم المدرسة (إنجليزي)','School Name (AR)':'اسم المدرسة (عربي)','Notes (action taken, witnesses, etc.)':'ملاحظات (الإجراء، الشهود، إلخ)',
+// ── buttons ──
+'Save →':'حفظ ←','💾 Save →':'💾 حفظ ←','Submit →':'إرسال ←','Create →':'إنشاء ←','Import →':'استيراد ←','Open →':'فتح ←','View All →':'عرض الكل ←','← Back':'← رجوع','← Another class':'← فصل آخر','Select all':'تحديد الكل','Select All':'تحديد الكل','Remove shown':'إزالة المعروض','Clear All':'مسح الكل','✓ Done':'✓ تم','✓ Approve':'✓ اعتماد','✓ Acknowledge':'✓ إقرار','✕ Dismiss':'✕ إخفاء','OK, Got It':'حسناً، فهمت','Not you?':'لست أنت؟','Details':'التفاصيل','PDF':'PDF','📄 PDF':'📄 PDF','📊 CSV':'📊 CSV','📥 CSV':'📥 CSV','📄 Export PDF':'📄 تصدير PDF','📊 Export Excel →':'📊 تصدير Excel ←','📊 Export Substitutions':'📊 تصدير المناوبات','🖨️ Print':'🖨️ طباعة','🖨️ Print / Save as PDF':'🖨️ طباعة / حفظ PDF','Print / Save as PDF':'طباعة / حفظ PDF','🖨️ Print Letter':'🖨️ طباعة الخطاب','🗑️ Delete':'🗑️ حذف','✏️ Edit':'✏️ تعديل','✏️ Edit Session':'✏️ تعديل الفترة','⚙️ Bulk':'⚙️ دفعة','🔐 Manage':'🔐 إدارة','⚙️ Message Template':'⚙️ قالب الرسالة','📲 Send via WhatsApp →':'📲 إرسال عبر واتساب ←','📲 Share via WhatsApp':'📲 مشاركة عبر واتساب','📱 Share WhatsApp':'📱 مشاركة واتساب','✍️ Write Reply':'✍️ كتابة رد','✍️ Acknowledge this report':'✍️ الإقرار بهذا التقرير','🔀 Refer to Advisor':'🔀 إحالة إلى المرشد','📃 Referral Letter':'📃 خطاب الإحالة','📄 Issue Infraction Letter':'📄 إصدار خطاب مخالفة','📄 Generate & Print':'📄 إنشاء وطباعة','📄 Report':'📄 تقرير','📋 Discipline Report':'📋 تقرير الانضباط','📝 Explanation Letter':'📝 خطاب استفسار','📝 Recent Class Visits':'📝 الزيارات الصفية الأخيرة','📚 Remedial Plan Detail':'📚 تفاصيل الخطة العلاجية','⚠️ Infraction':'⚠️ مخالفة','⛔ Unavailable Times':'⛔ الأوقات غير المتاحة','🔗 Timetable Names':'🔗 أسماء الجدول','🔁 Repeat Week':'🔁 تكرار الأسبوع','↺ Reset to Default':'↺ إعادة للوضع الافتراضي','Reset to default':'إعادة للوضع الافتراضي','🕘 Restore to a Date':'🕘 استرجاع إلى تاريخ','♻️ Restore School from Backup':'♻️ استرجاع المدرسة من نسخة','Open Excused Students →':'فتح الطلاب المعذورين ←','🔧 Platform Admin':'🔧 مدير المنصة','Set it':'تعيينه','Locked 🔒':'مقفل 🔒',
+// ── the choices in drop-downs ──
+'— Select —':'— اختر —','— Choose —':'— اختر —','— choose —':'— اختر —','— None —':'— لا شيء —','— Select School —':'— اختر المدرسة —','— Select Session —':'— اختر الفترة —','— Select Advisor —':'— اختر المرشد —','— Choose the class —':'— اختر الفصل —','— Choose the class first —':'— اختر الفصل أولاً —','— Choose your name —':'— اختر اسمك —','— Any class —':'— أي فصل —','— Every class —':'— كل الفصول —','— All teachers —':'— كل المعلمين —','— choose a week —':'— اختر أسبوعاً —','— Select or type custom —':'— اختر أو اكتب —','All Grades':'كل الصفوف','All classes':'كل الفصول','All Days':'كل الأيام','All Status':'كل الحالات','All Types':'كل الأنواع','Late only':'المتأخرون فقط','Degree 1 — Minor':'الدرجة 1 — بسيطة','Degree 2 — Moderate':'الدرجة 2 — متوسطة','Degree 3 — Serious':'الدرجة 3 — كبيرة','Degree 4 — Severe':'الدرجة 4 — شديدة','Degree 5 — Critical':'الدرجة 5 — جسيمة','✅ Good':'✅ جيد','⚠️ Average':'⚠️ متوسط','❌ Poor':'❌ ضعيف',
+// ── the things the app says ──
+'Fill required fields':'أكمل الحقول المطلوبة','Account not found':'الحساب غير موجود','Student not found':'الطالب غير موجود','Record not found':'السجل غير موجود','Report not found':'التقرير غير موجود','Request not found':'الطلب غير موجود','Infraction not found':'المخالفة غير موجودة','Rating not found':'التقييم غير موجود','Remark not found':'الملاحظة غير موجودة','That set was not found':'لم يتم العثور على المجموعة','Already added':'مضاف مسبقاً','Link copied':'تم نسخ الرابط','Nothing was changed':'لم يتغير شيء','Nothing to save':'لا شيء للحفظ','Marks updated':'تم تحديث الدرجات','Saved as':'حُفظ باسم','Username exists':'اسم المستخدم موجود','Name required':'الاسم مطلوب','Session name required':'اسم الفترة مطلوب','Remark is required':'الملاحظة مطلوبة','The message is empty':'الرسالة فارغة','Message cannot be empty':'لا يمكن ترك الرسالة فارغة','Template cannot be empty':'لا يمكن ترك القالب فارغاً','Template saved':'تم حفظ القالب','Logo saved':'تم حفظ الشعار','PIN saved for':'تم حفظ الرمز لـ','PIN removed':'تم حذف الرمز','Nobody has a PIN yet':'لا أحد لديه رمز بعد','Type your PIN first':'اكتب رمزك أولاً','You may not set the PINs':'لا تملك صلاحية تعيين الرموز','Only the principal and the superadmin can set the PINs':'المدير ومدير النظام فقط يمكنهما تعيين الرموز','Only the Super Admin can change the marks':'مدير النظام فقط يمكنه تغيير الدرجات','Super Admin only':'مدير النظام فقط','You cannot change this record':'لا يمكنك تغيير هذا السجل','You cannot change exclusions':'لا يمكنك تغيير الاستثناءات','You may not take out this report':'لا تملك صلاحية تصدير هذا التقرير','You may not add a class':'لا تملك صلاحية إضافة فصل','You may not change the subjects':'لا تملك صلاحية تغيير المواد','You may not lock a week':'لا تملك صلاحية إقفال الأسبوع','You may not add an activity':'لا تملك صلاحية إضافة نشاط','You may not change the group links':'لا تملك صلاحية تغيير روابط المجموعات','You do not have permission to assign checking':'لا تملك صلاحية إسناد التصحيح','Cannot edit — VP has already taken action':'لا يمكن التعديل — الوكيل اتخذ إجراءً','Select both dates':'اختر التاريخين','Choose the date':'اختر التاريخ','Choose the class':'اختر الفصل','Choose a class first':'اختر الفصل أولاً','Choose the week':'اختر الأسبوع','Choose a week':'اختر أسبوعاً','Choose the break':'اختر الاستراحة','Choose the period':'اختر الحصة','Choose your name':'اختر اسمك','Choose the students first':'اختر الطلاب أولاً','Choose at least one class':'اختر فصلاً واحداً على الأقل','Choose at least one student':'اختر طالباً واحداً على الأقل','Choose a valid date':'اختر تاريخاً صحيحاً','Choose a valid date range':'اختر فترة تاريخ صحيحة','Select a student':'اختر طالباً','Select at least one action taken':'اختر إجراءً واحداً على الأقل','Tick at least one student':'اختر طالباً واحداً على الأقل','Tick at least one person':'اختر شخصاً واحداً على الأقل','Select a backup file first':'اختر ملف النسخة الاحتياطية أولاً','Pick a CSV file first':'اختر ملف CSV أولاً','CSV file is empty (or only has a header)':'ملف CSV فارغ (أو يحتوي على العناوين فقط)','No valid rows in CSV':'لا توجد صفوف صالحة في الملف','Write the programme':'اكتب البرنامج','Write the teacher’s name':'اكتب اسم المعلم','Write the subject':'اكتب المادة','Give the set a name':'أعطِ المجموعة اسماً','Give the class a mark out of':'أعطِ الفصل درجة من','Give the time it closes as well':'حدد وقت الإغلاق أيضاً','Give the date it closes as well':'حدد تاريخ الإغلاق أيضاً','Enter violation description':'اكتب وصف المخالفة','Enter your username':'اكتب اسم المستخدم','The date cannot be in the future':'لا يمكن أن يكون التاريخ في المستقبل','End date cannot be before start date':'تاريخ النهاية لا يسبق تاريخ البداية','That phone number is not valid':'رقم الهاتف غير صحيح','That is already excluded':'مستثنى مسبقاً','Excluded':'مستثنى','Referral created':'تم إنشاء الإحالة','Report deleted':'تم حذف التقرير','Infraction letter generated':'تم إنشاء خطاب المخالفة','Open a week first':'افتح أسبوعاً أولاً','Open an exam first':'افتح اختباراً أولاً','No classes on the roll yet':'لا توجد فصول في القائمة بعد','No students to summarise':'لا يوجد طلاب للتلخيص','No health records to export':'لا توجد سجلات صحية للتصدير','No duties found in that week range':'لا توجد مناوبات في هذه الفترة','Nothing was recorded in these dates':'لم يُسجل شيء في هذه التواريخ','Nothing reported in these dates':'لم يُبلغ عن شيء في هذه التواريخ','Nothing rated in these dates':'لم يُقيّم شيء في هذه التواريخ','Copied from':'نُسخ من','Taking a safety snapshot first…':'يتم أخذ نسخة احتياطية أولاً…','Preparing the PDF…':'يتم تجهيز ملف PDF…','Allow pop-ups to print':'اسمح بالنوافذ المنبثقة للطباعة','Allow pop-ups to open the PDF':'اسمح بالنوافذ المنبثقة لفتح PDF','Allow pop-ups to open the report':'اسمح بالنوافذ المنبثقة لفتح التقرير','Allow pop-ups to print the poster':'اسمح بالنوافذ المنبثقة لطباعة الملصق','Allow pop-ups to print the cards':'اسمح بالنوافذ المنبثقة لطباعة البطاقات','Could not make the PDF:':'تعذر إنشاء PDF:','Cancelled — confirmation text did not match':'أُلغي — نص التأكيد غير مطابق','Min 6 characters':'6 أحرف على الأقل','4 digits':'4 أرقام','Your full name':'اسمك الكامل','Type your name':'اكتب اسمك','Type your acknowledgment note…':'اكتب ملاحظة الإقرار…','Add ack note':'أضف ملاحظة إقرار','or paste a link':'أو الصق رابطاً','Welcome,':'مرحباً،','The link':'الرابط','Date:':'التاريخ:','at':'في','Closes on':'يغلق في','None of that set’s students are on the roll any more':'لم يعد أي من طلاب هذه المجموعة في القائمة','🔍 Search by name or grade…':'🔍 ابحث بالاسم أو الصف…','Search student by name or grade…':'ابحث عن طالب بالاسم أو الصف…','No records found':'لا توجد سجلات',
+// ── the rest of the screen ──
+'All Sections':'كل الفصول','All Classes':'كل الفصول','All Subjects':'كل المواد','All Teachers':'كل المعلمين','All Dates':'كل التواريخ','All Roles':'كل الوظائف','+ Add':'+ إضافة','Add':'إضافة','Refer':'إحالة','Search':'بحث','Sign In':'تسجيل الدخول','Sign Out':'تسجيل الخروج','Welcome':'مرحباً','Welcome back':'مرحباً بعودتك','Dashboard':'لوحة التحكم','Settings':'الإعدادات','Profile':'الملف الشخصي','Language':'اللغة','Color Theme':'نظام الألوان','Change Password':'تغيير كلمة المرور','Current Password':'كلمة المرور الحالية','New Password':'كلمة المرور الجديدة','Confirm Password':'تأكيد كلمة المرور','Save Profile':'حفظ الملف الشخصي','Nationality':'الجنسية','Class SN':'رقم الفصل','Serial No.':'الرقم التسلسلي','Advisor':'المرشد','Class Lists (PDF)':'قوائم الفصول (PDF)','📄 Class Lists (PDF)':'📄 قوائم الفصول (PDF)','Class Summary':'ملخص الفصول','📄 Class Summary':'📄 ملخص الفصول','Export History':'تصدير السجل','📥 Export History':'📥 تصدير السجل','Export Full Backup':'تصدير نسخة كاملة','📥 Export Full Backup':'📥 تصدير نسخة كاملة','Restore from Backup':'استرجاع من نسخة','📤 Restore from Backup':'📤 استرجاع من نسخة','Factory Reset':'إعادة ضبط المصنع','⚠️ Factory Reset':'⚠️ إعادة ضبط المصنع','Export Data':'تصدير البيانات','Data Type':'نوع البيانات','Quick Exports':'تصدير سريع','System Stats':'إحصائيات النظام','School Information':'بيانات المدرسة','School Logo':'شعار المدرسة','Backup & Restore':'النسخ والاسترجاع','Production Status':'حالة التشغيل','Staff Accounts':'حسابات الموظفين','Attendance History':'سجل الحضور','Mark Absent Students':'تحديد الطلاب الغائبين','Mark Late Students':'تحديد الطلاب المتأخرين','Mark Several Absent':'تحديد عدة غائبين','➕ Mark Several Absent':'➕ تحديد عدة غائبين','Reset All Present':'إعادة الجميع حاضرين','↺ Reset All Present':'↺ إعادة الجميع حاضرين','Submit Attendance →':'إرسال الحضور ←','Update Attendance →':'تحديث الحضور ←','Notify Parents':'إبلاغ أولياء الأمور','Notify Parents via WhatsApp':'إبلاغ أولياء الأمور عبر واتساب','📱 Notify Parents via WhatsApp':'📱 إبلاغ أولياء الأمور عبر واتساب','Father':'الأب','Mother':'الأم','Both Parents':'كلا الوالدين','Total Absences':'إجمالي الغياب','Affected Students':'الطلاب المتأثرون','Sessions':'الفترات','Multi-Subject':'عدة مواد','List View':'عرض قائمة','📋 List View':'📋 عرض قائمة','Group by Student':'تجميع حسب الطالب','👨‍🎓 Group by Student':'👨‍🎓 تجميع حسب الطالب','Group by Subject':'تجميع حسب المادة','📚 Group by Subject':'📚 تجميع حسب المادة','New Session':'فترة جديدة','+ New Session':'+ فترة جديدة','Add Absent':'إضافة غائب','+ Add Absent':'+ إضافة غائب','Absentees QR':'رمز الغائبين','📱 Absentees QR':'📱 رمز الغائبين','Attendance QR':'رمز الحضور','📱 Attendance QR':'📱 رمز الحضور','QR Poster':'ملصق الرمز','📱 QR Poster':'📱 ملصق الرمز','Print Poster':'طباعة الملصق','🖨️ Print Poster':'🖨️ طباعة الملصق','Download QR':'تنزيل الرمز','⬇️ Download QR':'⬇️ تنزيل الرمز','Copy Link':'نسخ الرابط','📋 Copy Link':'📋 نسخ الرابط','Register PDF':'سجل PDF','📄 Register PDF':'📄 سجل PDF','Export CSV':'تصدير CSV','📊 Export CSV':'📊 تصدير CSV','Latest added first':'الأحدث إضافة أولاً','Absent date — newest first':'تاريخ الغياب — الأحدث أولاً','Absent date — oldest first':'تاريخ الغياب — الأقدم أولاً','Date wise':'حسب التاريخ','Subject wise':'حسب المادة','Class wise':'حسب الفصل','Arrange the PDF':'ترتيب ملف PDF','Order of the students':'ترتيب الطلاب','Only this date':'هذا التاريخ فقط','Only this subject':'هذه المادة فقط','Only this class':'هذا الفصل فقط','Start each group on a new page':'ابدأ كل مجموعة في صفحة جديدة','Make PDF →':'إنشاء PDF ←','📄 Make PDF →':'📄 إنشاء PDF ←','Student name':'اسم الطالب','Absent date':'تاريخ الغياب','A heading for each exam day':'عنوان لكل يوم اختبار','A heading for each subject':'عنوان لكل مادة','Pending Review':'بانتظار المراجعة','Released':'تم الانصراف','Student Released':'تم انصراف الطالب','Rejected':'مرفوض','Early Pickup Request':'طلب خروج مبكر','Pickup Time':'وقت الخروج','Tracking Number':'رقم التتبع','Parent contact':'رقم ولي الأمر','Relation to the student':'صلة القرابة','Their phone (optional)':'رقم جواله (اختياري)','ID number (optional)':'رقم الهوية (اختياري)','Reason for early pickup':'سبب الخروج المبكر','Pickup time (today)':'وقت الخروج (اليوم)','Additional notes (optional)':'ملاحظات إضافية (اختياري)','Submit Request →':'إرسال الطلب ←','📤 Submit Request →':'📤 إرسال الطلب ←','Brother':'الأخ','Sister':'الأخت','Uncle':'العم/الخال','Aunt':'العمة/الخالة','Grandfather':'الجد','Grandmother':'الجدة','Driver':'السائق','Medical / Doctor Appointment':'موعد طبي','Family Emergency':'ظرف عائلي طارئ','Sickness / Not Feeling Well':'مرض / توعك','Personal / Family Matter':'أمر شخصي / عائلي','Travel':'سفر','Religious Reason':'سبب ديني','Government / Official Appointment':'موعد حكومي / رسمي','Late Comers':'المتأخرون','Late Today':'متأخرو اليوم','To Notify':'للإبلاغ','On Time':'في الوقت','Scanned at the gate':'المسجلون عند البوابة','Taken from the code':'المسجل عبر الرمز','Recorded by':'سجّله','Daily Attendance':'الحضور اليومي','Present':'حاضر','Draft':'مسودة','Submitted':'تم الإرسال','Total Students':'إجمالي الطلاب','Search by student, guardian, tracking number, or phone…':'ابحث بالطالب أو ولي الأمر أو رقم التتبع أو الهاتف…','Live Activity Feed':'سجل الأنشطة الحي','Open Complaints':'الشكاوى المفتوحة','Active Tasks':'المهام النشطة','Upcoming Events':'الأحداث القادمة','Add Event':'إضافة حدث','Event Name':'اسم الحدث','Event Date':'تاريخ الحدث','Overview':'نظرة عامة','Management':'الإدارة','System':'النظام','Academic':'الأكاديمي','My Work':'عملي','Discipline':'الانضباط','Monitoring':'المراقبة','Reporting':'التقارير','Evaluation':'التقييم','Operations':'العمليات','Attendance & Pickup':'الحضور والانصراف','Student Management':'إدارة الطلاب','Staff Management':'إدارة الموظفين','Tasks & Activities':'المهام والأنشطة','Access restricted':'الوصول مقيد','No records':'لا توجد سجلات','Loading…':'جارٍ التحميل…','Synced':'متزامن','Offline':'غير متصل','Local':'محلي','Live':'مباشر',
+// ── the sentences the screens explain themselves with ──
+'Mark students absent below. All others will be automatically marked as present. Then click':'حدد الطلاب الغائبين أدناه. وسيُعتبر الباقون حاضرين تلقائياً. ثم اضغط','to notify parents of absent students.':'لإبلاغ أولياء أمور الطلاب الغائبين.','View attendance records.':'عرض سجلات الحضور.','Mark students who arrived late, then notify their parents by WhatsApp.':'حدد الطلاب المتأخرين، ثم أبلغ أولياء أمورهم عبر واتساب.','Parents submit via QR scan. Verify, approve, generate gate guard QR, and the student can be released.':'يقدم أولياء الأمور الطلب بمسح الرمز. تحقق واعتمد وأصدر رمز البوابة، ثم يمكن انصراف الطالب.','All records are kept permanently for tracking.':'تُحفظ كل السجلات بشكل دائم للمتابعة.','Pickup requests submitted by parents via the QR portal will appear here.':'ستظهر هنا طلبات الخروج المقدمة من أولياء الأمور عبر الرمز.','Select data type and date range, then export to Excel (CSV) or PDF.':'اختر نوع البيانات والفترة، ثم صدّر إلى Excel أو PDF.','arrived late':'وصلوا متأخرين','parents to message':'ولي أمر للمراسلة','of 2 students':'من 2 طالب','All Students':'كل الطلاب','Repeat Late':'تكرار التأخر','late more than once':'تأخروا أكثر من مرة','Mark Several Late':'تحديد عدة متأخرين','➕ Mark Several Late':'➕ تحديد عدة متأخرين','Recent Late Days':'أيام التأخر الأخيرة','📜 Recent Late Days':'📜 أيام التأخر الأخيرة','Repeatedly Late':'المتكرر تأخرهم','🔁 Repeatedly Late':'🔁 المتكرر تأخرهم','No late arrivals recorded yet':'لم يُسجل أي تأخر بعد','No repeat late arrivals':'لا يوجد تكرار في التأخر','No attendance records yet':'لا توجد سجلات حضور بعد','PDF Record':'سجل PDF','📄 PDF Record':'📄 سجل PDF','Late Comers QR':'رمز المتأخرين','📱 Late Comers QR':'📱 رمز المتأخرين','Absent only':'الغائبون فقط','Present only':'الحاضرون فقط','Excused only':'المعذورون فقط','Absent — to notify':'غائب — للإبلاغ','to notify':'للإبلاغ','absent':'غائب','late':'متأخر','present':'حاضر','No phone':'لا يوجد هاتف','2+ subjects':'مادتان فأكثر','Created':'أُنشئ في','Assign':'إسناد','+ Assign':'+ إسناد','Save Logo →':'حفظ الشعار ←','Live Mode Active':'وضع التشغيل المباشر','Exam Sessions':'فترات الاختبارات','Exam Absents':'غياب الاختبارات','Deploy & Go Live':'النشر والتشغيل','🚀 Deploy & Go Live':'🚀 النشر والتشغيل','Student Report':'تقرير الطالب','📄 Student Report':'📄 تقرير الطالب','All Cards PDF':'كل البطاقات PDF','🪪 All Cards PDF':'🪪 كل البطاقات PDF','Delete Selected':'حذف المحدد','🗑️ Delete Selected':'🗑️ حذف المحدد','selected':'محدد','Link Gmail':'ربط البريد','📧 Link Gmail':'📧 ربط البريد','Total Points Deducted':'إجمالي النقاط المخصومة','Daily Duty Roster':'جدول المناوبات اليومي','📋 Daily Duty Roster':'📋 جدول المناوبات اليومي','Export Duties (Excel)':'تصدير المناوبات (Excel)','📊 Export Duties (Excel)':'📊 تصدير المناوبات (Excel)','Recover Rosters':'استرجاع الجداول','♻️ Recover Rosters':'♻️ استرجاع الجداول','Manage Places':'إدارة الأماكن','⚙️ Manage Places':'⚙️ إدارة الأماكن','Clear All Rosters':'مسح كل الجداول','🗑️ Clear All Rosters':'🗑️ مسح كل الجداول','Print PDF':'طباعة PDF','📄 Print PDF':'📄 طباعة PDF','← Prev':'← السابق','Next →':'التالي ←','Spot / Location':'المكان / الموقع','Assigned Teacher(s)':'المعلم المناوب','Morning Duty':'مناوبة الصباح','First Break':'الاستراحة الأولى','Second Break':'الاستراحة الثانية','Salah Time':'وقت الصلاة','Going Time':'وقت الانصراف','Build the daily duty roster (Sunday to Thursday). Teachers will see their own assigned duties.':'أنشئ جدول المناوبات اليومي (الأحد إلى الخميس). سيرى كل معلم مناوباته الخاصة.','Academic Calendar → Terms & Weeks':'التقويم الأكاديمي ← الفصول والأسابيع','to group duties by week.':'لتجميع المناوبات حسب الأسبوع.','Welcome to EduAdmin Pro':'مرحباً بك في EduAdmin Pro','System initialized':'تم تهيئة النظام','Super Admin':'مدير النظام','Principal':'المدير','Vice Principal':'الوكيل','Academic Supervisor':'المشرف الأكاديمي','Admin Assistant':'المساعد الإداري','Student Advisor':'مرشد الطلاب','Quality Incharge':'مسؤول الجودة','Quality Supervisor':'مشرف الجودة','Teacher':'معلم','Every infraction is resolved and every guardian has been reached.':'تمت معالجة كل المخالفات والتواصل مع كل أولياء الأمور.','No student is excused on':'لا يوجد طالب معذور في','Selected':'محدد','Apply':'تطبيق',
+// ── the days and the months ──
+'Sunday':'الأحد','Monday':'الإثنين','Tuesday':'الثلاثاء','Wednesday':'الأربعاء','Thursday':'الخميس','Friday':'الجمعة','Saturday':'السبت','Sun':'الأحد','Mon':'الإثنين','Tue':'الثلاثاء','Wed':'الأربعاء','Thu':'الخميس','Fri':'الجمعة','Sat':'السبت','January':'يناير','February':'فبراير','March':'مارس','April':'أبريل','May':'مايو','June':'يونيو','July':'يوليو','August':'أغسطس','September':'سبتمبر','October':'أكتوبر','November':'نوفمبر','December':'ديسمبر','Jan':'يناير','Feb':'فبراير','Mar':'مارس','Apr':'أبريل','Jun':'يونيو','Jul':'يوليو','Aug':'أغسطس','Sep':'سبتمبر','Oct':'أكتوبر','Nov':'نوفمبر','Dec':'ديسمبر',
+// ── what is left on the other screens ──
+'+ New Week':'+ أسبوع جديد','New Week':'أسبوع جديد','Past':'سابق','Upcoming':'قادم','Not Created':'لم يُنشأ','Create PDF':'إنشاء PDF','📄 Create PDF':'📄 إنشاء PDF','PDF for this class only':'PDF لهذا الفصل فقط','📄 PDF for this class only':'📄 PDF لهذا الفصل فقط','Scrutiny':'المراجعة','2nd Scrutiny':'المراجعة الثانية','Preview':'معاينة','👥 Choose students':'👥 اختر الطلاب','Choose students':'اختر الطلاب','Choose a class, or search for a student by name.':'اختر فصلاً، أو ابحث عن طالب بالاسم.','Nobody selected yet.':'لم يتم اختيار أحد بعد.','A sample — choose students to see theirs.':'نموذج — اختر الطلاب لعرض بطاقاتهم.','Certificate of Achievement':'شهادة تقدير','Default Session':'الفترة الافتراضية','Sessions':'الفترات','Academic Sessions':'الفصول الدراسية','Weekly Plan':'الخطة الأسبوعية','Weekly Activities':'الأنشطة الأسبوعية','Duty Roster':'جدول المناوبات','Permissions':'الصلاحيات','Export':'تصدير','Import':'استيراد','Yes':'نعم','No':'لا','None':'لا شيء','Optional':'اختياري','Required':'مطلوب','Back':'رجوع','Next':'التالي','Previous':'السابق','Print':'طباعة','Download':'تنزيل','Copy':'نسخ','Send':'إرسال','Approve':'اعتماد','Reject':'رفض','Submit':'إرسال','Update':'تحديث','Create':'إنشاء','Assign':'إسناد','Restore':'استرجاع','Backup':'نسخة احتياطية','Report':'تقرير','Reports':'التقارير','Letter':'خطاب','Summary':'ملخص','History':'السجل','Filter':'تصفية','Sort':'ترتيب','Options':'خيارات','More':'المزيد','Done':'تم','Start':'البداية','End':'النهاية','Never':'أبداً','Always':'دائماً','Unknown':'غير معروف'
+};
+// Wording that carries a number or a class in it, where a plain list of words
+// cannot help: "Gr 4-A", "3 student(s)", "2 of 19".
+const AR_RULES=[
+  [/^Gr\s*(\d+)\s*-\s*([A-Za-z0-9]+)$/i,'صف $1-$2'],
+  [/^Gr\s*(\d+)$/i,'صف $1'],
+  [/^Grade\s*(\d+)\s*-\s*([A-Za-z0-9]+)$/i,'الصف $1-$2'],
+  [/^Grade\s*(\d+)$/i,'الصف $1'],
+  [/^Sec\s*([A-Za-z0-9]+)$/i,'فصل $1'],
+  [/^Section\s*([A-Za-z0-9]+)$/i,'فصل $1'],
+  [/^Period\s*(\d+)$/i,'الحصة $1'],
+  [/^Week\s*(\d+)$/i,'الأسبوع $1'],
+  [/^Day\s*(\d+)$/i,'اليوم $1'],
+  [/^Degree\s*(\d+)$/i,'الدرجة $1'],
+  [/^(\d+)\s*student\(s\)$/i,'$1 طالب'],
+  [/^(\d+)\s*students?$/i,'$1 طالب'],
+  [/^(\d+)\s*teachers?$/i,'$1 معلم'],
+  [/^(\d+)\s*record\(s\)$/i,'$1 سجل'],
+  [/^(\d+)\s*records?$/i,'$1 سجل'],
+  [/^(\d+)\s*class\(es\)$/i,'$1 فصل'],
+  [/^(\d+)\s*classes?$/i,'$1 فصل'],
+  [/^(\d+)\s*absence\(s\)$/i,'$1 غياب'],
+  [/^(\d+)\s*absences?$/i,'$1 غياب'],
+  [/^(\d+)\s*subject\(s\)$/i,'$1 مادة'],
+  [/^(\d+)\s*subjects?$/i,'$1 مادة'],
+  [/^(\d+)\s*date\(s\)$/i,'$1 تاريخ'],
+  [/^(\d+)\s*day\(s\)$/i,'$1 يوم'],
+  [/^(\d+)\s*days?$/i,'$1 يوم'],
+  [/^(\d+)\s*days? left$/i,'باقٍ $1 يوم'],
+  [/^(\d+)\s*of\s*(\d+)$/i,'$1 من $2'],
+  [/^(\d+)\s*absent$/i,'$1 غائب'],
+  [/^(\d+)\s*present$/i,'$1 حاضر'],
+  [/^(\d+)\s*late$/i,'$1 متأخر'],
+  [/^(\d+)\s*pending$/i,'$1 معلق'],
+  [/^Total\s*(\d+)$/i,'الإجمالي $1'],
+  [/^(\d+)\s*\/\s*(\d+)\s*absent$/i,'$1 / $2 غائب'],
+  [/^(\d+)\s*\/\s*(\d+)\s*late$/i,'$1 / $2 متأخر'],
+  [/^(\d+)\s*\/\s*(\d+)\s*present$/i,'$1 / $2 حاضر'],
+  [/^SN:\s*(\S+)\s*·\s*No phone$/i,'رقم: $1 · لا يوجد هاتف'],
+  [/^SN:\s*(\S+)\s*·\s*(.+)$/i,'رقم: $1 · $2'],
+  [/^SN\s+(\S+)$/i,'رقم $1'],
+  [/^No student is excused on\s*(\S+)$/i,'لا يوجد طالب معذور في $1'],
+  [/^Created\s+(\S+)\s+by$/i,'أُنشئ في $1 بواسطة'],
+  [/^Mark students absent below\..*notify parents of absent students\.$/i,
+   'حدد الطلاب الغائبين أدناه. وسيُعتبر الباقون حاضرين تلقائياً. ثم اضغط "📱 إرسال واتساب" لإبلاغ أولياء أمور الطلاب الغائبين.'],
+  [/^Mark students who arrived late.*WhatsApp\.$/i,'حدد الطلاب المتأخرين، ثم أبلغ أولياء أمورهم عبر واتساب.'],
+  [/^Send WhatsApp$/i,'إرسال واتساب'],
+  [/^📱 Send WhatsApp$/i,'📱 إرسال واتساب'],
+  [/^⏰\s*Morning Duty\s*\((.+)\)$/i,'⏰ مناوبة الصباح ($1)'],
+  [/^⏰\s*First Break\s*\((.+)\)$/i,'⏰ الاستراحة الأولى ($1)'],
+  [/^⏰\s*Second Break\s*\((.+)\)$/i,'⏰ الاستراحة الثانية ($1)'],
+  [/^⏰\s*Salah Time\s*\((.+)\)$/i,'⏰ وقت الصلاة ($1)'],
+  [/^⏰\s*Going Time\s*\((.+)\)$/i,'⏰ وقت الانصراف ($1)'],
+  [/^DAILY DUTY ROSTER\s*·\s*(.+)$/i,'جدول المناوبات اليومي · $1'],
+  [/^D(\d)\s*Minor$/i,'د$1 بسيطة'],
+  [/^D(\d)\s*Moderate$/i,'د$1 متوسطة'],
+  [/^D(\d)\s*Serious$/i,'د$1 كبيرة'],
+  [/^(\d+)\s*accounts? without Gmail linked\.$/i,'$1 حساب بدون بريد مرتبط.'],
+  [/^Build the daily duty roster.*$/i,'أنشئ جدول المناوبات اليومي (الأحد إلى الخميس). سيرى كل معلم مناوباته الخاصة.'],
+  [/^💡\s*Type a teacher.s name.*$/i,'💡 اكتب اسم المعلم في أي خانة ← اضغط على الاقتراح لإضافته. ثم اضغط 💾 حفظ.'],
+  [/^Staff should link their Gmail.*$/i,'على الموظفين ربط بريدهم في ملفهم الشخصي، أو يمكن لمدير النظام ربطه أدناه.'],
+  [/^School policy rubric.*$/i,'لائحة المدرسة — 5 درجات، وإجراءات حسب التكرار مع خصم النقاط.'],
+  [/^🗓️\s*No terms defined yet.*$/i,'🗓️ لا توجد فصول دراسية بعد — أضفها من']
+];
+function arNorm(s){
+  return String(s==null?'':s).replace(/ /g,' ').replace(/\s+/g,' ').trim();
+}
+function arRule(core){
+  for(let i=0;i<AR_RULES.length;i++){
+    if(AR_RULES[i][0].test(core))return core.replace(AR_RULES[i][0],AR_RULES[i][1]);
+  }
+  return null;
+}
+let __arMap=null;
+function arMap(){
+  if(__arMap)return __arMap;
+  const m={};
+  // whatever the dictionary of the menu already knows
+  try{
+    Object.keys(TR.en).forEach(function(k){
+      const en=arNorm(String(TR.en[k]).replace(/&amp;/g,'&')),ar=TR.ar[k];
+      if(en&&ar&&!m[en.toLowerCase()])m[en.toLowerCase()]=ar;
+    });
+  }catch(e){}
+  Object.keys(AR_UI).forEach(function(k){
+    m[arNorm(k.replace(/&amp;/g,'&')).toLowerCase()]=AR_UI[k];
+  });
+  __arMap=m;
+  return m;
+}
+// A phrase may come with an emoji in front, a count after it, or a trailing
+// arrow or star. The wrapping is kept and only the words are put into Arabic.
+const AR_LEAD=/^((?:[\u{1F000}-\u{1FAFF}\u{2190}-\u{27BF}\u{FE0F}\u{200D}•·]|\s)+)/u;
+function arPhrase(s){
+  const raw=String(s==null?'':s);
+  const t=arNorm(raw);
+  if(!t||!/[A-Za-z]/.test(t))return null;
+  const map=arMap();
+  const direct=map[t.toLowerCase()];
+  if(direct)return raw.replace(t,direct);
+  const ruled=arRule(t);
+  if(ruled)return raw.replace(t,ruled);
+  let lead='',core=t,tail='';
+  const lm=core.match(AR_LEAD);
+  if(lm){lead=lm[0];core=core.slice(lead.length);}
+  const tm=core.match(/([\s]*(?:→|←|\.\.\.|…|\*)\s*)$/);
+  if(tm){tail=tm[0];core=core.slice(0,core.length-tail.length);}
+  let cnt='';
+  const cm=core.match(/\s*\((\d+)\)\s*$/);
+  if(cm){cnt=cm[0];core=core.slice(0,core.length-cm[0].length);}
+  const hit=map[arNorm(core).toLowerCase()]||arRule(arNorm(core));
+  if(!hit)return null;
+  return raw.replace(t,lead+hit+cnt+tail);
+}
+// ── putting the words on the screen, and taking them off again ──
+const __arText=new WeakMap();
+let __arBusy=false;
+function arSkip(el){
+  if(!el)return true;
+  const tag=el.nodeName;
+  if(tag==='SCRIPT'||tag==='STYLE'||tag==='TEXTAREA'||tag==='CODE')return true;
+  // a choice whose value IS its text: translating it would change what is saved
+  if(tag==='OPTION'&&!el.hasAttribute('value'))return true;
+  if(el.closest&&el.closest('[data-noar]'))return true;
+  return false;
+}
+function arApply(root){
+  if(_lang!=='ar'||!root)return;
+  __arBusy=true;
+  try{
+    const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null);
+    const jobs=[];
+    let n;
+    while((n=w.nextNode())){
+      const p=n.parentElement;
+      if(!p||arSkip(p))continue;
+      if(!/[A-Za-z]/.test(n.nodeValue||''))continue;
+      jobs.push(n);
+    }
+    jobs.forEach(function(n){
+      const cur=n.nodeValue;
+      const had=__arText.get(n);
+      const src=had===undefined?cur:(had.ar===cur?had.en:cur);
+      const out=arPhrase(src);
+      if(out&&out!==cur){__arText.set(n,{en:src,ar:out});n.nodeValue=out;}
+    });
+    const els=root.querySelectorAll?root.querySelectorAll('[placeholder],[title],input[type="button"],input[type="submit"]'):[];
+    [].forEach.call(els,function(el){
+      if(arSkip(el))return;
+      ['placeholder','title'].forEach(function(a){
+        const v=el.getAttribute(a);if(!v)return;
+        const keep=el.getAttribute('data-ar-'+a);
+        const src=keep!==null&&keep!==undefined?keep:v;
+        const out=arPhrase(src);
+        if(out&&out!==v){el.setAttribute('data-ar-'+a,src);el.setAttribute(a,out);}
+      });
+      if(el.tagName==='INPUT'&&/^(button|submit)$/i.test(el.type||'')){
+        const out=arPhrase(el.value);
+        if(out&&out!==el.value){el.setAttribute('data-ar-value',el.value);el.value=out;}
+      }
+    });
+  }catch(e){console.warn('[AR] pass failed',e);}
+  __arBusy=false;
+}
+// Every word put back exactly as it was written
+function arRevert(root){
+  const r=root||document.body;
+  const w=document.createTreeWalker(r,NodeFilter.SHOW_TEXT,null);
+  const jobs=[];let n;
+  while((n=w.nextNode()))jobs.push(n);
+  jobs.forEach(function(n){
+    const had=__arText.get(n);
+    if(had&&n.nodeValue===had.ar)n.nodeValue=had.en;
+  });
+  [].forEach.call(r.querySelectorAll('[data-ar-placeholder],[data-ar-title],[data-ar-value]'),function(el){
+    ['placeholder','title','value'].forEach(function(a){
+      const keep=el.getAttribute('data-ar-'+a);
+      if(keep===null)return;
+      if(a==='value')el.value=keep;else el.setAttribute(a,keep);
+      el.removeAttribute('data-ar-'+a);
+    });
+  });
+}
+let __arObs=null;
+function arObserve(on){
+  if(on){
+    if(__arObs)return;
+    __arObs=new MutationObserver(function(muts){
+      if(__arBusy||_lang!=='ar')return;
+      const roots=[];
+      muts.forEach(function(m){
+        [].forEach.call(m.addedNodes,function(nd){
+          if(nd.nodeType===1)roots.push(nd);
+          else if(nd.nodeType===3&&nd.parentElement)roots.push(nd.parentElement);
+        });
+      });
+      if(!roots.length)return;
+      // A timer, not an animation frame: a tab in the background gets no
+      // frames, and the words would sit in English until it was looked at
+      setTimeout(function(){
+        if(_lang!=='ar')return;
+        roots.forEach(function(r){try{if(r.isConnected)arApply(r);}catch(e){}});
+      },0);
+    });
+    __arObs.observe(document.body,{childList:true,subtree:true});
+    arApply(document.body);
+  }else if(__arObs){
+    __arObs.disconnect();__arObs=null;
+    arRevert(document.body);
+  }
+}
+
 const TH={blue:{n:'Ocean Blue',a:'#3d6ee0',a2:'#e4ecfb',a3:'#bdd0f4'},teal:{n:'Teal',a:'#0d8a7a',a2:'#dcf3ef',a3:'#9bdfd2'},purple:{n:'Purple',a:'#7c3aed',a2:'#ece4fc',a3:'#cfb9f7'},gold:{n:'Gold',a:'#b88a04',a2:'#fdf3d2',a3:'#f2dc8f'},rose:{n:'Rose',a:'#d4408d',a2:'#fce4f0',a3:'#f4b2d2'},green:{n:'Emerald',a:'#10a169',a2:'#dff5ea',a3:'#a7e2c4'},orange:{n:'Sunrise',a:'#dd6b20',a2:'#fde9d6',a3:'#f4c391'}};
 function applyTheme(k){const t=TH[k]||TH.blue;document.documentElement.style.setProperty('--ac',t.a);document.documentElement.style.setProperty('--ac2',t.a2);document.documentElement.style.setProperty('--ac3',t.a3);}
 
