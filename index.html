@@ -21399,7 +21399,76 @@ function spdPut(rec){
 // Days down the side, periods across the top, the names in the cells — the
 // same shape the school prints. Anything that is not a name is left out.
 const SPD_SKIP=/^(day|days|period|periods|p\d|no\.?|sr\.?|s\.?n\.?|substitution|substitutions|preference|preferences|list|teacher|teachers|name|names|time|table|sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/i;
+// The sheet the school prints: a page for each day, the periods down the side
+// and 1st / 2nd / 3rd / 4th Preference across, each name with its load under
+// it. Pages that are not a day's sheet — the workload summary at the back —
+// are passed over.
+function spdParseByPreference(pages){
+  const days={},problems=[];
+  let sawDayPage=false;
+  (pages||[]).forEach(function(items,pi){
+    if(!items||!items.length)return;
+    const prefCols=items.filter(function(t){return /^(\d+)\s*(st|nd|rd|th)\s+Preference$/i.test(String(t.s||'').trim());})
+      .map(function(t){return {n:parseInt(String(t.s).match(/^(\d+)/)[1],10),x:t.x,y:t.y};})
+      .sort(function(a,b){return a.n-b.n;});
+    if(prefCols.length<2)return;                       // not a day's sheet
+    const day=SUB_PREF_DAYS.filter(function(n){
+      return items.some(function(t){return String(t.s||'').trim().toLowerCase()===n.toLowerCase();});
+    })[0];
+    if(!day){problems.push('Page '+(pi+1)+': the day could not be made out');return;}
+    sawDayPage=true;
+    const headY=prefCols[0].y;
+    // The period numbers down the left. A heading is printed further right
+    // than the names under it, so the edge of that column is taken from the
+    // numbers themselves, not from where "1st Preference" happens to start.
+    const nums=items.filter(function(t){
+      return /^\d{1,2}$/.test(String(t.s||'').trim())&&t.y<headY-4;
+    });
+    if(!nums.length){problems.push('Page '+(pi+1)+' ('+day+'): no period numbers found');return;}
+    const periodX=Math.min.apply(null,nums.map(function(t){return t.x;}));
+    const leftX=periodX+25;
+    const rows=nums.filter(function(t){return Math.abs(t.x-periodX)<=12;})
+      .map(function(t){return {p:parseInt(t.s,10),y:t.y};})
+      .sort(function(a,b){return b.y-a.y;});
+    if(!rows.length){problems.push('Page '+(pi+1)+' ('+day+'): no period numbers found');return;}
+    const out={};
+    rows.forEach(function(r,i){
+      const top=(i===0)?headY-4:(rows[i-1].y+r.y)/2;
+      const bottom=(i+1<rows.length)?(r.y+rows[i+1].y)/2:-1e9;
+      const picked={};
+      items.forEach(function(t){
+        if(t.y>=top||t.y<bottom)return;
+        const s=String(t.s||'').trim();
+        if(!s||t.x<leftX)return;                       // the period column itself
+        if(/^load\b/i.test(s))return;                  // "Load 24 · Free 3"
+        if(/^(free|—|-)$/i.test(s)||/^[0-9\W]+$/.test(s))return;
+        if(SPD_SKIP.test(s)||/preference/i.test(s))return;
+        let best=null;
+        prefCols.forEach(function(c){
+          const d=Math.abs(t.x-c.x);
+          if(!best||d<best.d)best={n:c.n,d:d};
+        });
+        if(!best||best.d>90)return;
+        if(!picked[best.n]||t.y>picked[best.n].y)picked[best.n]={s:s,y:t.y};
+      });
+      const names=Object.keys(picked).map(Number).sort(function(a,b){return a-b;})
+        .map(function(n){return picked[n].s;});
+      if(names.length)out[r.p]=names;
+    });
+    if(Object.keys(out).length)days[day]=Object.assign(days[day]||{},out);
+  });
+  return {prefs:days,problems:sawDayPage?problems:[],found:sawDayPage};
+}
 function spdParse(pages){
+  // the school's own sheet first; the plain day-by-period grid if it is not that
+  const byPref=spdParseByPreference(pages);
+  if(byPref.found&&spdCount(byPref.prefs))return {prefs:byPref.prefs,problems:byPref.problems};
+  const grid=spdParseGrid(pages);
+  if(spdCount(grid.prefs))return grid;
+  return {prefs:byPref.found?byPref.prefs:grid.prefs,
+    problems:(byPref.problems||[]).concat(grid.problems||[])};
+}
+function spdParseGrid(pages){
   const days={},problems=[];
   const dayNames=SUB_PREF_DAYS;
   (pages||[]).forEach(function(items,pi){
