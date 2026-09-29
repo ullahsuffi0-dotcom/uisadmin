@@ -14634,6 +14634,18 @@ function rexOrphanTag(r){
 // What he is on the absent list for is now compared with what his schedule
 // holds, and the difference is what still wants a date — added to the schedule
 // he already has rather than made into a second one.
+// One rule for "the same boy", used everywhere the absent list and the
+// schedules are set against each other. An id settles it when both sides carry
+// one and they agree; otherwise the name decides, read forgivingly — a double
+// space or a capital letter between the absent list and the schedule is not a
+// different boy. A single rule means the Partial mark on the screen, the
+// automatic run and the edit window can never disagree about what is missing.
+function rexNameKey(n){return String(n||'').replace(/\s+/g,' ').trim().toLowerCase();}
+function rexSameStudent(aId,aName,bId,bName){
+  if(aId&&bId&&aId===bId)return true;
+  const ka=rexNameKey(aName),kb=rexNameKey(bName);
+  return !!ka&&ka===kb;
+}
 function rexSubKey(s){return String(s||'').trim().toLowerCase();}
 // Every boy on the absent list, with the papers still wanting a re-exam
 function rexAbsentMap(){
@@ -14650,13 +14662,10 @@ function rexAbsentMap(){
   return m;
 }
 function rexScheduleFor(studentId,studentName){
-  const nm=String(studentName||'').trim().toLowerCase();
-  return (typeof rexLive==='function'?rexLive():(DB.get('reexam_schedules')||[]))
-    .filter(function(r){
-      if(!r)return false;
-      if(studentId&&r.studentId)return r.studentId===studentId;
-      return String(r.studentName||'').trim().toLowerCase()===nm;
-    })[0]||null;
+  const all=(typeof rexLive==='function'?rexLive():(DB.get('reexam_schedules')||[]));
+  return all.filter(function(r){
+    return r&&rexSameStudent(studentId,studentName,r.studentId,r.studentName);
+  })[0]||null;
 }
 // The papers of his that the schedule does not yet hold
 function rexMissingSubjects(stu,sched){
@@ -14768,14 +14777,15 @@ function renderRexAbsentStudents(){
     const absentSubjects=[...stu.subjects];
     const doneSubjects=[...stu.doneSubjects].filter(s=>absentSubjects.indexOf(s)<0);
     // Find any existing schedule for this student
-    const existing=schedules.find(r=>(stu.studentId&&r.studentId===stu.studentId)||r.studentName===stu.studentName);
+    const existing=schedules.find(r=>r&&rexSameStudent(stu.studentId,stu.studentName,r.studentId,r.studentName));
     let status='Not Created',statusClass='bgr',scheduledSubjects=[];
     if(existing)scheduledSubjects=(existing.subjects||[]).map(s=>s.subject);
     if(!absentSubjects.length){
       // every paper he missed is finished with
       status='Done';statusClass='bgn';
     }else if(existing){
-      const allCovered=absentSubjects.every(s=>scheduledSubjects.includes(s));
+      const held={};scheduledSubjects.forEach(function(s){held[rexSubKey(s)]=1;});
+      const allCovered=absentSubjects.every(function(s){return !!held[rexSubKey(s)];});
       if(allCovered){status='Created';statusClass='bgn';}
       else{status='Partial';statusClass='bgo';}
     }
@@ -14803,14 +14813,14 @@ function buildRexAbsTbl(rows){
     return'<tr><td><strong>'+esc(r.studentName)+'</strong></td><td>'+(r.grade||'')+(r.section||'')+'</td><td><div style="display:flex;gap:3px;flex-wrap:wrap">'+r.absentSubjects.map(s=>{
       const scheduled=r.scheduledSubjects.includes(s);
       return'<span class="badge '+(scheduled?'bgn':'brd')+'" title="'+(scheduled?'Scheduled':'Not scheduled')+'">'+esc(s)+'</span>';
-    }).join('')+(r.doneSubjects||[]).map(function(s){return '<span class="badge bgr" style="opacity:.75" title="The re-exam of this paper is done with">✓ '+esc(s)+'</span>';}).join('')+'</div></td><td><span class="badge '+r.statusClass+'">'+r.status+'</span>'+(r.status==='Partial'?'<div style="font-size:9px;color:var(--tx3);margin-top:2px">Missing: '+r.absentSubjects.filter(s=>!r.scheduledSubjects.includes(s)).map(s=>esc(s)).join(', ')+'</div>':'')+'</td><td>'+(r.existing?'<button class="btn bp bxs" onclick="editReexamM(\''+r.existing.id+'\')">Edit Schedule</button><button class="btn bg2 bxs" onclick="vReexam(\''+r.existing.id+'\')">View</button>':(r.status==='Done'?'<span style="font-size:10px;color:var(--tx3)">No re-exam wanted</span>':'<button class="btn bp bxs" onclick="addReexamForStudent(\''+esc((r.studentId||'').replace(/'/g,"\\'"))+'\',\''+esc(r.studentName.replace(/'/g,"\\'"))+'\')">Create Schedule</button>'))+'</td></tr>';
+    }).join('')+(r.doneSubjects||[]).map(function(s){return '<span class="badge bgr" style="opacity:.75" title="The re-exam of this paper is done with">✓ '+esc(s)+'</span>';}).join('')+'</div></td><td><span class="badge '+r.statusClass+'">'+r.status+'</span>'+(r.status==='Partial'?'<div style="font-size:9px;color:var(--tx3);margin-top:2px">Missing: '+r.absentSubjects.filter(function(s){var h={};r.scheduledSubjects.forEach(function(x){h[rexSubKey(x)]=1;});return !h[rexSubKey(s)];}).map(s=>esc(s)).join(', ')+'</div>':'')+'</td><td>'+(r.existing?'<button class="btn bp bxs" onclick="editReexamM(\''+r.existing.id+'\')">Edit Schedule</button><button class="btn bg2 bxs" onclick="vReexam(\''+r.existing.id+'\')">View</button>':(r.status==='Done'?'<span style="font-size:10px;color:var(--tx3)">No re-exam wanted</span>':'<button class="btn bp bxs" onclick="addReexamForStudent(\''+esc((r.studentId||'').replace(/'/g,"\\'"))+'\',\''+esc(r.studentName.replace(/'/g,"\\'"))+'\')">Create Schedule</button>'))+'</td></tr>';
   }).join('')+'</tbody></table></div>';
 }
 
 function addReexamForStudent(sid,sname){
   // Pre-fill the form with this student's data
   const abs=DB.get('exam_absents')||[];
-  const all=abs.filter(a=>(sid&&a.studentId===sid)||a.studentName===sname);
+  const all=abs.filter(function(a){return rexSameStudent(sid,sname,a.studentId,a.studentName);});
   // A paper whose re-exam is conducted, or which needs none, is left out
   const stuAbs=all.filter(a=>!(typeof absRexDone==='function'&&absRexDone(a)));
   if(!stuAbs.length){
@@ -15229,7 +15239,7 @@ function renderReexamForm(){
   const absentStudents=Object.values(stuMap).sort((a,b)=>a.studentName.localeCompare(b.studentName));
   
   // For the chosen student, build the subjects list
-  const chosenStu=data.studentName?absentStudents.find(s=>(data.studentId&&s.studentId===data.studentId)||s.studentName===data.studentName):null;
+  const chosenStu=data.studentName?absentStudents.find(function(s){return rexSameStudent(data.studentId,data.studentName,s.studentId,s.studentName);}):null;
   const stuSubjects=chosenStu?Object.values(chosenStu.subjects):[];
   
   // Map existing chosen subjects to data.subjects rows (to preserve dates already set)
