@@ -17478,50 +17478,116 @@ function xcStu(id){
   const s=(typeof gS==='function')?gS(id):null;
   return s?{name:(typeof fN==='function')?fN(s):'',cls:xcCls(s.grade,s.section),sn:s.sn||'',csn:s.csn||''}:{name:'',cls:'',sn:'',csn:''};
 }
-// Every list the school can take away, in the order they stand on the menu
+// A number is written even when it is nought; only a missing one is left blank.
+function xcNum(v){return (v==null||v==='')?'':String(v);}
+// Firebase hands a list back as an object whenever it has holes in it, so a
+// record pulled from the cloud can carry {0:'Talking',1:'Noise'} where the
+// screen wrote ['Talking','Noise']. Everything that is meant to be a list is
+// read through here, or a cloud copy would export empty where the local one
+// exported properly.
+function xcArr(v){
+  if(Array.isArray(v))return v.filter(function(x){return x!=null;});
+  if(v&&typeof v==='object')return Object.keys(v).sort(function(a,b){
+    const na=Number(a),nb=Number(b);
+    return (isNaN(na)||isNaN(nb))?String(a).localeCompare(String(b)):na-nb;
+  }).map(function(k){return v[k];}).filter(function(x){return x!=null;});
+  return [];
+}
+function xcFN(s){return (typeof fN==='function')?fN(s):(((s&&s.firstName)||'')+' '+((s&&s.lastName)||'')).trim();}
+function xcDay(d){return (typeof getDayOfWeek==='function')?(getDayOfWeek(String(d||'').split('T')[0])||''):'';}
+// A moment kept as an ISO stamp reads as the day and the time, not as machine text
+function xcWhen(v){
+  const s=String(v==null?'':v);
+  if(!s)return '';
+  const p=s.split('T');
+  return p[1]?(p[0]+' '+p[1].slice(0,5)):p[0];
+}
+function xcKey(n){return String(n||'').replace(/\s+/g,' ').trim().toLowerCase();}
+function xcByDate(i){return function(a,b){return String(a[i]||'').localeCompare(String(b[i]||''));};}
+function xcGradeKey(g){const n=parseInt(g,10);return isNaN(n)?('z'+String(g||'')):('0'+n).slice(-2);}
+// The whole span a list covers, for the helpers that ask for a date range
+function xcSpan(key,field){
+  const l=xcList(key);
+  let from='',to='';
+  l.forEach(function(r){
+    const d=String((r&&r[field])||'').split('T')[0];
+    if(!d)return;
+    if(!from||d<from)from=d;
+    if(!to||d>to)to=d;
+  });
+  return {from:from||'0000-01-01',to:to||'9999-12-31'};
+}
+// The evaluation form as it stands today, so every criterion has its own column
+function xcEvalItems(){
+  const out=[];
+  try{
+    (typeof evalRubric==='function'?evalRubric():[]).forEach(function(c){
+      xcArr(c.items).forEach(function(it){
+        if(!it||!it.k)return;
+        const label=String(it.l||it.label||it.t||it.k);
+        const max=(it.max==null?(it.m==null?'':it.m):it.max);
+        out.push({k:it.k,label:(c.cat?c.cat+' — ':'')+label,m:max});
+      });
+    });
+  }catch(e){}
+  return out;
+}
+// A list's columns, which for a form that can be re-weighted are worked out afresh
+function xcHead(s){
+  if(!s)return [];
+  try{return (typeof s.head==='function')?s.head():s.head;}catch(e){return [];}
+}
+// Every list the school can take away, in the order they stand on the menu.
+// The columns are the record's own fields, named as the school names them on
+// the screen, and where the app already knows how to lay a list out flat —
+// the duty roster, the substitutions — that same reckoning is used here, so a
+// CSV can never say something different from the screen it came from.
+// `dcol` says which column the From and To dates are to read.
 const XC_SETS=[
-  // The roll itself. Its date is the day the boy was put on the roll, which
-  // sits at the end of the row rather than the front, so dcol says where the
-  // From and To dates are to look.
-  {id:'students',l:'Students — the roll',date:'created',dcol:13,
+  // The roll itself
+  {id:'students',l:'Students — the roll',dcol:13,
    head:['SN','Class SN','Student','First name','Last name','Class','Grade','Section',
          'Gender','Nationality','Father phone','Mother phone','Advisor','Added on'],
    rows:function(){
-     const acc=(typeof fbToArrayShape==='function')?(fbToArrayShape(DB.get('accounts'))||[]):(DB.get('accounts')||[]);
+     const acc=xcList('accounts');
      const advisor=function(id){
-       const a=(acc||[]).filter(function(x){return x&&x.id===id;})[0];
+       const a=acc.filter(function(x){return x&&x.id===id;})[0];
        return a?(((a.firstName||'')+' '+(a.lastName||'')).trim()||a.username||''):'';
      };
      return xcList('students').map(function(s){
-       return [s.sn==null?'':String(s.sn),s.csn==null?'':String(s.csn),
-         (typeof fN==='function')?fN(s):((s.firstName||'')+' '+(s.lastName||'')).trim(),
-         s.firstName||'',s.lastName||'',xcCls(s.grade,s.section),
-         s.grade==null?'':String(s.grade),s.section||'',s.gender||'',s.nationality||'',
+       return [xcNum(s.sn),xcNum(s.csn),xcFN(s),s.firstName||'',s.lastName||'',
+         xcCls(s.grade,s.section),xcNum(s.grade),s.section||'',s.gender||'',s.nationality||'',
          s.fatherPhone||'',s.motherPhone||'',advisor(s.advisorId),xcDate(s.created)];
      }).sort(function(a,b){
-       return String(a[6]).padStart(3,'0').localeCompare(String(b[6]).padStart(3,'0'))
-         ||String(a[7]).localeCompare(String(b[7]))
-         ||(Number(a[0])||0)-(Number(b[0])||0);
+       return xcGradeKey(a[6]).localeCompare(xcGradeKey(b[6]))
+         ||String(a[7]).localeCompare(String(b[7]))||(Number(a[0])||0)-(Number(b[0])||0);
      });
    }},
-  {id:'infractions',l:'Infractions',date:'date',
-   head:['Date','Student','Class','Infraction','Degree','Action taken','Remarks','Reported by','Status'],
+  // Infractions — the same columns the Export Data screen has always used
+  {id:'infractions',l:'Infractions',dcol:0,
+   head:['Date','Student','Class','Grade','Section','Degree','Occurrence','Violation','Procedure',
+         'Points deducted','Description','Guardian contact','Follow-up status','Action taken',
+         'Recorded by','Principal ack','Recorded on'],
    rows:function(){
      return xcList('infractions').map(function(r){
        return [xcDate(r.date||r.created),r.studentName||'',xcCls(r.grade,r.section),
-         r.type||r.infractionType||'',r.degree||'',r.actionTaken||'',r.remarks||'',
-         r.reportedByName||r.createdByName||'',r.status||''];
-     });
+         xcNum(r.grade),r.section||'',r.degree||'',r.occurrence||'',r.type||'',r.procedure||'',
+         xcNum(r.pointsDeducted),r.description||'',r.guardianContact||'',r.followUpStatus||'',
+         r.actionTaken||'',r.createdByName||'',r.principalAck||'',xcDate(r.created)];
+     }).sort(xcByDate(0));
    }},
-  {id:'attendance',l:'Attendance — a row for each absence and each late arrival',date:'date',
-   head:['Date','Day','Student','Class','What','Time','Excused','Reason','Recorded by'],
+  // The register — a row for each absence and each late arrival
+  {id:'attendance',l:'Attendance — a row for each absence and each late arrival',dcol:0,
+   head:['Date','Day','Student','Class','SN','What','Time','Excused','Excused from','Excused to',
+         'Reason','Recorded by','Taken at'],
    rows:function(){
      const out=[];
      const exc=(typeof getExcused==='function')?getExcused():[];
-     const covered=function(sid,name,d){
+     const leave=function(sid,name,d){
        return exc.filter(function(e){
+         if(!e||e.deleted)return false;
          const same=(e.studentId&&sid&&e.studentId===sid)
-           ||String(e.studentName||'').trim().toLowerCase()===String(name||'').trim().toLowerCase();
+           ||xcKey(e.studentName)===xcKey(name);
          if(!same)return false;
          const f=String(e.from||''),t=String(e.to||e.from||'');
          return f&&d>=f&&d<=t;
@@ -17529,154 +17595,206 @@ const XC_SETS=[
      };
      (DB.get('attendance')||[]).forEach(function(a){
        if(!a||!a.date)return;
-       const day=(typeof getDayOfWeek==='function')?(getDayOfWeek(a.date)||''):'';
-       (a.absentIds||[]).forEach(function(sid){
-         const s=xcStu(sid);
-         const e=covered(sid,s.name,a.date);
-         out.push([a.date,day,s.name,s.cls,'Absent','',e?'Yes':'No',e?(e.reason||''):'',
-           e?(e.addedBy||''):(a.markedBy||'')]);
+       const day=xcDay(a.date);
+       const done=a.classDone||{};
+       const tookIt=function(cls){
+         const c=done[cls];
+         return c?{by:c.by||'',at:xcWhen(c.at)}:{by:a.markedBy||'',at:xcWhen(a.markedAt)};
+       };
+       xcArr(a.absentIds).forEach(function(sid){
+         const s=xcStu(sid);const t=tookIt(s.cls);const e=leave(sid,s.name,a.date);
+         out.push([a.date,day,s.name,s.cls,xcNum(s.sn),'Absent','',e?'Yes':'No',
+           e?(e.from||''):'',e?(e.to||e.from||''):'',e?(e.reason||''):'',
+           e&&e.addedBy?e.addedBy:t.by,t.at]);
        });
-       (a.lateIds||[]).forEach(function(sid){
-         const s=xcStu(sid);
-         out.push([a.date,day,s.name,s.cls,'Late',(a.lateTimes||{})[sid]||'','','',a.markedBy||'']);
+       xcArr(a.lateIds).forEach(function(sid){
+         const s=xcStu(sid);const t=tookIt(s.cls);
+         out.push([a.date,day,s.name,s.cls,xcNum(s.sn),'Late',(a.lateTimes||{})[sid]||'',
+           '','','','',t.by,t.at]);
        });
      });
      return out.sort(function(x,y){return String(x[0]).localeCompare(String(y[0]))||String(x[2]).localeCompare(String(y[2]));});
    }},
-  {id:'late_arrivals',l:'Late comers — recorded at the gate',date:'date',
-   head:['Date','Day','Student','Class','Time','Reason','Recorded by'],
+  {id:'late_arrivals',l:'Late comers — recorded at the gate',dcol:0,
+   head:['Date','Day','Time','Student','Class','Reason','Recorded by','How','On the register','Recorded on'],
    rows:function(){
-     return xcList('late_arrivals').map(function(r){
-       return [xcDate(r.date),(typeof getDayOfWeek==='function')?(getDayOfWeek(xcDate(r.date))||''):'',
-         r.studentName||'',r.className||xcCls(r.grade,r.section),r.time||'',r.reason||'',
-         r.recordedBy||r.recordedByName||''];
-     }).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]));});
+     return (typeof getLateArrivals==='function'?getLateArrivals():xcList('late_arrivals')).map(function(r){
+       return [xcDate(r.date),r.day||xcDay(r.date),r.time||'',r.studentName||'',
+         r.className||xcCls(r.grade,r.section),r.reason||'',r.recordedBy||'',
+         r.source||'',r.applied?'Yes':'No',xcWhen(r.created)];
+     }).sort(xcByDate(0));
    }},
-  {id:'early_pickups',l:'Early pickups',date:'date',
-   head:['Date','Time','Track no','Student','Class','Taken by','Relation','Phone','Reason','Status','Requested on'],
+  // Early pickups — the columns the pickup screen already exports
+  {id:'early_pickups',l:'Early pickups',dcol:15,
+   head:['Track #','Student','Class','Guardian','Phone','Picked up by','Pickup person name',
+         'Pickup person phone','Pickup person ID','Reason','Pickup time','Status','Authorized by',
+         'QR issued','Parent notified','Notified by','Requested on','Notes'],
    rows:function(){
-     return xcList('early_pickups').map(function(r){
-       return [xcDate(r.date||r.created),r.pickupTime||'',r.trackNo||'',r.studentName||'',
-         xcCls(r.grade,r.section),r.pickedByName||r.pickedBy||'',r.guardianRole||'',
-         r.guardianPhone||r.pickedByPhone||'',r.reason||'',r.status||'',xcDate(r.created||r.submittedAt)];
-     }).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]));});
+     return xcList('early_pickups').map(function(p){
+       return [p.trackNo||p.id||'',p.studentName||'',p.className||xcCls(p.grade,p.section),
+         p.guardianName||'',p.guardianPhone||'',p.pickedBy||'',p.pickedByName||'',
+         p.pickedByPhone||'',p.pickedById||'',p.reason||'',p.pickupTime||'',p.status||'',
+         p.handledBy||'',p.qrIssuedAt?'Yes':'No',p.releaseNotifiedAt?xcWhen(p.releaseNotifiedAt):'No',
+         p.releaseNotifiedBy||'',xcDate(p.created||p.submittedAt),p.notes||''];
+     }).sort(xcByDate(16));
    }},
-  {id:'duty_rosters',l:'Duty roster — a row for each teacher on each spot',date:'date',
-   head:['Date','Day','Term','Week','Duty','Place','Teacher'],
+  // The duty roster, laid out flat by the school's own reckoning
+  {id:'duty_rosters',l:'Duty roster — a row for each teacher on each spot',dcol:5,
+   head:['Teacher','Term','Week','Week from','Week to','Date','Day','Duty','Time','Place','Type','Minutes','Duration','Assigned by'],
    rows:function(){
-     const out=[];
-     xcList('duty_rosters').forEach(function(r){
-       if(!r||!r.date)return;
-       const slots=r.slots||{};
-       // the duty's own name, as the roster shows it, not its internal id
-       const named={};
-       try{((typeof getDutySlots==='function')?getDutySlots(r):[]).forEach(function(s){if(s&&s.id)named[s.id]=s.label||s.id;});}catch(e){}
-       Object.keys(slots).forEach(function(slotId){
-         const spots=slots[slotId]||{};
-         Object.keys(spots).forEach(function(spot){
-           const who=spots[spot];
-           (Array.isArray(who)?who:Object.keys(who||{}).map(function(k){return who[k];})).forEach(function(t){
-             if(t)out.push([r.date,r.day||'',r.termName||'',r.weekNo==null?'':String(r.weekNo),named[slotId]||slotId,spot,t]);
-           });
-         });
-       });
-       (r.classDuties||[]).forEach(function(c){
-         if(c&&c.teacher)out.push([r.date,r.day||'',r.termName||'',r.weekNo==null?'':String(r.weekNo),'Class duty',
-           (c.class||'')+(c.room?' · '+c.room:''),c.teacher]);
-       });
+     const span=xcSpan('duty_rosters','date');
+     const rows=(typeof buildDutyExportRows==='function')?buildDutyExportRows(span.from,span.to,''):[];
+     return rows.map(function(r){
+       return [r.teacher||'',r.term||'',r.week==null||r.week===''?'':('Week '+r.week),
+         r.weekFrom||'',r.weekTo||'',r.date||'',r.day||'',r.slot||'',r.time||'',r.spot||'',
+         r.type||'',xcNum(r.minutes),(typeof fmtHM==='function')?fmtHM(r.minutes):'',r.by||''];
      });
-     return out.sort(function(a,b){return String(a[0]).localeCompare(String(b[0]))||String(a[4]).localeCompare(String(b[4]));});
    }},
-  {id:'substitutions',l:'Substitutions',date:'date',
-   head:['Date','Day','Period','Class','Subject','Absent teacher','Substitute','Notes','Assigned by'],
+  {id:'substitutions',l:'Substitutions',dcol:5,
+   head:['Substitute','Term','Week','Week from','Week to','Date','Day','Period','Class','Subject','Absent teacher','Notes','Assigned by'],
    rows:function(){
-     return xcList('substitutions').map(function(r){
-       return [xcDate(r.date),r.day||'',r.period||(r.periodNumber?'Period '+r.periodNumber:''),
-         r.class||r.className||'',r.subject||'',r.absentName||'',r.substituteName||'',
-         r.notes||'',r.assignedByName||''];
-     }).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]))||String(a[2]).localeCompare(String(b[2]));});
+     const span=xcSpan('substitutions','date');
+     const rows=(typeof buildSubExportRows==='function')?buildSubExportRows(span.from,span.to,''):[];
+     return rows.map(function(r){
+       return [r.teacher||'',r.term||'',r.week==null||r.week===''?'':('Week '+r.week),
+         r.weekFrom||'',r.weekTo||'',r.date||'',r.day||'',
+         String(r.period||(r.periodNumber?'Period '+r.periodNumber:'')),
+         r.cls||'',r.subject||'',r.absent||'',r.notes||'',r.by||''];
+     });
    }},
-  {id:'class_visits',l:'Class visits — the evaluations',date:'date',
-   head:['Date','Period','Teacher','Subject','Class','Supervisor','Score','Out of','Percent','Rating',
-         'Strengths','Areas for improvement','Follow-up','Academic ack','Principal ack'],
+  // Class visits, criterion by criterion
+  {id:'class_visits',l:'Class visits — the evaluations',dcol:0,
+   head:function(){
+     return ['Date','Period','Teacher','Subject','Class','Supervisor','Supervisor role','Visit type',
+       'Score','Out of','Percent','Rating','Strengths','Areas for improvement','Follow-up',
+       'Academic ack','Academic ack on','Principal ack','Principal ack on','Recorded on']
+       .concat(xcEvalItems().map(function(it){return it.label+' (/'+it.m+')';}));
+   },
    rows:function(){
+     const items=xcEvalItems();
      return xcList('class_visits').map(function(v){
+       const sc=v.scores||{};
        const tot=v.scores?evalGetTotal(v.scores):(parseInt(v.totalScore,10)||0);
-       const pct=EVAL_TOTAL?Math.round(tot/EVAL_TOTAL*100):0;
-       return [xcDate(v.date),v.period==null?'':String(v.period),v.teacher||'',v.subject||'',xcCls(v.grade,v.section),
-         v.supervisorName||'',String(tot),String(EVAL_TOTAL),pct+'%',(evalGetGrade(pct)||{}).l||'',
+       const outOf=(typeof EVAL_TOTAL==='number')?EVAL_TOTAL:items.reduce(function(a,i){return a+(parseFloat(i.m)||0);},0);
+       const pct=(v.percentage!=null&&v.percentage!=='')?parseInt(v.percentage,10):(outOf?Math.round(tot/outOf*100):0);
+       return [xcDate(v.date),String(v.period==null?'':v.period),v.teacher||'',v.subject||'',
+         xcCls(v.grade,v.section),v.supervisorName||'',v.supervisorRole||'',v.visitType||'',
+         String(tot),String(outOf),pct+'%',
+         (typeof evalGetGrade==='function'?(evalGetGrade(pct)||{}).l:'')||v.rating||'',
          v.strengths||'',v.improvements||'',v.followUp||'',
-         v.academicAck?('Yes '+(v.academicAckDate||'')):'No',
-         v.principalAck?('Yes '+(v.principalAckDate||'')):'No'];
-     }).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]));});
+         v.academicAck||'',v.academicAckDate||'',v.principalAck||'',v.principalAckDate||'',
+         xcWhen(v.created)]
+         .concat(items.map(function(it){return xcNum(sc[it.k]);}));
+     }).sort(xcByDate(0));
    }},
-  {id:'classroom_discipline',l:'Student discipline reports — from the teachers',date:'date',
-   head:['Date','Student','Class','What was reported','Action taken','Notes','Teacher','Reported to','Status'],
+  {id:'classroom_discipline',l:'Student discipline reports — from the teachers',dcol:0,
+   head:['Date','Student','Class','What was reported','Other','Action taken','Notes','Teacher',
+         'Reported to','Their role','Status','Office remarks','Reviewed by','Reviewed on',
+         'Referred on','Referred by','Reported on'],
    rows:function(){
      return xcList('classroom_discipline').map(function(r){
        return [xcDate(r.date||r.created),r.studentName||'',r.className||xcCls(r.grade,r.section),
-         ((r.issues||[]).join('; ')+(r.otherIssue?'; '+r.otherIssue:'')).replace(/^; /,''),
-         r.actionsTaken||'',r.additionalNotes||'',r.teacherName||'',r.reportedToName||'',r.status||''];
-     }).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]));});
+         xcArr(r.issues).join('; '),r.otherIssue||'',r.actionsTaken||'',r.additionalNotes||'',
+         r.teacherName||'',r.reportedToName||'',r.reportedToRole||'',r.status||'',
+         r.vpRemarks||'',r.reviewedBy||'',xcWhen(r.reviewedAt),
+         xcWhen(r.referredAt),r.referredBy||'',xcWhen(r.created)];
+     }).sort(xcByDate(0));
    }},
-  {id:'period_discipline',l:'Class period discipline — the marks each lesson',date:'date',
-   head:['Date','Period','Class','Teacher','Marks','Behaviours noted','Students named','Recorded by'],
+  // The lesson and break marks, as the discipline screen exports them
+  {id:'period_discipline',l:'Class period discipline — the marks each lesson',dcol:0,
+   head:function(){
+     const max=(typeof PD_MAX==='number')?PD_MAX:10;
+     return ['Date','Day','Period','Class','Subject','Marks /'+max,'Band','Students named','Count',
+       'Infractions filed','What happened','Note','Teacher','Recorded by','How','Recorded on'];
+   },
    rows:function(){
      return xcList('period_discipline').filter(function(r){return !(typeof pdIsGone==='function'&&pdIsGone(r));})
       .map(function(r){
-        return [xcDate(r.date),String(r.periodNumber||r.period||''),r.className||'',r.teacherName||'',
-          (typeof pdMarksOf==='function')?String(pdMarksOf(r)):'',
-          (r.behaviours||[]).join('; '),
-          (r.students||[]).map(function(s){return s&&s.name;}).filter(Boolean).join('; '),
-          r.byName||r.recordedBy||''];
-      }).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]))||(Number(a[1])||0)-(Number(b[1])||0);});
+        const st=xcArr(r.students);
+        return [xcDate(r.date),xcDay(r.date),String(r.period||r.periodNumber||r.slot||''),
+          r.className||'',r.subject||'',
+          (typeof pdFmt==='function'&&typeof pdMarksOf==='function')?pdFmt(pdMarksOf(r)):xcNum(r.marks),
+          r.rating||'',st.map(function(s){return s&&s.name;}).filter(Boolean).join('; '),
+          String(st.length),String(st.filter(function(s){return s&&s.infractionId;}).length),
+          xcArr(r.behaviours).join('; '),r.note||'',r.teacherName||'',
+          r.recordedBy||r.byName||'',r.source||'',xcWhen(r.created)];
+      }).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]))||(Number(a[2])||0)-(Number(b[2])||0);});
    }},
-  {id:'exam_absents',l:'Exam absent list',date:'absentDate',
-   head:['Absent date','Student','Class','Subject','Exam session','Re-exam status','Remarks','Added by'],
+  {id:'exam_absents',l:'Exam absent list',dcol:5,
+   head:['Student','Class','Grade','Section','Exam session','Absent date','Subject','Re-exam','Remarks','Added by','Added on'],
    rows:function(){
-     return (DB.get('exam_absents')||[]).map(function(a){
-       return [xcDate(a.absentDate),a.studentName||'',xcCls(a.grade,a.section),a.subject||'',
-         a.examSession||'',(typeof absRexOf==='function')?(absRexOf(a).s||''):'',a.remarks||'',a.addedBy||''];
-     }).sort(function(x,y){return String(x[0]).localeCompare(String(y[0]))||String(x[1]).localeCompare(String(y[1]));});
+     const l=(DB.get('exam_absents')||[]).filter(function(a){return a&&!a.deleted;});
+     const ord=(typeof absExportOrder==='function')?absExportOrder(l):l;
+     return ord.map(function(a){
+       return [a.studentName||'',xcCls(a.grade,a.section),xcNum(a.grade),a.section||'',
+         a.examSession||'',xcDate(a.absentDate),a.subject||'',
+         (typeof absRexOf==='function')?(absRexOf(a).s||''):'',a.remarks||'',a.addedBy||'',xcWhen(a.created)];
+     });
    }},
-  {id:'reexam_schedules',l:'Re-exam schedule — a row for each paper',date:'examDate',
-   head:['Re-exam date','Student','Class','Exam session','Subject','Venue','Status','Marks','Checked','Remarks','Parent notified'],
+  {id:'reexam_schedules',l:'Re-exam schedule — a row for each paper',dcol:0,
+   head:['Re-exam date','Start','End','Student','Class','Exam session','Subject','Venue','Invigilator',
+         'Schedule status','Paper status','Checked','Marks','Remarks','Absent on','Handed over to',
+         'Marks updated by','Notes','Parent notified','Created by','Created on'],
    rows:function(){
      const out=[];
      xcList('reexam_schedules').forEach(function(r){
-       (r.subjects||[]).forEach(function(s){
-         out.push([xcDate(s.examDate),r.studentName||'',xcCls(r.grade,r.section),r.examSession||'',
-           s.subject||'',s.venue||'',s.examStatus||'',s.marks==null?'':String(s.marks),s.checked||'',s.remarks||'',
-           r.parentNotifiedAt?('Yes '+xcDate(r.parentNotifiedAt)):'No']);
+       xcArr(r.subjects).forEach(function(s){
+         if(!s)return;
+         out.push([xcDate(s.examDate),s.startTime||'',s.endTime||'',r.studentName||'',
+           xcCls(r.grade,r.section),r.examSession||'',s.subject||'',s.venue||'',s.invigilator||'',
+           r.status||'',s.examStatus||'Pending',s.checked||'',xcNum(s.marks),s.remarks||'',
+           xcArr(s.absentDates).join('; '),r.handedOverToName||'',r.marksUpdatedBy||'',r.notes||'',
+           r.parentNotifiedAt?('Yes '+xcDate(r.parentNotifiedAt)):'No',
+           r.createdByName||'',xcWhen(r.created)]);
        });
      });
-     return out.sort(function(a,b){return String(a[0]).localeCompare(String(b[0]))||String(a[1]).localeCompare(String(b[1]));});
+     return out.sort(function(a,b){return String(a[0]).localeCompare(String(b[0]))||String(a[3]).localeCompare(String(b[3]));});
    }},
-  {id:'academic_calendar',l:'Academic calendar',date:'date',
+  {id:'academic_calendar',l:'Academic calendar',dcol:0,
    head:['Date','Event','Note'],
    rows:function(){
      return xcList('academic_calendar').map(function(e){
        return [xcDate(e.date),e.name||e.title||'',e.note||''];
-     }).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]));});
+     }).sort(xcByDate(0));
    }},
-  {id:'weekly_activities',l:'Weekly activities',date:'date',
-   head:['Date','Day','Activity','Place','Teacher','Time','Note'],
+  {id:'weekly_activities',l:'Weekly activities',dcol:0,
+   head:['Date','Day','Activity','Place','Teacher','Time','Note','Added by','Added on'],
    rows:function(){
      return xcList('weekly_activities').map(function(r){
-       return [xcDate(r.date),r.day||'',r.activity||'',r.place||'',r.teacher||'',r.time||'',r.note||''];
+       return [xcDate(r.date),r.day||xcDay(r.date),r.activity||'',r.place||'',r.teacher||'',
+         r.time||'',r.note||'',r.byName||'',xcWhen(r.at||r.created)];
      }).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]))||String(a[5]).localeCompare(String(b[5]));});
    }},
-  {id:'vp_reports',l:'Reports to the principal',date:'created',
-   head:['Date','Type','Priority','Title','Description','Written by','Status','Principal reply','Replied on'],
+  {id:'vp_reports',l:'Reports to the principal',dcol:0,
+   head:['Date','Type','Priority','Title','Description','Scope','Written by','Attachments',
+         'Principal acknowledgment','Acknowledged by','Acknowledged on'],
    rows:function(){
      return xcList('vp_reports').map(function(r){
        return [xcDate(r.created||r.date),r.type||'',r.priority||'',r.title||'',r.description||'',
-         r.createdByName||'',r.status||'',r.principalResponse||r.principalAck||'',
-         xcDate(r.respondedAt||r.principalAckDate)];
-     }).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]));});
+         r.scope||'',r.createdByName||'',String(xcArr(r.attachments).length),
+         r.principalAck||'',r.principalAckBy||'',xcWhen(r.principalAckAt)];
+     }).sort(xcByDate(0));
    }}
 ];
 function xcSet(id){return XC_SETS.filter(function(s){return s.id===id;})[0]||null;}
+// These files are written here rather than by the older expCSV, which leaves
+// the heading row unquoted — a column named after a criterion of the
+// evaluation form carries commas in it, and an unquoted heading would split
+// into columns that no longer line up with the rows beneath. Every cell is
+// quoted, a nought is written as 0 rather than being dropped, and the file is
+// given the byte order mark Excel wants for Arabic names.
+function xcCell(v){
+  const s=(v==null)?'':String(v);
+  return '"'+s.replace(/\r\n?/g,'\n').replace(/"/g,'""')+'"';
+}
+function xcCSV(head,rows,fn){
+  const lines=[(head||[]).map(xcCell).join(',')];
+  (rows||[]).forEach(function(r){lines.push((r||[]).map(xcCell).join(','));});
+  const b=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b);a.download=fn+'.csv';a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},4000);
+}
 // The rows of one list, narrowed to the days asked for
 function xcRows(id,from,to){
   const s=xcSet(id);
@@ -17709,7 +17827,8 @@ function xcExport(id){
   try{rows=xcRows(id,from,to);}
   catch(e){toast('Could not read '+s.l+': '+(e&&e.message||e),'danger');return false;}
   if(!rows.length){toast('There is nothing in '+s.l+(from||to?' for those days':''),'info');return false;}
-  expCSV(s.head,rows,xcFileName(id,from,to));
+  xcCSV(xcHead(s),rows,xcFileName(id,from,to));
+  toast(rows.length+' row(s) of '+s.l+' saved','success');
   logA('Exported '+rows.length+' row(s) of '+s.l+' as CSV');
   return true;
 }
@@ -17733,7 +17852,7 @@ function xcCardHTML(){
     return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 9px;border:1px solid var(--bd);border-radius:var(--rs);margin-bottom:5px;'
      +(n?'':'opacity:.55')+'">'
      +'<span style="flex:1;min-width:170px;font-size:12px"><strong>'+esc(s.l)+'</strong>'
-     +'<div style="font-size:10px;color:var(--tx3)">'+n+' row(s) · '+s.head.length+' column(s)</div></span>'
+     +'<div style="font-size:10px;color:var(--tx3)">'+n+' row(s) · '+xcHead(s).length+' column(s)</div></span>'
      +(n?'<button class="btn bs bxs" onclick="xcExport('+q+esc(s.id)+q+')">\u{1f4e5} CSV</button>'
         :'<span style="font-size:10px;color:var(--tx3)">nothing yet</span>')
      +'</div>';
