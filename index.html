@@ -91,6 +91,9 @@ table{width:100%;border-collapse:collapse;font-size:12px}thead{background:var(--
 th{padding:9px 12px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);border-bottom:1px solid var(--bd);white-space:nowrap}
 td{padding:10px 12px;border-bottom:1px solid var(--bd);vertical-align:middle;color:var(--tx2)}
 td strong{color:var(--tx)}tr:last-child td{border-bottom:none}tr:hover td{background:var(--sf2)}
+/* words a teacher picked out in his weekly plan */
+mark.wphi{background:#fde68a;color:#1f2937;border-radius:3px;padding:0 2px}
+html[data-theme="dark"] mark.wphi,body.dark mark.wphi{background:#b45309;color:#fff}
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
 .bbl{background:var(--ac2);color:var(--ac);border:1px solid var(--ac3)}.bgn{background:var(--subg);color:var(--su)}
 .bgo{background:var(--gdbg);color:var(--gd)}.brd{background:var(--dnbg);color:var(--dn)}
@@ -1430,6 +1433,8 @@ const AR_UI={
 '+ Add New Test':'+ إضافة اختبار قصير','Add New Test':'إضافة اختبار قصير','+ Add New Exam':'+ إضافة امتحان جديد','Add New Exam':'إضافة امتحان جديد','TEST':'اختبار قصير','EXAM':'امتحان','Add a new test':'إضافة اختبار قصير جديد','Add a new exam':'إضافة امتحان جديد','Test name':'اسم الاختبار','Exam name':'اسم الامتحان','Open this test':'افتح هذا الاختبار','Open this exam':'افتح هذا الامتحان','Test & deadline':'الاختبار والموعد النهائي','Exam & deadline':'الامتحان والموعد النهائي','+ Add a section':'+ إضافة شعبة','+ Add a class':'+ إضافة فصل','Add a section':'إضافة شعبة','Sections':'الشعب','Save the sections':'احفظ الشعب','Save the classes':'احفظ الفصول','Subjects, days & dates':'المواد والأيام والتواريخ','Subjects & dates':'المواد والتواريخ','Day':'اليوم','— choose a day —':'— اختر يومًا —','On it':'مُدرجة','Tests & exams':'الاختبارات والامتحانات','← Tests & exams':'← الاختبارات والامتحانات','schedule(s) are for students who are no longer on the absent list — their absence was taken off after the schedule was made.':'جدولًا لطلاب لم يعودوا على قائمة الغياب — فقد رُفع غيابهم بعد إنشاء الجدول.','They are left out of the schedule, the reports and the notices.':'وهي مستبعدة من الجدول ومن التقارير ومن الإشعارات.','They are shown below, each marked.':'وهي معروضة أدناه، وكل واحد منها مُعلَّم.','Nothing has been deleted: put the absence back and the schedule comes back with it.':'ولم يُحذف شيء: أعد الغياب فيعود الجدول معه.','Show them':'اعرضها','Hide them':'أخفها','no longer on the absent list':'لم يعد على قائمة الغياب','📒 Evaluation Register':'📒 سجل التقييم','Evaluation Register':'سجل التقييم','What the register records':'ما يسجّله السجل','📋 What the register records':'📋 ما يسجّله السجل','Classes and students':'الفصول والطلاب','🏫 Classes and students':'🏫 الفصول والطلاب','How it will look':'كيف سيظهر','Layout':'التصميم','+ Add a column':'+ أضف عمودًا','out of':'من','+ part':'+ جزء','All classes':'كل الفصول','Blank lines at the foot':'أسطر فارغة في الأسفل','Paper':'الورق','A–Z':'أبجديًا','By class serial':'بحسب رقم الفصل','Term 1':'الفصل الدراسي الأول','Term 2':'الفصل الدراسي الثاني','Term 3':'الفصل الدراسي الثالث','No term':'دون فصل دراسي','The register the school keeps for a subject — the class, the subject and the teacher at the head, a line for every boy and a column for every piece of work that carries marks. Choose the layout the subject uses, change any column, tick the classes and the boys, and make the PDF.':'السجل الذي تحفظه المدرسة لكل مادة — الفصل والمادة والمعلم في أعلاه، وسطر لكل طالب، وعمود لكل عمل عليه درجات. اختر تصميم المادة، وغيّر ما شئت من الأعمدة، وأشّر على الفصول والطلاب، ثم أنشئ الملف.','Tick the classes the register is for. Every boy of a class is on it until you take him off.':'أشّر على الفصول المقصودة. وكل طالب في الفصل مدرج حتى ترفعه.','Tick a class and a column or two to see the register here.':'أشّر على فصل وعمود أو اثنين لترى السجل هنا.','💾 Keep under the teacher':'💾 احفظه باسم المعلم','Keep under the teacher':'احفظه باسم المعلم','+ New register':'+ سجل جديد','Registers kept, by teacher':'السجلات المحفوظة، بحسب المعلم','💾 Registers kept, by teacher':'💾 السجلات المحفوظة، بحسب المعلم','open now':'مفتوح الآن','📄 Print':'📄 طباعة','Open':'فتح','A register is kept under the teacher’s name the moment its PDF is made, with its columns, its classes and the very boys ticked. Print it again whenever it is wanted.':'يُحفظ السجل باسم المعلم بمجرد إنشاء ملفه، بأعمدته وفصوله والطلاب المؤشَّر عليهم أنفسهم. ويُطبع مرة أخرى متى لزم.','No register has been kept yet. Give the teacher’s name above and press 💾 Keep under the teacher, or make the PDF — it is kept as it is made.':'لم يُحفظ أي سجل بعد. اكتب اسم المعلم في الأعلى ثم اضغط احفظه باسم المعلم، أو أنشئ الملف فيُحفظ معه.','(from the timetable)':'(من الجدول)','(can be written over)':'(يمكن تغييره)','— choose a teacher —':'— اختر معلمًا —','— which of his subjects —':'— أي مواده —','Show every class of the school':'اعرض كل فصول المدرسة','Only the classes he teaches':'فقط الفصول التي يدرّسها','no students on record':'لا يوجد طلاب في السجلات','Choose which of his subjects this register is for':'اختر أيّ مواده هذا السجل','📄 Full record PDF':'📄 ملف السجل الكامل','Full record PDF':'ملف السجل الكامل','Everything on record about him, as a PDF':'كل ما في سجله، في ملف PDF','Save the subjects':'احفظ المواد','completed':'مكتملة','✓ completed':'✓ مكتملة','missed':'فائتة','✗ missed':'✗ فائتة','moved':'مُؤجَّلة','moved to':'نُقلت إلى','moved from':'نُقلت من','waiting':'في الانتظار','Reschedule':'إعادة جدولة','🔄 Reschedule':'🔄 إعادة جدولة','Reschedule the missed':'أعد جدولة الفائتة','Periods':'الحصص','Two teachers take this at the same time':'يأخذها معلمان في الوقت نفسه','two at once':'معلمان معًا','his own part':'قسمه الخاص','Give each teacher his own name for it, so each writes his own portion':'أعطِ كل معلم اسمًا خاصًا بها، ليكتب كل منهما مقرره الخاص','Both parts keep the day and date above. Leave the box unticked and it stays one portion, written once for both.':'يحتفظ القسمان باليوم والتاريخ المذكورين أعلاه. واترك المربع دون تأشير فتبقى مقررًا واحدًا يُكتب مرة واحدة لكليهما.','Two teachers take this subject at the same time — give each his own name, or leave it as one portion':'يأخذ هذه المادة معلمان في الوقت نفسه — أعطِ كل واحد اسمًا خاصًا به، أو اتركها مقررًا واحدًا','Subjects, days and dates':'المواد والأيام والتواريخ','Subjects and dates':'المواد والتواريخ','An exam is put on whole classes — every section of a class sits the same one. A test is put on one section at a time, and each subject shows the days it has periods in that section, so a day and a date can be chosen from them. Either way the teachers write the portion from a code, with the PIN they already use for the weekly plan.':'يُوضع الامتحان على الفصول كاملة — وكل شعبة من الفصل تؤدي الامتحان نفسه. أما الاختبار القصير فيوضع على شعبة واحدة في كل مرة، وتظهر لكل مادة الأيام التي لها فيها حصص في تلك الشعبة، فيُختار منها اليوم والتاريخ. وفي الحالتين يكتب المعلمون المقرر من رمز، بالرقم السري نفسه الذي يستعملونه للخطة الأسبوعية.','Give the test its name; the sections that sit it are added afterwards, one by one. Each section then carries its own subjects, with the days that subject has periods in that very section.':'اكتب اسم الاختبار؛ ثم تُضاف الشعب التي تؤديه واحدة بعد أخرى. وتحمل كل شعبة موادها الخاصة، مع الأيام التي للمادة فيها حصص في تلك الشعبة نفسها.','Tick every section that sits this test. Each section carries its own subjects, days and dates — one section can sit it on a different day from another.':'أشّر على كل شعبة تؤدي هذا الاختبار. وتحمل كل شعبة موادها وأيامها وتواريخها الخاصة — وقد تؤديه شعبة في يوم غير يوم شعبة أخرى.','Every subject is taught, from the timetable, with the days it has periods in this very section. Tick the ones on this test, choose the day it is to be sat on, and the date fills itself in — it can then be changed. A date on a day the subject has no period is allowed, but it is marked.':'كل مادة تُدرَّس، من الجدول، مع الأيام التي لها فيها حصص في هذه الشعبة نفسها. أشّر على المواد المُدرجة في هذا الاختبار، واختر اليوم الذي يُؤدى فيه، فيُملأ التاريخ من تلقاء نفسه — ويمكن تغييره بعد ذلك. ويجوز اختيار تاريخ في يوم لا حصة للمادة فيه، غير أنه يُعلَّم.','date to be set':'التاريخ لم يُحدد بعد','(date to be set)':'(التاريخ لم يُحدد بعد)',
 // ── what is left on the other screens ──
 // ── whose paper a shared subject’s test is ──
+// ── picking words out of the weekly plan ──
+"Highlight in the topic":"تظليل في الموضوع","in the homework":"في الواجب","in the resources":"في الوسائل","👁️ Preview my full plan":"👁️ معاينة خطتي كاملة","Preview my full plan":"معاينة خطتي كاملة","👁️ Preview":"👁️ معاينة","My weekly plan":"خطتي الأسبوعية","🖨️ Print":"🖨️ طباعة","This is your plan as the school will see it. Looking at it changes nothing — go back and keep writing if something is missing.":"هذه خطتك كما ستراها المدرسة. النظر إليها لا يغير شيئًا — عد وأكمل الكتابة إن نقص شيء.","One sheet for each of your classes.":"صفحة لكل صف من صفوفك.","Pick out the words first — then tap Highlight":"حدّد الكلمات أولاً ثم اضغط على التظليل",
 "This paper is for":"هذه الورقة لـ","Both are ticked, so the paper is set for the two of them. Untick one and it is the other teacher’s paper only.":"الاثنان محدّدان، فالورقة لكليهما. ألغِ تحديد أحدهما فتصبح ورقة المعلم الآخر وحده.","Tick the teacher this paper is for, or take the subject off the exam.":"حدّد المعلم الذي له هذه الورقة، أو ارفع المادة من الاختبار.","The other teacher is left off this paper. It is for":"المعلم الآخر خارج هذه الورقة. هي لـ",
 '+ New Week':'+ أسبوع جديد','New Week':'أسبوع جديد','Past':'سابق','Upcoming':'قادم','Not Created':'لم يُنشأ','Create PDF':'إنشاء PDF','📄 Create PDF':'📄 إنشاء PDF','PDF for this class only':'PDF لهذا الفصل فقط','📄 PDF for this class only':'📄 PDF لهذا الفصل فقط','Scrutiny':'المراجعة','2nd Scrutiny':'المراجعة الثانية','Preview':'معاينة','👥 Choose students':'👥 اختر الطلاب','Choose students':'اختر الطلاب','Choose a class, or search for a student by name.':'اختر فصلاً، أو ابحث عن طالب بالاسم.','Nobody selected yet.':'لم يتم اختيار أحد بعد.','A sample — choose students to see theirs.':'نموذج — اختر الطلاب لعرض بطاقاتهم.','Certificate of Achievement':'شهادة تقدير','Default Session':'الفترة الافتراضية','Sessions':'الفترات','Academic Sessions':'الفصول الدراسية','Weekly Plan':'الخطة الأسبوعية','Weekly Activities':'الأنشطة الأسبوعية','Duty Roster':'جدول المناوبات','Permissions':'الصلاحيات','Export':'تصدير','Import':'استيراد','Yes':'نعم','No':'لا','None':'لا شيء','Optional':'اختياري','Required':'مطلوب','Back':'رجوع','Next':'التالي','Previous':'السابق','Print':'طباعة','Download':'تنزيل','Copy':'نسخ','Send':'إرسال','Approve':'اعتماد','Reject':'رفض','Submit':'إرسال','Update':'تحديث','Create':'إنشاء','Assign':'إسناد','Restore':'استرجاع','Backup':'نسخة احتياطية','Report':'تقرير','Reports':'التقارير','Letter':'خطاب','Summary':'ملخص','History':'السجل','Filter':'تصفية','Sort':'ترتيب','Options':'خيارات','More':'المزيد','Done':'تم','Start':'البداية','End':'النهاية','Never':'أبداً','Always':'دائماً','Unknown':'غير معروف'
 };
@@ -4872,8 +4877,8 @@ function stuPlanPdf(wid){
       body+='<tr>'+(i===0?'<td rowspan="'+l.length+'" style="'+td+';background:#eef3fb;font-weight:700;color:#1d3a6e;width:80px">'+dy+'</td>':'')
         +'<td style="'+td+';text-align:center;width:42px">P'+e(p.period)+'</td>'
         +'<td style="'+td+';font-weight:700;width:110px">'+e(sbjD(p.subject,p.teacher))+'</td>'
-        +'<td style="'+td+'">'+e(p.topic)+'</td>'
-        +'<td style="'+td+'">'+e(p.homework)+'</td></tr>';
+        +'<td style="'+td+'">'+wpHi(p.topic)+'</td>'
+        +'<td style="'+td+'">'+wpHi(p.homework)+'</td></tr>';
     });
     body+='<tr><td colspan="5" style="height:12px;padding:0;background:#1d3a6e;border:1px solid #1d3a6e"></td></tr>';
   });
@@ -5033,7 +5038,7 @@ function stuRender(){
         +'<div style="font-size:12px;color:var(--tx3)">'+esc(stuDate(wk.start))+(wk.weekEnd?' – '+esc(stuDate(wk.weekEnd)):'')+'</div></div>'
         +'<button class="btn bg2 bsm" '+(wi>=0&&wi<weeks.length-1?'onclick="window._stuWk='+q+escJs(weeks[wi+1].id)+q+';stuRender()"':'disabled')+'>Next week →</button></div>'
         +'<div style="text-align:right;margin-bottom:8px"><button class="btn bp bsm" onclick="stuPlanPdf('+q+escJs(wk.id)+q+')">📄 Download PDF</button></div>'
-        +card('🗓️ Weekly plan — '+esc(s.cls),tbl(['Day','Period','Subject','Topic','Homework'],rows.map(function(p){return [esc(p.day||''),'P'+esc(p.period||''),'<strong>'+esc(sbjD(p.subject||'',p.teacher))+'</strong>',esc(p.topic||'').replace(/\n/g,'<br>'),esc(p.homework||'').replace(/\n/g,'<br>')];}),'No plan written for this week yet.'));
+        +card('🗓️ Weekly plan — '+esc(s.cls),tbl(['Day','Period','Subject','Topic','Homework'],rows.map(function(p){return [esc(p.day||''),'P'+esc(p.period||''),'<strong>'+esc(sbjD(p.subject||'',p.teacher))+'</strong>',wpHi(p.topic).replace(/\n/g,'<br>'),wpHi(p.homework).replace(/\n/g,'<br>')];}),'No plan written for this week yet.'));
     }
   }else if(tab==='rcards'){
     const cards=d.reportCards||[];
@@ -24811,7 +24816,7 @@ function wpsViewPlan(name){
   });
   rows.sort(function(a,b){return days.indexOf(a.day)-days.indexOf(b.day)||a.period-b.period||String(a.cls).localeCompare(String(b.cls),undefined,{numeric:true});});
   const filled=rows.filter(function(x){return wpHasText(x.r);}).length;
-  const txt=function(v){return esc(String(v||'').trim()).replace(/\n/g,'<br>');};
+  const txt=function(v){return wpHi(String(v||'').trim()).replace(/\n/g,'<br>');};
   let html='',curDay='';
   rows.forEach(function(x){
     if(x.day!==curDay){curDay=x.day;html+='<div style="font-size:13px;font-weight:700;color:var(--ac);margin:12px 0 6px;border-bottom:2px solid var(--ac2);padding-bottom:3px">'+esc(x.day)+'</div>';}
@@ -40883,9 +40888,9 @@ function wpViewM(cls){
         const cell='<td style="white-space:nowrap"><strong>'+esc(sbjD(l.subject||'—',l.teacher))+'</strong>'
           +'<div style="font-size:9px;color:var(--tx3)">P'+l.period+(l.teacher?' · '+esc(tchD(l.teacher)):'')
           +(l.shared?' <span class="badge bbl" style="font-size:8px">shared</span>':'')+'</div></td>'
-          +'<td>'+(esc(r.topic||'').replace(/\n/g,'<br>')||'<span style="color:var(--dn)">— not filled in —</span>')+'</td>'
-          +'<td>'+(esc(r.homework||'').replace(/\n/g,'<br>')||'—')+'</td>'
-          +'<td>'+(esc(r.resources||'').replace(/\n/g,'<br>')||'—')+'</td>';
+          +'<td>'+(wpHi(r.topic).replace(/\n/g,'<br>')||'<span style="color:var(--dn)">— not filled in —</span>')+'</td>'
+          +'<td>'+(wpHi(r.homework).replace(/\n/g,'<br>')||'—')+'</td>'
+          +'<td>'+(wpHi(r.resources).replace(/\n/g,'<br>')||'—')+'</td>';
         return (i===0?cell+'</tr>':'<tr>'+cell+'</tr>');
       }).join('');
   });
@@ -40993,6 +40998,105 @@ function wpExamBlocks(w,cls){
   }).join('');
 }
 // With a teacher named, only his own lessons in the class are on the sheet
+// ═══════════════════════════════════════════════════════════
+// PICKING OUT WORDS IN THE WEEKLY PLAN, AND READING IT WHOLE
+// A teacher may pick out a few words of his plan — a date to remember, a page
+// number, the thing the class must bring. The words themselves stay plain
+// text: the picking out is kept as ==marks== around them, so every list,
+// export, message and PDF that has always read these fields reads them still,
+// and a plan written before any of this shows exactly as it did.
+//
+// He can also read his whole week before he leaves it — every class of his,
+// lesson by lesson, as it will be printed.
+// ═══════════════════════════════════════════════════════════
+// The marks as the teacher typed them, taken off again
+function wpHiPlain(t){
+  return String(t==null?'':t).replace(/==([^=\n][^\n]*?)==/g,'$1');
+}
+// and the same text ready for the screen, with those words picked out
+function wpHi(t){
+  return esc(String(t==null?'':t)).replace(/==([^=\n][^\n]*?)==/g,'<mark class="wphi">$1</mark>');
+}
+function wpHasHi(t){return /==([^=\n][^\n]*?)==/.test(String(t==null?'':t));}
+// The button under each box: the words the teacher has picked with his finger
+// are wrapped in the marks, and pressing it again on them takes the marks off.
+function wpHiToggle(id){
+  const e=document.getElementById(id);
+  if(!e)return;
+  const v=String(e.value||'');
+  let s=e.selectionStart,t=e.selectionEnd;
+  if(s===t){
+    toast('Pick out the words first — then tap Highlight','info');
+    try{e.focus();}catch(x){}
+    return;
+  }
+  // a selection that already has the marks just inside or just outside it
+  let sel=v.slice(s,t);
+  if(v.slice(s-2,s)==='=='&&v.slice(t,t+2)==='=='){s-=2;t+=2;sel=v.slice(s,t);}
+  const had=/^==[\s\S]*==$/.test(sel);
+  const next=had?sel.slice(2,-2):('=='+sel.replace(/==/g,'')+'==');
+  e.value=v.slice(0,s)+next+v.slice(t);
+  try{e.focus();e.setSelectionRange(s,s+next.length);}catch(x){}
+  if(typeof wpPDirty==='function')wpPDirty();
+}
+// ── His whole week, read before he leaves it ──────────────
+// The same sheet the school prints, shown on the phone: every class of his, or
+// the one he has open. Nothing is written by looking.
+function wpPPreview(scope){
+  const st=wpPState();
+  const w=wpPortalWeek();
+  if(!w){toast('That week is not there any more','danger');return;}
+  if(!wpPOpen()){toast('Type your PIN first','danger');renderWpPortal();return;}
+  const byName=st.mode==='teacher'&&!!st.teacher;
+  let list,label;
+  if(scope==='class'){
+    if(!st.cls)return;
+    list=[{cls:st.cls,teacher:byName?st.teacher:''}];
+    label=st.cls;
+  }else{
+    if(!byName){toast('Open the plan with your PIN first','info');return;}
+    list=wpPMyClasses(w,st.teacher).map(function(c){return {cls:c,teacher:st.teacher};});
+    label=st.teacher;
+  }
+  if(!list.length){toast('There is no lesson of yours in '+wpWeekLabel(w),'info');return;}
+  const q=String.fromCharCode(39);
+  window.__wpPrev={scope:scope||'mine',label:label};
+  const sheets=list.map(function(x){
+    return '<div style="overflow:auto;-webkit-overflow-scrolling:touch;margin-bottom:12px">'
+      +'<div style="transform-origin:top left;min-width:760px">'+wpSheetHTML(w,x.cls,x.teacher||'')+'</div></div>';
+  }).join('');
+  openM('<div class="mh"><h3>\u{1f441}\u{fe0f} <span>My weekly plan</span>'
+   +'<span data-noar> — '+esc(label)+' · '+esc(wpWeekLabel(w))+'</span></h3>'
+   +'<button class="mc" onclick="closeM()">×</button></div>'
+   +'<div class="mb2">'
+   +'<div class="al ai" style="font-size:11px">'
+   +'<span>This is your plan as the school will see it. Looking at it changes nothing — go back and keep writing if something is missing.</span>'
+   +(list.length>1?' <span>One sheet for each of your classes.</span>':'')+'</div>'
+   +sheets+'</div>'
+   +'<div class="mf"><button class="btn bg2" onclick="closeM()">'+T('close')+'</button>'
+   +'<button class="btn bs" onclick="wpPPreviewPrint()">\u{1f5a8}\u{fe0f} Print</button>'
+   +'<button class="btn bp" onclick="wpPDownload('+q+(scope==='class'?'class':'mine')+q+')">\u{1f4c4} PDF</button></div>',true);
+}
+function wpPPreviewPrint(){
+  const st=wpPState();
+  const w=wpPortalWeek();
+  const p=window.__wpPrev||{scope:'mine'};
+  if(!w)return;
+  const byName=st.mode==='teacher'&&!!st.teacher;
+  const list=(p.scope==='class')
+    ?[{cls:st.cls,teacher:byName?st.teacher:''}]
+    :wpPMyClasses(w,st.teacher).map(function(c){return {cls:c,teacher:st.teacher};});
+  if(!list.length)return;
+  const win=window.open('','_blank');
+  if(!win){toast('Allow pop-ups to print','danger');return;}
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Weekly Plan '+esc(p.label||'')+'</title>'+sheetFontLink()
+   +'<style>@page{size:A4;margin:5mm}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+   +'mark.wphi{background:#fde68a;color:#1f2937;border-radius:3px;padding:0 2px}'
+   +'.wpsheet+.wpsheet{page-break-before:always}</style></head><body>'
+   +list.map(function(x){return wpSheetHTML(w,x.cls,x.teacher||'');}).join('')
+   +'<script>setTimeout(function(){window.print();},1200);<\/script></body></html>');
+  win.document.close();
+}
 function wpSheetHTML(w,cls,teacher){
   const s=DB.get('settings')||{};
   const m=wpMap(w.id,cls),ls=wpDue(w.id,cls).filter(function(l){return !teacher||wpIsTeacher(l,teacher);});
@@ -41023,9 +41127,9 @@ function wpSheetHTML(w,cls,teacher){
        +'<td class="sub" style="border-left:3px solid '+col+'"><b style="color:'+col+'">'+esc(sbjD(l.subject||'',l.teacher))+'</b>'
          +'<div class="pt">P'+l.period+(l.teacher?'<br>'+esc(tchD(l.teacher)):'')
          +(l.shared?'<br><span class="shr">shared</span>':'')+'</div></td>'
-       +'<td class="tp">'+esc(r.topic||'').replace(/\n/g,'<br>')+'</td>'
-       +'<td>'+esc(r.homework||'').replace(/\n/g,'<br>')+'</td>'
-       +'<td>'+esc(r.resources||'').replace(/\n/g,'<br>')+'</td></tr>';
+       +'<td class="tp">'+wpHi(r.topic).replace(/\n/g,'<br>')+'</td>'
+       +'<td>'+wpHi(r.homework).replace(/\n/g,'<br>')+'</td>'
+       +'<td>'+wpHi(r.resources).replace(/\n/g,'<br>')+'</td></tr>';
     });
     body+=daySep;
   });
@@ -41039,6 +41143,8 @@ function wpSheetHTML(w,cls,teacher){
    +'<style>'
    +'.wpsheet *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box;font-family:'+F+'}'
    +'.wpsheet table{width:100%;border-collapse:collapse;border:2.5px solid #0b3d6b}'
+   // the words the teacher picked out stay picked out on the printed sheet
+   +'.wpsheet mark.wphi{background:#fde68a;color:#12263f;border-radius:3px;padding:0 2px}'
    +'.wpsheet th,.wpsheet td{border:1px solid #b9cbdc;padding:5px 7px;font-size:12pt;font-weight:bold;vertical-align:top;text-align:left;line-height:1.3;color:#0f2540}'
    +'.wpsheet thead th{background:#0b3d6b;color:#fff;text-align:center;font-size:11pt;font-weight:bold;letter-spacing:.6px;'
      +'text-transform:uppercase;border:1px solid #0b3d6b;padding:7px 5px}'
@@ -41421,7 +41527,8 @@ function renderWpPortal(){
         if(!byName)return '';
         const miss=wpMissingFor(w,st.teacher);
         const pdf=wpPMyClasses(w,st.teacher).length
-          ?'<button class="btn bs bsm" style="margin-top:8px" onclick="wpPDownload('+q+'mine'+q+')">\u{1f4c4} Download my weekly plan (PDF)</button>':'';
+          ?'<button class="btn bp bsm" style="margin-top:8px;margin-right:6px" onclick="wpPPreview('+q+'mine'+q+')">\u{1f441}\u{fe0f} Preview my full plan</button>'
+           +'<button class="btn bs bsm" style="margin-top:8px" onclick="wpPDownload('+q+'mine'+q+')">\u{1f4c4} Download my weekly plan (PDF)</button>':'';
         return miss.length?'<div class="al ad" style="margin-bottom:12px"><strong>Weekly plan missing</strong> for '+esc(wpMissingText(miss))+'.'
           +(w.deadline?' It closes on <strong>'+esc(wpDeadlineText(w))+'</strong>.':'')+'<div>'+pdf+'</div></div>'
           :'<div class="al ag" style="margin-bottom:12px">✓ Your weekly plan is complete for every class this week.<div>'+pdf+'</div></div>';
@@ -41481,9 +41588,13 @@ function renderWpPortal(){
            ?'<textarea id="wpf-t-'+k+'" spellcheck="true" autocorrect="on" autocapitalize="sentences" lang="en" dir="auto" placeholder="Topic &amp; educational objectives" style="min-height:58px">'+esc(r.topic||'')+'</textarea>'
             +'<div class="fr f2" style="margin-top:6px"><div class="fg" style="margin-bottom:0"><label>Homework</label><textarea id="wpf-h-'+k+'" spellcheck="true" autocorrect="on" autocapitalize="sentences" lang="en" dir="auto" style="min-height:42px'+(hwLocked?';opacity:.6':'')+'"'+(hwLocked?' disabled placeholder="Already '+WP_HW_MAX+' homeworks today"':'')+'>'+esc(r.homework||'')+'</textarea></div>'
             +'<div class="fg" style="margin-bottom:0"><label>Required resources</label><textarea id="wpf-r-'+k+'" spellcheck="true" autocorrect="on" autocapitalize="sentences" lang="en" dir="auto" style="min-height:42px">'+esc(r.resources||'')+'</textarea></div></div>'
-           :'<div style="font-size:12px;white-space:pre-wrap">'+(esc(r.topic||'')||'<span style="color:var(--tx3)">— not filled in —</span>')+'</div>'
-            +(r.homework?'<div style="font-size:11px;color:var(--tx2);margin-top:5px"><strong>Homework:</strong> '+esc(r.homework)+'</div>':'')
-            +(r.resources?'<div style="font-size:11px;color:var(--tx2);margin-top:3px"><strong>Resources:</strong> '+esc(r.resources)+'</div>':''))
+            +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'
+             +'<button type="button" class="btn bg2 bxs" onclick="wpHiToggle('+q+'wpf-t-'+k+q+')">\u{1f58d}\u{fe0f} <span>Highlight in the topic</span></button>'
+             +'<button type="button" class="btn bg2 bxs" onclick="wpHiToggle('+q+'wpf-h-'+k+q+')">\u{1f58d}\u{fe0f} <span>in the homework</span></button>'
+             +'<button type="button" class="btn bg2 bxs" onclick="wpHiToggle('+q+'wpf-r-'+k+q+')">\u{1f58d}\u{fe0f} <span>in the resources</span></button></div>'
+           :'<div style="font-size:12px;white-space:pre-wrap">'+(wpHi(r.topic)||'<span style="color:var(--tx3)">— not filled in —</span>')+'</div>'
+            +(r.homework?'<div style="font-size:11px;color:var(--tx2);margin-top:5px"><strong>Homework:</strong> '+wpHi(r.homework)+'</div>':'')
+            +(r.resources?'<div style="font-size:11px;color:var(--tx2);margin-top:3px"><strong>Resources:</strong> '+wpHi(r.resources)+'</div>':''))
          +(r.at?'<div style="font-size:10px;color:var(--tx3);margin-top:5px">✓ filled in '+esc(String(r.at).replace('T',' ').slice(0,16))+(r.byName?' — '+esc(r.byName):'')+'</div>':'')
          +'</div>';
       });
@@ -41504,7 +41615,8 @@ function renderWpPortal(){
       +'<div style="font-size:13px">\u{1f9d1}\u{200d}\u{1f3eb} <strong>'+esc(st.teacher)+'</strong> · '
         +'<strong>'+esc(cls)+'</strong> · '+esc(wpWeekLabel(w))+(byName?'':' <span class="badge bbl" style="font-size:9px">whole class</span>')+'</div>'
       +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
-      +(ls.length?'<button class="btn bs bsm" onclick="wpPDownload('+q+'class'+q+')">\u{1f4c4} PDF</button>':'')
+      +(ls.length?'<button class="btn bp bsm" onclick="wpPPreview('+q+'class'+q+')">\u{1f441}\u{fe0f} Preview</button>'
+        +'<button class="btn bs bsm" onclick="wpPDownload('+q+'class'+q+')">\u{1f4c4} PDF</button>':'')
       +'<button class="btn bg2 bsm" onclick="wpPBack()">← Another class</button></div></div>'
       +(og.ok?'<div class="al ai" style="font-size:11px">'
                +(byName?'These are your periods in '+esc(cls)+'. ':'Fill in the periods that are yours. ')
