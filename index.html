@@ -92,8 +92,8 @@ th{padding:9px 12px;text-align:left;font-size:9px;font-weight:700;text-transform
 td{padding:10px 12px;border-bottom:1px solid var(--bd);vertical-align:middle;color:var(--tx2)}
 td strong{color:var(--tx)}tr:last-child td{border-bottom:none}tr:hover td{background:var(--sf2)}
 /* words a teacher picked out in his weekly plan */
-mark.wphi{background:#fde68a;color:#1f2937;border-radius:3px;padding:0 2px}
-html[data-theme="dark"] mark.wphi,body.dark mark.wphi{background:#b45309;color:#fff}
+mark.wphi{border-radius:3px;padding:0 2px;background:#fde68a;color:#1f2937}
+mark.wphi-y{background:#fde68a;color:#1f2937}mark.wphi-g{background:#bbf7d0;color:#14532d}mark.wphi-b{background:#bfdbfe;color:#1e3a8a}mark.wphi-p{background:#fbcfe8;color:#831843}mark.wphi-o{background:#fed7aa;color:#7c2d12}
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
 .bbl{background:var(--ac2);color:var(--ac);border:1px solid var(--ac3)}.bgn{background:var(--subg);color:var(--su)}
 .bgo{background:var(--gdbg);color:var(--gd)}.brd{background:var(--dnbg);color:var(--dn)}
@@ -1434,6 +1434,7 @@ const AR_UI={
 // ── what is left on the other screens ──
 // ── whose paper a shared subject’s test is ──
 // ── picking words out of the weekly plan ──
+"Pick out the words first — then tap a colour":"حدّد الكلمات أولاً ثم اختر لونًا","Highlight":"تظليل","pick the words, then a colour; the same colour again takes it off":"حدّد الكلمات ثم اختر لونًا؛ واللون نفسه مرة أخرى يزيله",
 // ── the individual differences form ──
 "Difficulty":"الصعوبة",
 "Individual differences":"الفروقات الفردية","Write down a student whose individual differences or difficulties make learning harder for him in class, from what you see of him lesson after lesson and not from his marks alone.":"ارصد طالبًا لديه فروقات فردية أو صعوبات تؤثر على تعلمه داخل الصف، بناءً على ملاحظتك المستمرة له وليس على درجاته وحدها.","Teacher’s name *":"اسم المعلم *","School *":"اسم المدرسة *","Class *":"صف الطالب *","(any student, any class)":"(أي طالب من أي صف)","The difficulty *":"المشكلة أو الصعوبة *","(one or more)":"(واحدة أو أكثر)","Anything else":"أي شيء آخر","The difficulty":"المشكلة أو الصعوبة","Written by":"رصدها","+ Write down a student":"+ رصد طالب","🧩 Save →":"🧩 حفظ ←","📄 PDF of the ticked":"📄 PDF للمحددين","📄 PDF of all shown":"📄 PDF لكل المعروض","Every student a teacher has written down — the difficulties that make learning harder for him in class. Tick any number of students and take their report away as a PDF.":"كل طالب رصده معلم — الصعوبات التي تؤثر على تعلمه داخل الصف. حدّد من شئت من الطلاب واسحب تقريرهم بصيغة PDF.","The students you have written down. Any student of any class may be added, from what you see of him in the lesson rather than from his marks.":"الطلاب الذين رصدتهم. يمكن إضافة أي طالب من أي صف، بناءً على ملاحظتك له في الحصة لا على درجاته.","Nothing written down yet. Any teacher may add a student from any class.":"لم يُرصد شيء بعد. يستطيع أي معلم إضافة طالب من أي صف.","Individual differences that affect learning":"الفروقات الفردية المؤثرة على التعلم","Hearing needs":"احتياجات سمعية","Learning difficulties":"صعوبات تعلم","Very slow writing":"بطء شديد في الكتابة","Severe difficulty reading":"صعوبة شديدة في القراءة","Attention deficit and hyperactivity (ADHD)":"تشتت انتباه وفرط حركة","Social or behavioural challenges":"تحديات اجتماعية أو سلوكية","Autism spectrum":"طيف توحد",
@@ -41023,31 +41024,76 @@ function wpExamBlocks(w,cls){
 // lesson by lesson, as it will be printed.
 // ═══════════════════════════════════════════════════════════
 // The marks as the teacher typed them, taken off again
+// The colours a teacher may pick out words in. Yellow is what a plain ==mark==
+// has always meant, so everything written before stays yellow; the others are
+// kept as a single letter inside the marks — ==g|like this== — which keeps the
+// text plain, readable and the same length of change to undo.
+const WP_HI_COLOURS=[
+  ['y','Yellow','#fde68a','#1f2937'],
+  ['g','Green','#bbf7d0','#14532d'],
+  ['b','Blue','#bfdbfe','#1e3a8a'],
+  ['p','Pink','#fbcfe8','#831843'],
+  ['o','Orange','#fed7aa','#7c2d12']
+];
+const WP_HI_RE=/==(?:([a-z])\|)?([^=\n][^\n]*?)==/g;
+function wpHiColour(c){
+  return WP_HI_COLOURS.filter(function(x){return x[0]===c;})[0]||WP_HI_COLOURS[0];
+}
 function wpHiPlain(t){
-  return String(t==null?'':t).replace(/==([^=\n][^\n]*?)==/g,'$1');
+  return String(t==null?'':t).replace(WP_HI_RE,'$2');
 }
 // and the same text ready for the screen, with those words picked out
 function wpHi(t){
-  return esc(String(t==null?'':t)).replace(/==([^=\n][^\n]*?)==/g,'<mark class="wphi">$1</mark>');
+  return esc(String(t==null?'':t)).replace(WP_HI_RE,function(m,c,words){
+    return '<mark class="wphi wphi-'+wpHiColour(c)[0]+'">'+words+'</mark>';
+  });
 }
-function wpHasHi(t){return /==([^=\n][^\n]*?)==/.test(String(t==null?'':t));}
-// The button under each box: the words the teacher has picked with his finger
-// are wrapped in the marks, and pressing it again on them takes the marks off.
-function wpHiToggle(id){
+function wpHasHi(t){WP_HI_RE.lastIndex=0;return WP_HI_RE.test(String(t==null?'':t));}
+// The style the picked-out words are shown in, used by the screen and carried
+// into the printed sheet so a PDF keeps the colours
+function wpHiCSS(prefix){
+  return WP_HI_COLOURS.map(function(c){
+    return (prefix||'')+'mark.wphi-'+c[0]+'{background:'+c[2]+';color:'+c[3]+'}';
+  }).join('');
+}
+// The box he last had the cursor in, so a colour knows what to mark
+function wpHiWatch(){
+  if(window.__wpHiWatching)return;
+  window.__wpHiWatching=true;
+  document.addEventListener('focusin',function(ev){
+    const el=ev&&ev.target;
+    if(el&&el.id&&/^wpf-[thr]-/.test(el.id))window.__wpHiLast=el.id;
+  },true);
+}
+// A colour tapped on a lesson: it marks whatever box he was last writing in,
+// and the topic if he has not touched one yet.
+function wpHiPick(k,c){
+  const last=window.__wpHiLast;
+  const mine=(last&&last.slice(6)===k)?last:('wpf-t-'+k);
+  wpHiToggle(mine,c);
+}
+// The words the teacher has picked with his finger are wrapped in the marks.
+// Tapping the same colour again takes them off; tapping another changes it.
+function wpHiToggle(id,c){
   const e=document.getElementById(id);
   if(!e)return;
+  const col=wpHiColour(c||'y')[0];
   const v=String(e.value||'');
   let s=e.selectionStart,t=e.selectionEnd;
   if(s===t){
-    toast('Pick out the words first — then tap Highlight','info');
+    toast('Pick out the words first — then tap a colour','info');
     try{e.focus();}catch(x){}
     return;
   }
-  // a selection that already has the marks just inside or just outside it
+  // a selection that sits just inside marks is treated as those marks
   let sel=v.slice(s,t);
-  if(v.slice(s-2,s)==='=='&&v.slice(t,t+2)==='=='){s-=2;t+=2;sel=v.slice(s,t);}
-  const had=/^==[\s\S]*==$/.test(sel);
-  const next=had?sel.slice(2,-2):('=='+sel.replace(/==/g,'')+'==');
+  const open=v.slice(Math.max(0,s-4),s).match(/==(?:[a-z]\|)?$/);
+  if(open&&v.slice(t,t+2)==='=='){s-=open[0].length;t+=2;sel=v.slice(s,t);}
+  const was=sel.match(/^==(?:([a-z])\|)?([\s\S]*)==$/);
+  let next;
+  if(was&&(was[1]||'y')===col)next=was[2];                       // the same colour again: off
+  else if(was)next='=='+(col==='y'?'':col+'|')+was[2]+'==';      // another colour: changed
+  else next='=='+(col==='y'?'':col+'|')+sel.replace(/==/g,'')+'==';
   e.value=v.slice(0,s)+next+v.slice(t);
   try{e.focus();e.setSelectionRange(s,s+next.length);}catch(x){}
   if(typeof wpPDirty==='function')wpPDirty();
@@ -41104,7 +41150,7 @@ function wpPPreviewPrint(){
   if(!win){toast('Allow pop-ups to print','danger');return;}
   win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Weekly Plan '+esc(p.label||'')+'</title>'+sheetFontLink()
    +'<style>@page{size:A4;margin:5mm}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
-   +'mark.wphi{background:#fde68a;color:#1f2937;border-radius:3px;padding:0 2px}'
+   +'mark.wphi{border-radius:3px;padding:0 2px}'+wpHiCSS('')
    +'.wpsheet+.wpsheet{page-break-before:always}</style></head><body>'
    +list.map(function(x){return wpSheetHTML(w,x.cls,x.teacher||'');}).join('')
    +'<script>setTimeout(function(){window.print();},1200);<\/script></body></html>');
@@ -41157,7 +41203,8 @@ function wpSheetHTML(w,cls,teacher){
    +'.wpsheet *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box;font-family:'+F+'}'
    +'.wpsheet table{width:100%;border-collapse:collapse;border:2.5px solid #0b3d6b}'
    // the words the teacher picked out stay picked out on the printed sheet
-   +'.wpsheet mark.wphi{background:#fde68a;color:#12263f;border-radius:3px;padding:0 2px}'
+   +'.wpsheet mark.wphi{border-radius:3px;padding:0 2px}'
+   +wpHiCSS('.wpsheet ')
    +'.wpsheet th,.wpsheet td{border:1px solid #b9cbdc;padding:5px 7px;font-size:12pt;font-weight:bold;vertical-align:top;text-align:left;line-height:1.3;color:#0f2540}'
    +'.wpsheet thead th{background:#0b3d6b;color:#fff;text-align:center;font-size:11pt;font-weight:bold;letter-spacing:.6px;'
      +'text-transform:uppercase;border:1px solid #0b3d6b;padding:7px 5px}'
@@ -41194,8 +41241,10 @@ function wpSheetHTML(w,cls,teacher){
    +(w.quote?'<div style="border:2px solid #f59e0b;border-left:7px solid #f59e0b;border-radius:8px;background:#fffbeb;padding:5px 10px;margin-bottom:7px;text-align:center">'
      +'<span style="font-size:9pt;font-weight:bold;letter-spacing:1.2px;color:#b45309;text-transform:uppercase">Quote of the Week</span>'
      +'<div style="font-size:12pt;font-weight:bold;font-style:italic;color:#7c4a03">\u{201c}'+esc(w.quote)+'\u{201d}</div></div>':'')
+   // The topic is what the sheet is really for, so it takes the room the
+   // homework column does not need — the homework is usually a page number.
    +'<table><thead><tr><th style="width:23mm">Day</th><th style="width:29mm">Subject</th>'
-   +'<th>Topic &amp; Edu Objectives</th><th style="width:32mm">Homework</th><th style="width:27mm">Resources</th></tr></thead>'
+   +'<th>Topic &amp; Edu Objectives</th><th style="width:23mm">Homework</th><th style="width:25mm">Resources</th></tr></thead>'
    +'<tbody>'+(body||'<tr><td colspan="5">No lessons on the timetable.</td></tr>')+'</tbody></table>'
    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:9pt;color:#42607e;font-weight:bold">'
      +'<span>'+esc(s.schoolName||'')+' · Weekly Plan · '+esc(cls)+'</span>'
@@ -41467,6 +41516,7 @@ function wpFreshWeeks(){
   }catch(e){}
 }
 function renderWpPortal(){
+  wpHiWatch();
   setTimeout(wpFreshWeeks,50);
   const s=DB.get('settings')||{};
   const w=wpPortalWeek();
@@ -41601,10 +41651,13 @@ function renderWpPortal(){
            ?'<textarea id="wpf-t-'+k+'" spellcheck="true" autocorrect="on" autocapitalize="sentences" lang="en" dir="auto" placeholder="Topic &amp; educational objectives" style="min-height:58px">'+esc(r.topic||'')+'</textarea>'
             +'<div class="fr f2" style="margin-top:6px"><div class="fg" style="margin-bottom:0"><label>Homework</label><textarea id="wpf-h-'+k+'" spellcheck="true" autocorrect="on" autocapitalize="sentences" lang="en" dir="auto" style="min-height:42px'+(hwLocked?';opacity:.6':'')+'"'+(hwLocked?' disabled placeholder="Already '+WP_HW_MAX+' homeworks today"':'')+'>'+esc(r.homework||'')+'</textarea></div>'
             +'<div class="fg" style="margin-bottom:0"><label>Required resources</label><textarea id="wpf-r-'+k+'" spellcheck="true" autocorrect="on" autocapitalize="sentences" lang="en" dir="auto" style="min-height:42px">'+esc(r.resources||'')+'</textarea></div></div>'
-            +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'
-             +'<button type="button" class="btn bg2 bxs" onclick="wpHiToggle('+q+'wpf-t-'+k+q+')">\u{1f58d}\u{fe0f} <span>Highlight in the topic</span></button>'
-             +'<button type="button" class="btn bg2 bxs" onclick="wpHiToggle('+q+'wpf-h-'+k+q+')">\u{1f58d}\u{fe0f} <span>in the homework</span></button>'
-             +'<button type="button" class="btn bg2 bxs" onclick="wpHiToggle('+q+'wpf-r-'+k+q+')">\u{1f58d}\u{fe0f} <span>in the resources</span></button></div>'
+            +'<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:6px">'
+             +'<span style="font-size:10px;color:var(--tx3)">\u{1f58d}\u{fe0f} <span>Highlight</span></span>'
+             +WP_HI_COLOURS.map(function(c){
+                return '<button type="button" title="'+esc(c[1])+'" onclick="wpHiPick('+q+k+q+','+q+c[0]+q+')" '
+                 +'style="width:24px;height:24px;border-radius:50%;border:1px solid var(--bd);cursor:pointer;background:'+c[2]+'"></button>';
+              }).join('')
+             +'<span style="font-size:9px;color:var(--tx3)">\u2014 <span>pick the words, then a colour; the same colour again takes it off</span></span></div>'
            :'<div style="font-size:12px;white-space:pre-wrap">'+(wpHi(r.topic)||'<span style="color:var(--tx3)">— not filled in —</span>')+'</div>'
             +(r.homework?'<div style="font-size:11px;color:var(--tx2);margin-top:5px"><strong>Homework:</strong> '+wpHi(r.homework)+'</div>':'')
             +(r.resources?'<div style="font-size:11px;color:var(--tx2);margin-top:3px"><strong>Resources:</strong> '+wpHi(r.resources)+'</div>':''))
